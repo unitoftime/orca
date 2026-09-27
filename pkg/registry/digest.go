@@ -54,10 +54,10 @@ func IsDigest(ref string) bool { return strings.Contains(ref, "@sha256:") }
 //
 // Anonymously first, and with the credentials docker uses
 // (~/.docker/config.json and its credential helpers) only when the registry
-// refuses. The fallback is what resolves a private image with no
-// orca-specific configuration; trying without first is what finds out that
-// it is private, which decides whether the cluster needs credentials of its
-// own to pull it. It costs a second round trip only for a private image.
+// refuses. The fallback is what resolves a private image with no orca-specific
+// configuration; trying without first is what finds out that it is private,
+// which decides whether the cluster needs credentials of its own to pull it.
+// It costs a second round trip only for a private image.
 type Remote struct{}
 
 func (Remote) Resolve(ctx context.Context, ref string) (Pinned, error) {

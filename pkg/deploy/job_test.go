@@ -120,8 +120,8 @@ ports:
 // registers its allocation's own address instead, which every container can
 // reach over the bridge and nothing outside the machine can reach.
 //
-// Publishing a host port here is what silently put internal-only services on
-// the public internet at a random high port.
+// Publishing a host port here would silently put internal-only services on the
+// public internet at a random high port.
 func TestInternalServicePublishesNothing(t *testing.T) {
 	job := buildOneIn(t, "blog", `
 name: db

@@ -31,9 +31,9 @@ import (
 
 // FirewallConfig locks the public interface down to what the manifests ask
 // for. It has no settings: what is open is derived from the raw tcp/udp ports
-// the manifests declare and from
-// whether ingress runs, which is the whole point: a port is open because
-// something asked for it, never because someone edited a rule.
+// the manifests declare and from whether ingress runs, which is the whole
+// point: a port is open because something asked for it, never because
+// someone edited a rule.
 type FirewallConfig struct {
 	Enabled bool `yaml:"-"`
 }

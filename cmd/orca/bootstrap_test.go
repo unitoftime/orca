@@ -82,7 +82,7 @@ func TestNomadServerStanzaClientNode(t *testing.T) {
 }
 
 // A client-only machine has no local server to find, so it is told where the
-// servers are. Without it the machine never joined.
+// servers are. Without it the machine never joins.
 func TestClientNodeJoinsTheServers(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
 		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: RoleServer},

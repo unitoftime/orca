@@ -263,8 +263,8 @@ func TestPeriodicNeverRunIsScheduled(t *testing.T) {
 }
 
 // A task that has finished its work is dead too. A poststart task that sets a
-// service up exits as soon as it is done, and reporting that as a failure made
-// a perfectly healthy object store show as failed on every deploy.
+// service up exits as soon as it is done, and reporting that as a failure would
+// make a perfectly healthy object store show as failed on every deploy.
 func TestFinishedPoststartTaskIsNotAFailure(t *testing.T) {
 	jobs := map[string]JobState{"files-store": job("files-store", "files", "store", 1)}
 	allocs := []AllocState{{
@@ -327,8 +327,8 @@ func TestRecoveredTaskOutranksAFailedDeployment(t *testing.T) {
 	if got[0].Health != HealthOK {
 		t.Errorf("health = %q, want %q: the task is running now", got[0].Health, HealthOK)
 	}
-	// The exit code that sent it into a restart loop is not news once it came
-	// back, and printed beside a healthy service it only misleads.
+	// The exit code that sent it into a restart loop is not news once it has
+	// come back, and printed beside a healthy service it only misleads.
 	if got[0].Message != "" {
 		t.Errorf("a healthy service should carry no failure message, got %q", got[0].Message)
 	}
@@ -360,7 +360,7 @@ func TestFailedDeploymentWithBrokenAllocsStillFails(t *testing.T) {
 }
 
 // A job that runs on every machine wants one copy per machine, not its
-// group's count of 1: three machines read "3/1" before.
+// group's count of 1: three machines must not read "3/1".
 func TestSummarizeSystemJobCountsMachines(t *testing.T) {
 	sys := job("orca-dns", "orca", "dns", 1)
 	sys.System = true

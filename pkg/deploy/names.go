@@ -153,7 +153,7 @@ func VolumeRoot(dataDir string) string {
 //
 // Two levels rather than one flattened name. Group names contain dashes, so a
 // flat "<group>-<service>" cannot be split back: "shop-prod-db" is shop's
-// prod-db or shop-prod's db. Purge matched on the prefix "shop-" and so deleted
+// prod-db or shop-prod's db, and purging by the prefix "shop-" would delete
 // shop-prod's data along with shop's. A directory per group makes the owner of
 // every volume a fact of the path, and purging a group one directory.
 func VolumePath(dataDir, group, service string) string {

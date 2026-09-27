@@ -124,7 +124,7 @@ func TestIngressPortsOnlyWhenIngressRuns(t *testing.T) {
 }
 
 // A container reaching another machine's scheduler is routed through forward,
-// never input. Guarding only input left every other machine's Nomad open.
+// never input. Guarding only input would leave every other machine's Nomad open.
 func TestSchedulerIsClosedToContainersOnBothPaths(t *testing.T) {
 	rules := Firewall("eth0", "nomad", FirewallPorts{})
 	for _, hook := range []string{"hook input", "hook forward"} {

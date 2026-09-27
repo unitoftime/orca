@@ -42,8 +42,8 @@ const NomadAddr = "http://127.0.0.1:4646"
 // listJobsScript asks Nomad for every job, keeps the ones orca owns, and
 // projects them down to the few fields the plan needs. The status page makes
 // the same projection from Nomad's own types, in deploy.JobStateFromNomad; a
-// rule changed here changes there. The filtering happens on
-// the machine so the reply stays small.
+// rule changed here must change there too. The filtering happens on the
+// machine so the reply stays small.
 //
 // It fails rather than answering short. Without pipefail an unreachable Nomad
 // would produce an empty list and a zero exit, which reads as "nothing is
@@ -250,9 +250,9 @@ func (n Node) RunQuiet(ctx context.Context, cmd string) error {
 
 // runtimeScript fetches allocations and deployments in two calls, regardless of
 // how many jobs exist. deploy.AllocStateFromNomad and DeploymentStateFromNomad
-// are the same projections, for the status page. The projections happen on the machine because an
-// allocation's raw event list is kilobytes per task and only its last line is
-// wanted.
+// are the same projections, for the status page. The projections happen on the
+// machine because an allocation's raw event list is kilobytes per task and
+// only its last line is wanted.
 const runtimeScript = `set -eo pipefail
 printf '{"allocs":'
 curl -sf --max-time 10 ` + NomadAddr + `/v1/allocations | jq -c '` + allocsJQ + `'
@@ -898,9 +898,8 @@ fi
 		NomadAddr,
 		deploy.SecretPath(spec.SecretGroup, spec.KeyIDSecret),
 		deploy.SecretPath(spec.SecretGroup, spec.SecretKeySecret),
-		// The group the credentials actually live in. It said "platform" until
-		// targets moved out of cluster.yaml, which sent anyone hitting this
-		// message to set a secret at a path that no longer exists.
+		// The group the credentials actually live in, so the message sends
+		// whoever reads it to a path that exists.
 		spec.SecretGroup+"/"+spec.KeyIDSecret,
 		shQuote(spec.Endpoint), shQuote(spec.Region))
 }

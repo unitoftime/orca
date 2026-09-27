@@ -187,8 +187,8 @@ func nomadServerStanza(cfg Config, nc NodeConfig) string {
 // nomadClientJoin tells a client-only machine where the servers are.
 //
 // A machine that runs a server finds it locally. One that does not has no
-// other way to learn where the cluster is: without this, a client node started,
-// never joined, and bootstrap's wait for every machine timed out on it.
+// other way to learn where the cluster is: without this, a client node would
+// start, never join, and bootstrap's wait for every machine would time out.
 func nomadClientJoin(cfg Config, nc NodeConfig) string {
 	if nc.Role == RoleServer {
 		return "  # runs a server: its client joins it locally"

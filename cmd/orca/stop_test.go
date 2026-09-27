@@ -88,8 +88,8 @@ func TestDeclaredWithNoGroupsLeft(t *testing.T) {
 	}
 }
 
-// A volume's group is its directory. Purging "shop" once matched the prefix
-// "shop-" and took shop-prod's data too.
+// A volume's group is its directory. Matching the prefix "shop-" when purging
+// "shop" would take shop-prod's data too.
 func TestOrphansAreMatchedByExactGroup(t *testing.T) {
 	l := parseVolumeListing("shop/db\nshop-prod/db\nblog/db\n")
 	o := orphansOf(l, map[Volume]bool{{Group: "blog", Service: "db"}: true})

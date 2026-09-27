@@ -70,9 +70,8 @@ func TestShQuoteEscapesEmbeddedQuotes(t *testing.T) {
 	}
 }
 
-// The credential error names the group the credentials actually live in. It
-// said "platform" until targets moved out of cluster.yaml, which sent anyone
-// hitting it to set a secret at a path that no longer exists.
+// The credential error names the group the credentials actually live in.
+// Any other group would send whoever reads it to a path that does not exist.
 func TestCredentialErrorNamesTheRealSecretPath(t *testing.T) {
 	script := rcloneEnvScript(hostileSpec())
 	if !strings.Contains(script, "orca secret set storage/offsite_key_id") {

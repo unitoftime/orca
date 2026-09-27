@@ -27,6 +27,7 @@ type Stack struct {
 	// Platform images. These are containers orca runs for you, pinned for the
 	// same reason as everything else: an upgrade should be a reviewable commit,
 	// never something that happens because a tag moved.
+	//
 	// Rclone is the S3 client backups use. Chosen over MinIO's mc because it
 	// speaks every S3 dialect, configures entirely from environment variables
 	// with no config file, and is still published where it can be pulled;

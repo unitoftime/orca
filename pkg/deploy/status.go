@@ -132,9 +132,9 @@ func Summarize(jobs map[string]JobState, allocs []AllocState, deployments []Depl
 			Desired: job.Count,
 		}
 		// One copy per machine: a job on three machines reported as "3/1"
-		// read as three times too many, and one crashed on a machine still
-		// read as healthy. Every allocation Nomad still wants running is a
-		// machine it should be running on.
+		// would read as three times too many, and one crashed on a machine
+		// would still read as healthy. Every allocation Nomad still wants
+		// running is a machine it should be running on.
 		if job.System {
 			s.Desired = len(byJob[id])
 		}
@@ -280,7 +280,7 @@ func classify(s *ServiceStatus, job JobState, allocs []AllocState, dep *Deployme
 
 	// A past failure explains a service that is not working. Next to one that
 	// is, it only misleads: the exit code that sent it into a restart loop is
-	// not news once it came back.
+	// not news once it has come back.
 	if s.Health == HealthOK {
 		s.Message = ""
 	}

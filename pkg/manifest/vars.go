@@ -258,8 +258,8 @@ func undefinedVar(name string, vars Vars) error {
 // Checked by hand because a service is decoded from a yaml.Node (which is
 // what lets variables be filled in first), and Node.Decode does not carry the
 // decoder's KnownFields setting. The nested types already check their own
-// fields for the same reason; this is the one level that relied on the
-// decoder.
+// fields for the same reason; this is the one level that would otherwise
+// rely on the decoder.
 var serviceFields = func() map[string]bool {
 	out := map[string]bool{}
 	t := reflect.TypeOf(Service{})

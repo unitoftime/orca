@@ -253,7 +253,7 @@ func missingGenerated(needed []secretRef, generated []generatedSecret, set map[s
 	return toGenerate, nil
 }
 
-// execute applies the plan, stopping before creating and updating.
+// execute applies the plan, running stops before creates and updates.
 //
 // Creating first would let "a service that replaced another" start before
 // the old one goes, but that protects nothing: a stop only ever targets a
@@ -477,7 +477,6 @@ func applyFirewall(ctx context.Context, cfg Config, _ *Cluster) error {
 	return nil
 }
 
-// backupSpec is the resolved backup destination.
 // platformOptions turns the cluster config into the platform's resolved
 // options. A capability that is switched off becomes a nil spec, which
 // BuildPlatform renders as no job at all.

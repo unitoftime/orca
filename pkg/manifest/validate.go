@@ -346,8 +346,8 @@ func validatePorts(e *errList, s *Service, claimed map[string]string) {
 		}
 	}
 
-	// Each hostname-routed port needs its own name, and orca generates exactly
-	// one per service. Two would be ambiguous about which port answers.
+	// Each hostname-routed port needs its own name, and a service may name
+	// only one. Two would be ambiguous about which port answers.
 	if hostnames > 1 {
 		e.addf("declares %d ports over HTTP; a service gets one hostname, so route the rest through it or split the service", hostnames)
 	}

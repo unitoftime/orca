@@ -74,8 +74,8 @@ func TestRawHostPortDefaultsToContainerPort(t *testing.T) {
 }
 
 // A list exists for exactly one case: both protocols on one container port.
-// YAML has no way to write the same key twice, which is the whole reason the
-// old form crammed them into one string as "tcp+udp".
+// YAML has no way to write the same key twice, which is why a list is needed
+// at all.
 func TestListOfProtocols(t *testing.T) {
 	var s Service
 	if err := yaml.Unmarshal([]byte("name: api\nimage: i:1\nports:\n  7777: [tcp, udp]\n"), &s); err != nil {

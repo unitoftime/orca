@@ -406,7 +406,8 @@ that wrote them.
 
 With `monitoring.domain` set, there are also web UIs, behind a password: user
 `admin`, and the password `orca password` prints, generated for the cluster at
-bootstrap. `orca password set` changes it, from the next apply. `status.<domain>` links to the rest:
+bootstrap. `orca password set` changes it, from the next apply.
+`status.<domain>` links to the rest:
 
 - `status.<domain>`: every node, store and service and its status (each
   node's CPU, memory, disks, network and last hour; how full the log and

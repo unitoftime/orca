@@ -399,8 +399,6 @@ forward is kept to one line by [Variables](#variables).
 
 `orca apply` with no argument converges everything in the tree; named groups
 narrow the scope, and anything outside that scope is left completely alone.
-Within a group, templated services converge before the services that depend on
-them, so a database is up before something dials it.
 
 What orca runs for you is included in every apply as a group named `orca`, so
 there is no separate verb for it. `orca apply orca` targets it alone.
@@ -667,8 +665,8 @@ twice.
 
 **`internal` is the default reach in every sense that matters.** A templated
 database gets it without asking. A hostname goes through ingress and gets a
-certificate for free. Naming a protocol binds a host port directly,
-because a raw TCP or UDP service does not want a proxy adding latency to every packet,
+certificate for free. Naming a protocol binds a host port directly, because a
+raw TCP or UDP service does not want a proxy adding latency to every packet,
 and it is the only value that publishes anything on a public interface.
 
 Who can reach a port and how it is addressed are separate questions. The value
@@ -682,8 +680,8 @@ way a sibling would.
 The port routed through ingress, when there is one, is the one registered in
 the catalog and health-checked; otherwise the lowest declared that is not a
 `metrics` port. A service is found and checked on the port it serves, not the
-side door it reports through. Ingress routes
-to the registered port, so registering any other would send web traffic to it.
+side door it reports through. Ingress routes to the registered port, so
+registering any other would send web traffic to it.
 The registration is what makes `db.shop` resolve. A service with no `ports:` at
 all listens for nothing, registers nothing, and is checked on its task state,
 which is most background workers.
@@ -740,8 +738,8 @@ any one of them moved.
 **A group is a namespace, not a boundary.** It scopes names, job names, secret
 paths and the reach of `orca apply <group>`, and nothing else. Any service can
 reach any other; short names are a typing convenience, not access control. This
-is the same assumption that removed gVisor and Cilium: you wrote everything
-this runs.
+is the same assumption that leaves out sandboxing and network policy: you
+wrote everything this runs.
 
 **orca does not build an overlay network.** Use your provider's private network,
 or Tailscale/WireGuard if your machines are in different providers. Building one
@@ -955,8 +953,7 @@ if something ever needs to survive the cluster; nothing here forecloses it.
 
 **The best secret is one you never handle.** Anything orca creates, such as a
 database password or the dashboards' password and its bcrypt hash, it
-generates itself and never asks for.
-That is the direction to keep pushing.
+generates itself and never asks for. That is the direction to keep pushing.
 
 One secret is one variable at `orca/<group>/<name>`, rather than one variable
 per group holding many keys, because listing paths returns no values: finding
@@ -1038,7 +1035,7 @@ hard caps set on day one rather than by alerting after the fact.
 | A web deploy UI | CLI and git. |
 | HA anything | One machine is one failure domain. Backups, not replicas. |
 | Model databases, roles or schemas | You hold superuser. `CREATE DATABASE` is yours. |
-| Alerting | Retention caps remove the main reason for it; `orca check` covers the rest. |
+| Alerting | Retention caps remove the main reason for it; `orca top` covers the rest on demand. |
 
 ## Binding: nothing of ours is ever public
 
@@ -1160,9 +1157,10 @@ helped. On several, a flood of logs slowing the front door, or one machine
 taking away both the traffic and the means to see why it stopped, can be. It
 is only a placement: moving monitoring starts its stores empty on the new
 machine, with the old data left on the old one's disk, and moving ingress
-means a DNS change and new certificates. Apps keep working because services resolve each other
-through the catalog rather than by address. Stateful services stay where their
-data is. You move a workload with `node: box1` in its manifest.
+means a DNS change and new certificates. Apps keep working because services
+resolve each other through the catalog rather than by address. Stateful
+services stay where their data is. You move a workload with `node: box1` in
+its manifest.
 
 What changes at the second machine is that everything cluster-internal moves
 from loopback to the private network; see [Binding](#binding-nothing-of-ours-is-ever-public).

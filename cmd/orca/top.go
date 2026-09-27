@@ -302,8 +302,8 @@ func ofTotal(u *statuspage.Usage) string {
 }
 
 // table lines up columns by what is visible. text/tabwriter counts colour
-// escapes as width, so a coloured cell pushed its row out of line with the
-// uncoloured ones.
+// escapes as width, so a coloured cell would push its row out of line with
+// the uncoloured ones.
 type table struct{ rows [][]string }
 
 func (t *table) row(cells ...string) { t.rows = append(t.rows, cells) }
