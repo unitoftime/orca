@@ -84,7 +84,7 @@ func runsOnMachine(file string) bool {
 }
 
 // buildForMachine builds this version of orca for the machines, from the
-// module cache — the same source `go install` built this binary from. Go is
+// module cache, the same source `go install` built this binary from. Go is
 // already a requirement for running orca at all, so it is there to build with.
 //
 // Kept in the user cache per version, so it is built once, not every apply.

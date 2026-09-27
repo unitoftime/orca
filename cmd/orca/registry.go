@@ -18,7 +18,7 @@ import (
 //
 // They are the cluster's, not yours. apply resolves digests with your own
 // docker credentials, but the pull happens on the machine, which has none of
-// them — so an image that is private needs a login here as well, and apply
+// them, so an image that is private needs a login here as well, and apply
 // refuses to deploy one that has none.
 //
 // Credentials live in Nomad's variable store like every other secret, one
@@ -97,7 +97,7 @@ func registryLogin(ctx context.Context, cfg Config, host, username string) error
 	}
 
 	// The same reading rules as a secret: piped input whole, or a prompt with
-	// no echo, and never an argument — a command line is in the process table
+	// no echo, and never an argument: a command line is in the process table
 	// and the shell's history.
 	token, err := readSecretValue("token for " + host)
 	if err != nil {
@@ -214,7 +214,7 @@ func (ir *imageResolver) Pin(ref string) (string, error) {
 
 // preflightRegistries refuses an apply whose private images the cluster has
 // no credentials to pull. It asks the cluster only when there is a private
-// image, so an apply of public images costs nothing more than it did.
+// image, so an apply of public images costs nothing extra.
 func preflightRegistries(ctx context.Context, cluster *Cluster, private map[string][]string) error {
 	if len(private) == 0 {
 		return nil

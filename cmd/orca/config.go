@@ -13,8 +13,8 @@ import (
 
 // Fixed facts about every orca cluster.
 //
-// These were once settings and are now constants. Neither was a decision worth
-// asking anyone to make: the datacenter name is invisible unless you read a job
+// These are constants, not settings. Neither is a decision worth asking
+// anyone to make: the datacenter name is invisible unless you read a job
 // spec, and a data directory is better placed by mounting the disk you want at
 // this path than by teaching orca a second path to worry about.
 const (
@@ -205,7 +205,7 @@ func (c Config) validate() error {
 		for _, n := range c.Nodes {
 			if n.PrivateIP == "" {
 				return fmt.Errorf(
-					"node %q: private_ip is required once the cluster has more than one machine — "+
+					"node %q: private_ip is required once the cluster has more than one machine: "+
 						"the machines must share a private network, and orca will not bind the cluster to a public one",
 					n.Name)
 			}
@@ -237,7 +237,7 @@ func (c Config) IngressNode() (NodeConfig, error) { return c.placed(c.Ingress.No
 // run on: `monitoring: {node: ...}`, or the first server.
 //
 // Separate from ingress so that the two things every other machine sends
-// through one machine — every request, and every log line and metric — can
+// through one machine (every request, and every log line and metric) can
 // be on different ones: a flood of logs does not slow the front door, and
 // losing one machine does not take away both the traffic and the means to see
 // why.

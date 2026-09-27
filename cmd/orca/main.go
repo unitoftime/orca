@@ -108,9 +108,9 @@ func run(ctx context.Context, args []string, rootDir string, sshCopyID bool) err
 	cmd, rest := args[0], args[1:]
 
 	// Go's flag package stops at the first non-flag argument, so a global flag
-	// written after the command is not parsed — it arrives here as a
-	// positional. Silently, which meant `orca validate -C infra` searched the
-	// working directory instead and reported that there was no cluster.yaml in
+	// written after the command is not parsed; it arrives here as a
+	// positional. Silently ignored, `orca validate -C infra` would search the
+	// working directory instead and report that there is no cluster.yaml in
 	// it: an error about the wrong thing entirely.
 	for _, a := range rest {
 		switch a {

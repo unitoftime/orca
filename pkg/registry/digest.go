@@ -98,7 +98,7 @@ func (Remote) Resolve(ctx context.Context, ref string) (Pinned, error) {
 // answer that for a private repository rather than admit it exists; a
 // genuinely missing image fails the credentialed retry too, and reports that.
 //
-// Anything else — a timeout, a refused connection — is not retried, so a
+// Anything else (a timeout, a refused connection) is not retried, so a
 // network blip is never mistaken for a private image.
 func refused(err error) bool {
 	var terr *transport.Error

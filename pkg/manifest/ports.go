@@ -49,12 +49,11 @@ func (b Bind) HostPort(container int) int {
 
 // Port is the value side of a service's `ports:` map, keyed by container port.
 //
-// One field answers one question — *what does this service listen on, and who
-// can reach each one* — because the two halves of that question were never
-// independent. There was a `port:` for the catalog and health check and a
-// separate `expose:` for the outside world, and `port:` defaulted to the
-// lowest exposed one, which is the tell: they were the same list seen from two
-// angles, and telling them apart was the first thing anyone asked about.
+// One field answers one question: *what does this service listen on, and who
+// can reach each one*. The two halves of that question are not independent.
+// A field for the catalog and health check and another for the outside world
+// would be the same list seen from two angles, and telling them apart would be
+// the first thing anyone asked about.
 //
 // The value is a single scalar:
 //
@@ -168,9 +167,9 @@ func ParsePort(s string) (Port, error) {
 	case string(PortInternal):
 		return Port{Kind: PortInternal}, nil
 	case "http":
-		// Once a hostname generated under the cluster's domain. A name you
-		// did not write was a name you had to look up, so there is only the
-		// one you write.
+		// Not a hostname generated under the cluster's domain: a name you did
+		// not write is a name you have to look up, so there is only the one
+		// you write.
 		return Port{}, fmt.Errorf(`port "http": name the hostname it is served on instead, e.g. "web.example.com"`)
 	case string(PortMetrics):
 		return Port{Kind: PortMetrics}, nil

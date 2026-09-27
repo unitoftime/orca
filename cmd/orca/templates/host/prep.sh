@@ -38,7 +38,7 @@ EOF
 
 echo "=== 4. Kernel parameters ==="
 # IPv4 forwarding is required for container egress masquerading. The rest is
-# ordinary network hardening — nothing here is load-bearing for orca itself.
+# ordinary network hardening; nothing here is load-bearing for orca itself.
 cat > /etc/sysctl.d/99-orca.conf <<'EOF'
 net.ipv4.ip_forward=1
 net.ipv4.tcp_syncookies=1
@@ -80,15 +80,15 @@ echo "=== 7. Ensuring the container bridge exists ==="
 #
 # Nomad creates the bridge when its first bridge-mode allocation runs, so on a
 # fresh machine the resolver would crash-loop until something else happened to
-# start — and on a machine running nothing else, indefinitely. Creating it up
+# start, and on a machine running nothing else, indefinitely. Creating it up
 # front makes that deterministic; Nomad's CNI reuses a bridge that already
 # exists. The address is Nomad's own default for this bridge.
 #
 # A unit, run at every boot, because a bridge made with `ip link` does not
-# survive a reboot. It was once made here and nowhere else: a machine running
-# only host-networked jobs — orca's own, say — came back from a reboot with
-# no bridge and a resolver failing on every start, since nothing there ever
-# asks CNI for one.
+# survive a reboot. Making it only here is not enough: a machine running only
+# host-networked jobs (orca's own, say) would come back from a reboot with no
+# bridge and a resolver failing on every start, since nothing there ever asks
+# CNI for one.
 cat > /etc/systemd/system/orca-bridge.service <<'EOF'
 [Unit]
 Description=orca container bridge

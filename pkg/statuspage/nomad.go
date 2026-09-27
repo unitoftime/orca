@@ -62,7 +62,7 @@ func fetchNomad(ctx context.Context, c *nomad.Client) (*nomadView, error) {
 	}
 
 	// Why an unplaced service has nowhere to run is in its evaluations, and
-	// costs a call per job — so only for the ones that need it.
+	// costs a call per job, so it is read only for the ones that need it.
 	for _, st := range deploy.Summarize(nv.Jobs, nv.Allocs, nv.Deployments) {
 		if st.Health != deploy.HealthUnplaced {
 			continue

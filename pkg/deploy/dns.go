@@ -13,7 +13,7 @@ const Zone = "orca"
 //
 // It is the one address every container on a machine can always reach and
 // nothing outside the machine can reach at all, and unlike an allocation
-// address it does not move when the resolver restarts — which matters because
+// address it does not move when the resolver restarts, which matters because
 // it is baked into every task's resolver configuration.
 const DNSAddress = "172.26.64.1"
 
@@ -66,7 +66,7 @@ func corefile() string {
 	// falling through to the upstream resolver.
 	//
 	// Scoping the hosts file to the orca zone instead would mean a name like
-	// "db.blog" — which is not under .orca — never reaching it, and being
+	// "db.blog", which is not under .orca, never reaching it and being
 	// forwarded upstream to fail. Every orca name is in the file, so trying
 	// the file first costs a map lookup and answers all three spellings.
 	//

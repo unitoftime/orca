@@ -53,7 +53,7 @@ func canonical(reg name.Registry) string {
 // `docker login` does: authenticate, then ask for the API root.
 //
 // It proves the credentials are good, not that they can read any particular
-// image — a registry grants per-repository, and which repositories the
+// image. A registry grants per-repository, and which repositories the
 // cluster will pull is not known here. What it catches is the typo and the
 // expired token, at the moment someone is there to fix them rather than at a
 // pull on the machine.

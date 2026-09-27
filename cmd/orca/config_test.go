@@ -36,8 +36,8 @@ nodes:
 }
 
 func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
-	// A typo must fail loudly rather than silently taking a default — the whole
-	// reason the decoder runs in strict mode.
+	// A typo must fail loudly rather than silently taking a default. That is
+	// the whole reason the decoder runs in strict mode.
 	_, err := LoadConfig(writeConfig(t, `
 datadir: /srv/orca
 nodes:

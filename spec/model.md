@@ -23,8 +23,8 @@ a machine.**
 
 And one thing that is *not* a noun you manage:
 
-**`orca`** — the reserved group holding the jobs orca runs for you: ingress,
-the resolver, the log and metric stores. Not hidden and not special-cased —
+**`orca`** is the reserved group holding the jobs orca runs for you: ingress,
+the resolver, the log and metric stores. Not hidden and not special-cased;
 they show up as `orca/traefik`, `orca/dns` and so on, so what is running is one
 list and not two. A directory named `orca` is refused. See
 [What orca runs for you](#what-orca-runs-for-you).
@@ -42,7 +42,7 @@ memory: 2G
 volume: 20G
 ```
 
-A template is sugar, not a new primitive — it expands into an ordinary service
+A template is sugar, not a new primitive. It expands into an ordinary service
 spec that the rest of the system already knows how to run. Deploys, logs,
 metrics and discovery all work with no new machinery: no new manifest
 primitive, no new runtime object.
@@ -58,7 +58,7 @@ What `postgres` fixes:
 |---|---|
 | image and version | pinned to versions orca will actually run |
 | port | 5432, and the health check that goes with it |
-| volume | required, mounted where Postgres expects it, and **owned by the user the image runs as** — a bind mount keeps the host's ownership, so a root-owned directory fails at startup with a permission error that says nothing about volumes |
+| volume | required, mounted where Postgres expects it, and **owned by the user the image runs as**; a bind mount keeps the host's ownership, so a root-owned directory fails at startup with a permission error that says nothing about volumes |
 | password | generated on first apply, stored in the cluster, never shown |
 | `shared_buffers`, `effective_cache_size` | a quarter and a half of the memory you asked for |
 
@@ -67,7 +67,7 @@ Those last two are the only settings orca touches. Postgres ships with a 128MB
 a database given 8GB would use a sixteenth of it and plan as though it had
 half. Everything else depends on a workload orca knows nothing about.
 
-### redis — a database of record
+### redis: a database of record
 
 ```yaml
 # blog/redis.yaml
@@ -85,15 +85,15 @@ evicted. What it fixes:
 
 | | |
 |---|---|
-| image | the official `redis` image, which from Redis 8 carries JSON, search, time series and probabilistic types itself — Redis Stack, which used to be how you got them, is discontinued |
+| image | the official `redis` image, which from Redis 8 carries JSON, search, time series and probabilistic types itself, so the discontinued Redis Stack is not needed |
 | port | 6379, and the health check |
 | volume | required, at `/data`, owned by the image's `redis` user |
-| password | generated, `<service>_password`, written into a config file rendered from the variable store — never an environment variable, never an argument |
+| password | generated, `<service>_password`, written into a config file rendered from the variable store; never an environment variable, never an argument |
 | `maxmemory` | three quarters of the memory you asked for, with `noeviction` |
 
 The cap is the one tuning: past it a write fails with an error the application
 sees, where without it the kernel kills the container and the last second of
-writes goes with it. The remaining quarter is for what Redis does not count —
+writes goes with it. The remaining quarter is for what Redis does not count:
 the copy-on-write pages of the fork that snapshots or rewrites the log.
 
 A backup is a snapshot the server streams over the replication protocol
@@ -110,7 +110,7 @@ server with the log off, which then turns it on, writing the log from the
 loaded data; the service starts from that as it always does. A failure once the
 service is down puts the old data back and starts it again.
 
-### garage — S3-compatible object storage
+### garage: S3-compatible object storage
 
 ```yaml
 # files/store.yaml
@@ -126,7 +126,7 @@ is up**, and the template exists mostly because of that: a fresh Garage node
 holds no data at all until a storage layout is applied, and an S3 endpoint
 with no access key is one nobody can use. So the template also applies the
 layout, creates a bucket named after the group and service, and imports an
-access key — handing one back the way postgres hands back a password.
+access key, handing one back the way postgres hands back a password.
 
 ```yaml
 env:
@@ -136,7 +136,7 @@ env:
 ```
 
 The admin API binds loopback inside the allocation, so the setup step reaches
-it while nothing else can — not even another container on the same machine.
+it while nothing else can, not even another container on the same machine.
 
 ### Generated secrets
 
@@ -150,20 +150,20 @@ env:
 ```
 
 It is generated **once**. Regenerating it on every apply would lock the
-database out of its own data. "Once" is enforced by the secret store itself —
-the value is written create-only — and `orca secret set` and `orca secret rm`
+database out of its own data. "Once" is enforced by the secret store itself
+(the value is written create-only), and `orca secret set` and `orca secret rm`
 refuse a generated secret unless given `--force`, since replacing it and
 removing it (which makes the next apply generate a new one) lock everything
 out just the same.
 
 **You are the superuser.** orca does not model databases, roles, or schemas
-inside your Postgres — `CREATE DATABASE` is your business. What orca guarantees
+inside your Postgres; `CREATE DATABASE` is your business. What orca guarantees
 is narrow and is the part that is genuinely hard to build yourself: it runs, it
 has fast local disk, and it is continuously backed up somewhere else with a
 restore path that works.
 
 That is what "solve the database problem once" actually means here. Not one
-blessed shared instance — **you never write backup code again, for any project.**
+blessed shared instance: **you never write backup code again, for any project.**
 
 ### Targets, and where backups go
 
@@ -178,9 +178,9 @@ bucket: orca-backups
 ```
 
 A **target** is the one service document that runs no container. That is a real
-cost — every other noun here is something running — and it buys the one thing a
-per-database block could not: the endpoint and the credentials are written
-once, and everything that backs up refers to them by name.
+cost, since every other noun here is something running, and it buys the one
+thing a per-database block could not: the endpoint and the credentials are
+written once, and everything that backs up refers to them by name.
 
 ```yaml
 # shop/db.yaml
@@ -202,9 +202,9 @@ orca secret set storage/offsite_secret_key
 ```
 
 They are required, not generated, so the ordinary secret preflight refuses to
-deploy a backup job that has no way to authenticate — the failure it prevents
-being the worst kind, where the job is created, runs on schedule, fails inside
-a container nobody is watching, and the first anyone knows is when a restore is
+deploy a backup job that has no way to authenticate. The failure it prevents is
+the worst kind, where the job is created, runs on schedule, fails inside a
+container nobody is watching, and the first anyone knows is when a restore is
 needed.
 
 Naming a target is what turns backups on. There is no separate switch to
@@ -246,13 +246,13 @@ removed by deleting one.
 
 **Nesting is one rule**: the group name is the path under the root with `/`
 turned into `-`. Whether a directory means an app, a project or a stage is your
-decision, expressed by how deep you nest it — orca does not need to know which
+decision, expressed by how deep you nest it; orca does not need to know which
 you meant.
 
 orca finds the root by walking up from the working directory, the way git finds
 `.git`, so every command works from anywhere inside the tree.
 
-### `cluster.yaml` — the machines
+### `cluster.yaml`: the machines
 
 ```yaml
 nodes:
@@ -265,10 +265,10 @@ monitoring:
     disk: 10G
 ```
 
-Nothing about *what is deployed* appears here. Settings that were never a real
-decision are gone: the Nomad datacenter and the data directory are constants,
-and a machine that wants its data on a bigger disk mounts that disk at
-`/var/orca` rather than teaching orca a second path to think about.
+Nothing about *what is deployed* appears here. Nor does anything that is not a
+real decision: the Nomad datacenter and the data directory are constants, and a
+machine that wants its data on a bigger disk mounts that disk at `/var/orca`
+rather than teaching orca a second path to think about.
 
 ### A service file
 
@@ -296,21 +296,21 @@ ports:
 
 `cmd:` replaces the image's command, and its **entrypoint** along with it. Both
 have to go, because Docker leaves an image's ENTRYPOINT in front of a replaced
-command — so overriding only the command runs `<entrypoint> /bin/sh -c <cmd>`,
-the flags land on the wrong binary, and the container dies saying something
+command. Overriding only the command runs `<entrypoint> /bin/sh -c <cmd>`, the
+flags land on the wrong binary, and the container dies saying something
 unrelated.
 
 The cost is a sharp edge worth knowing before you hit it: **`cmd:` runs through
 a shell, so an image that has no shell cannot use it.** That means `scratch` and
-distroless images — which is not an exotic case, it is what a small static Go
+distroless images, which is not an exotic case: it is what a small static Go
 binary is usually shipped in. Such an image should run its own entrypoint and
 take its configuration through `env:` instead. orca cannot check this, because
 what is inside an image is not knowable from a manifest.
 
 A service may also set `node:` to pin itself to a named machine. It is never
 needed: a service with a volume is pinned automatically to the first server,
-which on one machine is the only place its data can be — and is still where
-it is after a second machine is added.
+which on one machine is the only place its data can be, and is still where it
+is after a second machine is added.
 
 **The file is desired state.** A service deleted from it gets stopped on the
 next apply. There is no `enabled:` field.
@@ -324,9 +324,9 @@ image and never touches this repository.
 
 ### Variables
 
-The other way to name an image is by the build it came from —
-`blog-server:4f2a9c1` — so the files say exactly what runs, and going back is
-reverting the change that went forward. The cost was writing the build into
+The other way to name an image is by the build it came from
+(`blog-server:4f2a9c1`), so the files say exactly what runs, and going back is
+reverting the change that went forward. The cost is writing the build into
 every file that runs it. A variable writes it once:
 
 ```yaml
@@ -350,7 +350,7 @@ as a way to avoid writing one value twice:
   is never touched, and a value needs no escaping for wherever it lands. An
   unquoted reference takes the type of its value; a quoted one stays a string.
 - **One value each.** No lists, no blocks, no conditions. A difference between
-  two stages that is structural — prod is backed up and test is not — is
+  two stages that is structural (prod is backed up and test is not) is
   written out in each, not expressed through a variable.
 - **Filled in when the files are read.** An undefined variable is an error
   naming the ones that are defined, and `orca validate` shows what each became.
@@ -389,11 +389,11 @@ orca version
 Not built, and listed because they are the obvious next things rather than
 because they exist: `orca exec` (a shell in a running container), `orca
 forward` (a tunnel to an internal port), and `orca check` (a health sweep on
-demand, which is what replaced alerting — `orca top` now answers the "is
-anything wrong" half of it, but only when asked).
+demand, which stands in for alerting; `orca top` answers the "is anything
+wrong" half of it, but only when asked).
 
 Deliberately not on that list: `orca rollback`. The files are what runs, so
-going back is reverting the edit that moved forward — a command that rolled
+going back is reverting the edit that moved forward; a command that rolled
 back the cluster would leave the files saying something else. The edit
 forward is kept to one line by [Variables](#variables).
 
@@ -413,7 +413,7 @@ are useless apart:
 
 | Capability | Jobs | What it does |
 |---|---|---|
-| `ingress` | traefik | The HTTP front door: routes hostnames to services and gets certificates from Let's Encrypt — to an account with no contact unless `acme_email` gives one; `https: false` serves plain HTTP instead. Only services with a hostname port need it, and those are refused when it is off. |
+| `ingress` | traefik | The HTTP front door: routes hostnames to services and gets certificates from Let's Encrypt, to an account with no contact unless `acme_email` gives one; `https: false` serves plain HTTP instead. Only services with a hostname port need it, and those are refused when it is off. |
 | `dns` | dns | The resolver on every machine that makes services findable by name. See [Names](#names). |
 | `monitoring.logs` | victorialogs, vector | Vector runs on every machine, reads container logs from Docker, and ships them to VictoriaLogs, which stores and serves them. |
 | `monitoring.status` | status | The status page: every machine and service at a glance. It is orca itself; see [The status page](#the-status-page). |
@@ -445,27 +445,27 @@ it is worth checking against rather than asserting:
   fill the disk.
 - VictoriaMetrics scraping a dead target records nothing for it and carries on.
 - Traefik dying takes down HTTP routing and nothing else. Raw TCP services, the
-  database, and log collection are all unaffected — and `orca logs` reads the
+  database, and log collection are all unaffected, and `orca logs` reads the
   store over SSH rather than through ingress, so log access does not depend on
   the front door being up.
 - Each is a single binary with a local directory. There is no object store, no
-  compactor, and no ring — the components that break in a Loki/Thanos stack are
+  compactor, and no ring: the components that break in a Loki/Thanos stack are
   components these do not have.
 - The status page reads the others and nothing reads it. When one of them
-  cannot be read, the page says so — as a problem, not a blank section — and
+  cannot be read, the page says so (as a problem, not a blank section) and
   shows what the rest still know. Its health check asks only whether it is
   serving, so a store going down never restarts the thing reporting it.
 
 The data stores bind the **internal** host network declared in the Nomad client
-config — the container bridge on one machine, the private network above one —
+config (the container bridge on one machine, the private network above one)
 and never the public interface. A well-known port on the default interface
 would put your logs on the public internet for anyone to read. See
 [Binding](#binding-nothing-of-ours-is-ever-public).
 
 ### The dashboards
 
-The status page answers "is anything wrong", and vmui — the query UI built into
-both Victoria binaries — is what makes logs and metrics explorable in a browser
+The status page answers "is anything wrong", and vmui, the query UI built into
+both Victoria binaries, is what makes logs and metrics explorable in a browser
 without running Grafana. Both are published, along with the Nomad UI, on
 subdomains behind HTTP basic auth:
 
@@ -476,32 +476,30 @@ monitoring:
 
 giving `status.example.com`, `logs.example.com`, `metrics.example.com` and
 `nomad.example.com`; the status page links to the other three. The domain is
-the dashboards' alone. It was once `ingress.domain`, and services without a
-hostname of their own got `<service>.<group>.<domain>` under it — a name
-nobody wrote, so one you had to look up. Services now name theirs, on any
-domain, and the domain lives with the dashboards it is for.
+the dashboards' alone. Services name their own hostnames, on any domain, rather
+than getting `<service>.<group>.<domain>` under it: a name nobody wrote is one
+you have to look up.
 
 The user is `admin`, and the password is generated for the cluster: bootstrap
 makes one and keeps it in Nomad's variable store at `orca-admin/password`,
-create-only, and `orca password` prints it. Apply makes it too if the cluster
-has none, which is what a cluster bootstrapped before there was one has.
-`orca password set` replaces it, read like a secret — prompted or piped,
-never an argument — and ingress picks it up at the next apply. It was once
-`ingress.admin_password` in cluster.yaml, which put a credential in a file
-that is otherwise safe to commit; now it lives where secrets do. A password
-you have to choose is one you choose badly, or reuse; one generated per
-cluster is neither, and mostly you only need to read it.
+create-only, and `orca password` prints it. Apply makes one too if the cluster
+has none. `orca password set` replaces it, read like a secret (prompted or
+piped, never an argument), and ingress picks it up at the next apply. It is not
+a setting in cluster.yaml, because that would put a credential in a file that
+is otherwise safe to commit; it lives where secrets do. A password you have to
+choose is one you choose badly, or reuse; one generated per cluster is neither,
+and mostly you only need to read it.
 
-Both a domain and a password are required — **without
-either, nothing is published** and the UIs stay reachable only over an SSH
-tunnel (`orca top` needs neither). With the password generated, that is in
-practice a domain. Failing closed matters here
-because the alternative is putting your logs on the internet behind nothing.
+Both a domain and a password are required. **Without either, nothing is
+published** and the UIs stay reachable only over an SSH tunnel (`orca top`
+needs neither). With the password generated, that is in practice a domain.
+Failing closed matters here because the alternative is putting your logs on the
+internet behind nothing.
 
 The password is stored as a bcrypt hash carried in ingress's own job metadata,
 and the deployed hash is reused whenever it still matches the configured
 password. bcrypt salts randomly, so hashing afresh on every apply would change
-the job spec every time and redeploy ingress forever — the reuse is what keeps
+the job spec every time and redeploy ingress forever; the reuse is what keeps
 an unchanged cluster a genuine no-op. Changing the password produces exactly one
 update.
 
@@ -517,8 +515,8 @@ nothing running ever has its binary replaced underneath it; the two previous
 builds are kept for Nomad to revert to.
 
 The build has to be static, because the image's C library is not the one on
-the machine that built it. `make build` is. An orca that is not — a `go
-install` on Linux links against the system's — has apply build one from the
+the machine that built it. `make build` is. An orca that is not (a `go
+install` on Linux links against the system's) has apply build one from the
 same version in the module cache, once per version. A development build that
 is not static has no version to rebuild from, and apply says so.
 
@@ -531,7 +529,7 @@ What it shows is judged once, in `/api/summary`, and read by both the page and
 `orca top`, so they cannot disagree about what needs a look. Service health is
 `orca status`'s own: the CLI reads Nomad through jq over SSH and the page
 through Nomad's Go types, and a test holds the two projections to identical
-results on the same responses. Thresholds are fixed — 80% warns and 90% is
+results on the same responses. Thresholds are fixed: 80% warns and 90% is
 critical for memory, disks and a service against its memory limit; CPU warns
 at 80% and is critical at 95%; a disk of 4G or more with under 1G free is
 critical whatever the percentage. A service's CPU is shown but never judged:
@@ -570,8 +568,8 @@ want.
 
 You disable by saying `false`, never by omission, so deleting a settings block
 cannot silently remove a running component. A capability switched off is simply
-a service orca no longer declares, and the ordinary rule — apply stops what is
-no longer declared — removes it, keeping its data.
+a service orca no longer declares, and the ordinary rule (apply stops what is
+no longer declared) removes it, keeping its data.
 
 ### The disk ceilings are not symmetric
 
@@ -589,7 +587,7 @@ than the truth:
 
 The manifest is desired state, so removing a service from the file must do
 something. Putting a database in that file makes the question sharp: you delete
-those lines, maybe in a bad merge — what happens to your player data?
+those lines, maybe in a bad merge. What happens to your player data?
 
 Both naive answers are wrong. If apply deletes it, a careless edit destroys data
 permanently and declarative config becomes frightening. If apply silently keeps
@@ -604,7 +602,7 @@ it, the file is no longer desired state and orphaned volumes pile up unreference
 | `orca purge <group>` | removed | **deleted, irreversibly** |
 
 `purge` is the only destructive verb. It names what it is about to delete, and
-it asks for the group's name rather than a yes — typing the name of the thing
+it asks for the group's name rather than a yes; typing the name of the thing
 being deleted is hard to do by reflex.
 
 **purge refuses while the manifests still declare the group.** The only way to
@@ -615,14 +613,14 @@ then, and a guard that reads a typo in another group's file as "no" is not a
 guard.
 
 A volume lives at `/var/orca/volumes/services/<group>/<service>`, so its owner
-is a fact of its path and purge deletes exactly the group it names. Volumes
-used to be one flat `<group>-<service>` directory, which cannot be split back
-because group names contain dashes — `shop-prod-db` is shop's `prod-db` or
-shop-prod's `db` — and purging `shop` took shop-prod's data with it.
+is a fact of its path and purge deletes exactly the group it names. A flat
+`<group>-<service>` directory could not be split back, because group names
+contain dashes (`shop-prod-db` is shop's `prod-db` or shop-prod's `db`), and
+purging `shop` would take shop-prod's data with it.
 
 `orca stop` is the fast way off the machine: something is misbehaving and you
 want it down now, without editing files and waiting for an apply. Because the
-manifests are unchanged, the next apply brings it back — which it says out loud
+manifests are unchanged, the next apply brings it back, which it says out loud
 rather than leaving you to discover it. It is named for what it does and not
 for how final it sounds: nothing it touches is unrecoverable, and `purge` is
 the verb that is.
@@ -631,7 +629,7 @@ A removed service is removed from the scheduler rather than left stopped. A
 stopped job record is a tombstone that lingers forever and buys nothing, since
 the manifests are the source of truth and bringing a service back means
 declaring it again. **`orca status` lists data whose service is no longer
-declared**, found by listing the one directory every volume lives under — so
+declared**, found by listing the one directory every volume lives under, so
 "kept" never means "invisible", and nothing has to be remembered for data to be
 findable later.
 
@@ -646,7 +644,7 @@ reach each one?**
 
 ```yaml
 ports:
-  5432: internal              # other services only — never published
+  5432: internal              # other services only, never published
   2112: metrics               # internal, and scraped for Prometheus metrics
   8080: shop.example.com      # routed through ingress, TLS included
   7777: tcp                   # raw host port 7777, no proxy in the path
@@ -655,22 +653,22 @@ ports:
   7777: [tcp:7777, udp:7778]  # both, with different host ports
 ```
 
-There was once a `port:` for the catalog and health check and a separate
-`expose:` for the outside world. They were never independent — `port:`
-defaulted to the lowest exposed port, and was written by hand only to say
-"internal", which is now just what the port says itself. Telling them apart was
-the first thing anyone asked about, which is the usual sign that one of them
+There is no separate `port:` for the catalog and health check beside an
+`expose:` for the outside world. The two would not be independent: `port:`
+would default to the lowest exposed port, and be written by hand only to say
+"internal", which is what the port says itself. Telling two such fields apart
+is the first thing anyone asks about, which is the usual sign that one of them
 should not exist.
 
 The key is the **container** port, which makes it unique per service, so the
-reach rides on the value. A list is the one thing a scalar cannot say, because
-YAML has no way to write the same key twice — which is why both protocols on
-one port used to be crammed into the string `tcp+udp`.
+reach rides on the value. A list is the one thing a scalar cannot say, and both
+protocols on one port need it, because YAML has no way to write the same key
+twice.
 
 **`internal` is the default reach in every sense that matters.** A templated
 database gets it without asking. A hostname goes through ingress and gets a
 certificate for free. Naming a protocol binds a host port directly,
-because a raw TCP or UDP service does not want a proxy adding latency to every packet —
+because a raw TCP or UDP service does not want a proxy adding latency to every packet,
 and it is the only value that publishes anything on a public interface.
 
 Who can reach a port and how it is addressed are separate questions. The value
@@ -678,16 +676,16 @@ answers the first. The machine count answers the second, identically for every
 port that is not public: on one machine a port is reached at its allocation's
 own address, over the bridge, by other containers and by ingress; above one it
 is published on the private network at its own number. A hostname port is
-therefore not published on the public interface at all — ingress reaches it the
+therefore not published on the public interface at all; ingress reaches it the
 way a sibling would.
 
 The port routed through ingress, when there is one, is the one registered in
 the catalog and health-checked; otherwise the lowest declared that is not a
-`metrics` port — a service is found and checked on the port it serves, not the
+`metrics` port. A service is found and checked on the port it serves, not the
 side door it reports through. Ingress routes
 to the registered port, so registering any other would send web traffic to it.
 The registration is what makes `db.shop` resolve. A service with no `ports:` at
-all listens for nothing, registers nothing, and is checked on its task state —
+all listens for nothing, registers nothing, and is checked on its task state,
 which is most background workers.
 
 Host ports are a single global namespace across every app. Two apps claiming the
@@ -703,7 +701,7 @@ SSH, allow 80/443 for Traefik, allow exactly the declared host ports, regenerate
 on every apply. Nothing is reachable that is not in a file, and no rule is ever
 maintained by hand.
 
-Services reach each other by name through Nomad's service catalog — never by IP
+Services reach each other by name through Nomad's service catalog, never by IP
 and never by `localhost`. This is the single rule that keeps a second machine
 from being a rewrite.
 
@@ -717,7 +715,7 @@ an off-the-shelf image needs no orca-specific configuration:
 | inside group `blog` | `db` → that group's db |
 | anywhere | `db.blog` |
 | anywhere | `db.blog.orca` |
-| anywhere | `victorialogs.orca` — orca's own jobs are a group like any other |
+| anywhere | `victorialogs.orca` (orca's own jobs are a group like any other) |
 
 A resolver runs on every machine, bound to the container bridge's gateway: the
 one address every container can reach, nothing outside the machine can, and
@@ -729,18 +727,18 @@ uses.
 The names come from the catalog: every registration orca makes carries an
 `orca-dns=<service>.<group>` tag, and the resolver's hosts file is rendered
 from every tagged registration. So whatever registers is resolvable, from
-whichever apply deployed it — the resolver's own job never changes when
+whichever apply deployed it, and the resolver's own job never changes when
 services do.
 
 The name is resolved when a connection is made, not when a service is
 deployed, so nothing holds an address and a service that moves is simply found
-at its new one. An earlier design injected sibling addresses as environment
-variables; it needed every application to read an orca-specific variable name,
-could not reach another group at all, and restarted every service in a group
-whenever any one of them moved.
+at its new one. Injecting sibling addresses as environment variables instead
+would need every application to read an orca-specific variable name, could not
+reach another group at all, and would restart every service in a group whenever
+any one of them moved.
 
 **A group is a namespace, not a boundary.** It scopes names, job names, secret
-paths and the reach of `orca apply <group>` — and nothing else. Any service can
+paths and the reach of `orca apply <group>`, and nothing else. Any service can
 reach any other; short names are a typing convenience, not access control. This
 is the same assumption that removed gVisor and Cilium: you wrote everything
 this runs.
@@ -752,12 +750,12 @@ is the mistake orca exists to avoid.
 ## Images
 
 Tags are resolved to a digest at apply time and the digest is what gets
-submitted — every image, including the ones orca adds itself: the platform's,
-a template's setup task, a backup's S3 client. This means:
+submitted. That holds for every image, including the ones orca adds itself: the
+platform's, a template's setup task, a backup's S3 client. This means:
 
 - `image: foo:latest` actually redeploys when latest moves. Nomad will not
-  restart a job whose spec has not changed, which is the bug everyone hits when
-  they deploy by mutable tag.
+  restart a job whose spec has not changed, so without a digest in the spec a
+  moved tag deploys nothing.
 - Every deploy is deterministic and auditable. `orca status` shows the digest
   that is really running, not the tag you asked for.
 
@@ -772,13 +770,13 @@ follow and are requirements, not nice-to-haves:
 
 Apply decides what moved by stamping a content hash of the rendered job into the
 job's own metadata and comparing it against what is deployed. Because the hash
-covers the whole spec — the resolved digest included — anything that would
+covers the whole spec, the resolved digest included, anything that would
 change what runs changes it, with no list of significant fields to keep in sync.
 
 ### Private images
 
 Resolving a digest happens on your machine, with your Docker login. Pulling
-happens on the cluster's, which has none — so without more, a private image
+happens on the cluster's, which has none. So without more, a private image
 pins perfectly, deploys, and then fails on the machine as "unauthorized", after
 the health timeout.
 
@@ -792,14 +790,14 @@ orca registry login ghcr.io        # username, then a token, never echoed
 variable per registry at `orca-registry/<host>`. A sibling of `orca/` rather
 than inside it, so `orca secret list` does not read logins as unreferenced
 secrets. Nomad refuses `.` and `:` in a variable path, so the host is stored
-with `_` and `~` instead — neither can occur in a host name, which is what
+with `_` and `~` instead. Neither can occur in a host name, which is what
 lets `orca registry list` read the host back out of a path, and so list
 logins without pulling a token off the machine.
 
 **Nomad reads it at pull time, through a credential helper.** Nomad, not the
 `docker` command, asks the daemon for a pull, and has to supply credentials
 with the request. It has three places to get them: an `auth` block in the job,
-a docker `config.json` file, or a credential helper — a program named
+a docker `config.json` file, or a credential helper. That is a program named
 `docker-credential-<name>` that is given a registry host on stdin and answers
 `{"Username", "Secret"}`, the protocol Docker defined so credentials need not
 sit in a plaintext file. Bootstrap installs `docker-credential-orca` on every
@@ -807,10 +805,10 @@ machine and names it in the Nomad config. It reads the variable over the
 loopback API, which answers on every machine; one running no server forwards
 the read to one that does.
 
-The other two were worse:
+The other two are worse:
 
-- **An `auth` block** would put the token in the job spec, or — filled from a
-  template — in the container's environment, and so in the log store of any
+- **An `auth` block** would put the token in the job spec, or (filled from a
+  template) in the container's environment, and so in the log store of any
   service that logs its own environment. That is what the secrets design exists
   to avoid.
 - **A `config.json`** is a plaintext file on every machine, written by
@@ -824,7 +822,7 @@ and the next pull uses whatever is there.
 
 **The helper never fails.** Nomad treats a helper that exits non-zero as a
 failed pull, so a failure there would break every public image too. A registry
-with no login — or a store it cannot reach — is answered `{}`, which Nomad
+with no login, or a store it cannot reach, is answered `{}`, which Nomad
 takes as "pull anonymously": a public image still pulls, and a private one
 fails as unauthorized, which is then the true reason. Every image goes through
 it, including Docker Hub's, so `orca registry login docker.io` also lifts the
@@ -837,7 +835,7 @@ when it refuses (401, 403, or the 404 some answer rather than admit a private
 repository exists) with your credentials. An image that resolved only with
 yours is private, and its registry needs a login in the cluster. A network
 error is never retried, so a blip is not mistaken for a private image. The cost
-is one extra round trip per private image; a public one costs what it did.
+is one extra round trip per private image; a public one costs nothing extra.
 
 An image written as a digest is never looked up, and so is never known to be
 private. That is the one case the check cannot see.
@@ -845,15 +843,15 @@ private. That is the one case the check cannot see.
 `orca registry login` checks the token against the registry before storing it,
 as `docker login` does, so a typo or an expired token is caught with someone at
 the keyboard rather than at a pull. It then checks that every machine has the
-helper, since one bootstrapped by an older orca pulls anonymously whatever the
-store holds, and says to re-run bootstrap if not.
+helper, since a machine without it pulls anonymously whatever the store holds,
+and says to re-run bootstrap if not.
 
 ### Apply verifies, it does not just submit
 
 A matching hash says a deploy happened, not that anything works. A job Nomad
-accepts can still crash-loop or fail to place, so apply waits — with a bound,
-because a cold image pull is slow and healthy while a crash loop never resolves
-— and **fails if anything is unhealthy**.
+accepts can still crash-loop or fail to place, so apply waits (with a bound,
+because a cold image pull is slow and healthy while a crash loop never
+resolves) and **fails if anything is unhealthy**.
 
 The check covers every service in scope, not only the ones this apply changed.
 An apply that changes nothing while a service is down still has to say so, or a
@@ -865,12 +863,12 @@ With nothing to change and nothing wrong, it prints one line and exits zero.
 | State | Meaning |
 |---|---|
 | `running` | every replica up, rollout finished |
-| `pending` | still starting or rolling out — not yet a failure |
+| `pending` | still starting or rolling out; not yet a failure |
 | `failed` | crash-looping, unhealthy, or the rollout failed |
 | `unplaced` | Nomad accepted it but can run it nowhere |
 
 `unplaced` is its own state because it looks exactly like "still starting" while
-being permanent, and the reason is never in the task's logs — the task never
+being permanent, and the reason is never in the task's logs: the task never
 ran. orca reads it out of the evaluation and prints it.
 
 ### Secrets
@@ -890,8 +888,8 @@ printed by unlucky crash handlers, readable through `/proc`, and dumped whole by
 any library that logs its own configuration. A file is read by the one process
 that opens it.
 
-That path is not orca's invention — Nomad mounts each allocation's secrets
-directory there, on a private tmpfs no other allocation can see — which is why
+That path is not orca's invention. Nomad mounts each allocation's secrets
+directory there, on a private tmpfs no other allocation can see, which is why
 an application that already reads secrets from files usually needs no change at
 all.
 
@@ -908,7 +906,8 @@ secrets:
 
 `env` and `path` are mutually exclusive: each names a destination, and a secret
 goes to exactly one place. Two secrets landing in the same place is an error
-rather than a race — one would win, and which one would depend on map ordering.
+rather than a race, since one would win, and which one would depend on map
+ordering.
 
 A secret can also be interpolated into a larger value, which is the case a file
 cannot express:
@@ -924,7 +923,7 @@ used, and `orca secret list` derives what a cluster needs from the manifests
 themselves.
 
 **Values live in Nomad's variable store on the cluster and nowhere else.** No
-key file, no encrypted file in the repository — nothing to lose and nothing to
+key file, no encrypted file in the repository: nothing to lose and nothing to
 distribute. A secret is never written into a job spec: the job carries a
 template that reads the variable on the machine when the task starts, so the
 value exists only in Nomad's store and in the running container.
@@ -938,7 +937,7 @@ orca secret rm blog/session_key
 Three properties follow from putting the root of trust in the cluster rather
 than in a file:
 
-- **CI never holds a secret.** `apply` does not need secret *values* — only the
+- **CI never holds a secret.** `apply` does not need secret *values*; only the
   machine does. So a deploy pipeline pushes images and applies manifests while
   holding nothing, which is exactly the problem that an encrypted-in-repo
   design creates rather than solves.
@@ -949,14 +948,14 @@ than in a file:
   is waiting out a health timeout to be told a raft path does not exist.
 
 The trade is that a rebuilt cluster needs its secrets set again. For tokens
-obtained from a vendor's dashboard — which is most of them, and which are
-regenerable there — that is a few minutes, and `orca secret list` says exactly
+obtained from a vendor's dashboard (which is most of them, and which are
+regenerable there) that is a few minutes, and `orca secret list` says exactly
 which ones. An encrypted file layer in the repository can be added on top later
 if something ever needs to survive the cluster; nothing here forecloses it.
 
-**The best secret is one you never handle.** Anything orca creates — a database
-password, the dashboards' password and its bcrypt hash — it generates itself
-and never asks for.
+**The best secret is one you never handle.** Anything orca creates, such as a
+database password or the dashboards' password and its bcrypt hash, it
+generates itself and never asks for.
 That is the direction to keep pushing.
 
 One secret is one variable at `orca/<group>/<name>`, rather than one variable
@@ -970,11 +969,11 @@ Two things this does not defend against, worth naming:
   [Binding](#binding-nothing-of-ours-is-ever-public).
 - A service that logs its own environment puts the secret in the log store for
   the retention period. Nothing orca can prevent, and the most likely way one
-  actually leaks — which is the argument for files being the default.
+  actually leaks, which is the argument for files being the default.
 
 ## Observability
 
-Logs and metrics land in VictoriaLogs and VictoriaMetrics — chosen over the
+Logs and metrics land in VictoriaLogs and VictoriaMetrics, chosen over the
 Grafana stack specifically because each is a single binary writing to a local
 directory with no dependency on an object store, a compactor, or a ring. The
 components that break are components they do not have.
@@ -988,13 +987,13 @@ components that break are components they do not have.
   runs
 - The Nomad UI shows what is running and what has been restarting
 - A port declared `metrics` is scraped at `/metrics`, labelled with the
-  `group` and `service` it came from — an app's prod and test servers export
+  `group` and `service` it came from; an app's prod and test servers export
   the same names, and those labels keep them apart. Targets register in the
   catalog under one shared name that the scrape config is rendered from, so a
   service is scraped from the apply that deployed it, and the metric store is
   signalled rather than restarted. One per service
 - Every machine reports itself through a node exporter, a system job reading
-  the host's /proc, /sys and mounts — which is why it is platform rather than
+  the host's /proc, /sys and mounts, which is why it is platform rather than
   something a manifest could declare. It registers with a `node=<name>` tag
   that becomes its series' label, the same way a service's `group` and
   `service` do. Its port is dynamic: it runs on every machine, and a fixed
@@ -1007,22 +1006,21 @@ components that break are components they do not have.
   service. `orca top` reads it over SSH, so it works when ingress is what is
   broken. The page opens any service's logs, read by the same query code as
   `orca logs`
-- Grafana is optional, stateless, and provisioned from a file in git — never a
+- Grafana is optional, stateless, and provisioned from a file in git, never a
   stack with its own database
 
 Nothing orca runs for you may depend on another of them being healthy.
-If Grafana dies, collection and querying continue. That is the property that was
-missing before.
+If Grafana dies, collection and querying continue.
 
 ## Hands off
 
 What orca does without being asked:
 
 - restarts crashed containers and reschedules failed work
-- **caps every disk consumer** — Docker logs, VictoriaLogs, VictoriaMetrics
+- **caps every disk consumer**: Docker logs, VictoriaLogs, VictoriaMetrics
 - renews TLS certificates
 - applies OS security updates, never touching the pinned Docker/Nomad binaries
-- backs up, off the box, every database that names a target — nightly unless it
+- backs up, off the box, every database that names a target, nightly unless it
   says otherwise
 
 Disks filling up is the most common way a box like this dies, and it is fixed by
@@ -1049,7 +1047,7 @@ opt-in, and the only opt-in is a service's `ports:`.**
 
 This is the same reasoning as loopback on a single machine, one scale up: the
 way to not have to defend a listener is not to create one. It is also why there
-is no Nomad ACL and no mutual TLS — there is no network path to protect.
+is no Nomad ACL and no mutual TLS: there is no network path to protect.
 
 Two host networks are declared in the Nomad client config, so *where a thing
 binds* is a property of its job spec rather than something a firewall has to
@@ -1070,11 +1068,11 @@ correct afterwards:
 | A service's `8080: shop.example.com` | **nothing published at all** | private, at 8080 |
 
 An internal or hostname port publishes no host port on a single machine. The
-service registers its allocation's own address — every allocation has one, on a
-per-node bridge — which every container and ingress reach directly and nothing
+service registers its allocation's own address (every allocation has one, on a
+per-node bridge), which every container and ingress reach directly and nothing
 outside the machine can reach. Above one machine those addresses stop being
 unambiguous, because every node's bridge uses the same range, so the port is
-published there on the private network — at its own number, because the
+published there on the private network. It keeps its own number, because the
 resolver answers with an address and no port, and `db.shop:5432` has to mean
 5432 on whichever machine db landed on. The cost is that two services
 listening on the same port cannot share a machine above one; Nomad places them
@@ -1085,7 +1083,7 @@ host port on the public interface.
 
 **A private network is required for more than one machine.** Each node declares
 `private_ip`, and bootstrap refuses to continue if that address turns out to be
-on the default-route interface — orca will not bind a cluster to a public
+on the default-route interface. orca will not bind a cluster to a public
 network, and failing loudly beats a cluster that works while also offering an
 unauthenticated scheduler API to the internet.
 
@@ -1104,7 +1102,7 @@ What is open, and why:
 
 | Port | Because |
 |---|---|
-| 22 | unconditionally — a firewall that can lock you out of the machine it protects is a worse outage than the one it prevents |
+| 22 | unconditionally: a firewall that can lock you out of the machine it protects is a worse outage than the one it prevents |
 | 80, 443 | ingress is running |
 | every raw tcp/udp port | a manifest asked for it |
 | ICMP | path-MTU discovery and connection errors depend on it; dropping it does not buy security and breaks things subtly |
@@ -1120,7 +1118,7 @@ what is deployed. Deleting a service closes its port on the next apply.
 Two details that make it work rather than only look like it does:
 
 - **Filtering happens in prerouting, not input.** A published container port is
-  destination-NAT'd by the CNI and then traverses the *forward* path — an
+  destination-NAT'd by the CNI and then traverses the *forward* path, so an
   input-only ruleset looks correct and blocks none of them. At the prerouting
   hook the packet still carries the port it was sent to, before rewriting.
 - **orca uses its own nftables table**, deleted and recreated rather than a
@@ -1131,7 +1129,7 @@ the private network**, so above one machine the scheduler API would be
 reachable from inside a container — and a container that can submit jobs can
 run anything on the machine as root. Traffic from the container bridge to
 Nomad's ports is dropped on both paths it can take: input, for its own
-machine's scheduler, and forward, for every other machine's — which is routed
+machine's scheduler, and forward, for every other machine's, which is routed
 out, masqueraded, and arrives looking like the machine itself. The resolver and
 orca's own stores stay reachable, because services are meant to use those.
 
@@ -1151,7 +1149,7 @@ nodes:
 ```
 
 Then `orca bootstrap`, then `orca apply`. The components that keep data on one
-disk — ingress, and monitoring's two stores and status page — run on the first
+disk (ingress, and monitoring's two stores and status page) run on the first
 server listed unless `node:` under `ingress:` or `monitoring:` says otherwise.
 Wherever ingress runs is the machine your DNS points at.
 
@@ -1167,7 +1165,7 @@ through the catalog rather than by address. Stateful services stay where their
 data is. You move a workload with `node: box1` in its manifest.
 
 What changes at the second machine is that everything cluster-internal moves
-from loopback to the private network — see [Binding](#binding-nothing-of-ours-is-ever-public).
+from loopback to the private network; see [Binding](#binding-nothing-of-ours-is-ever-public).
 Nothing becomes publicly reachable that was not already. Bootstrap moves the
 first machine's scheduler (a lone server whose address changes is handed its
 new one through Nomad's `peers.json`); apply moves the workloads, because an
@@ -1179,7 +1177,7 @@ bridge address.
 ## Open questions
 
 - **Volume backups.** A templated database is dumped on a schedule to a
-  target it names. A plain service's own `volume:` has no backup story yet —
+  target it names. A plain service's own `volume:` has no backup story yet;
   probably a periodic snapshot to the same object store, but it is not
   designed.
 - **Which templates exist.** `postgres`, `redis` and `garage`.
@@ -1188,7 +1186,7 @@ bridge address.
   which is the point, and also means looking at it by hand is an SSH tunnel to
   an allocation address you have to look up. Probably `orca forward
   <group>/<service> <port>`; not designed.
-- **Stages.** Two groups that run the same services — prod and test — are
+- **Stages.** Two groups that run the same services, prod and test, are
   written out twice, differing in a few values. Variables take those values
   out; the service files are still duplicated, and can drift. One directory
   of services instantiated once per stage, each with its own variables, would

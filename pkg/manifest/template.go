@@ -12,7 +12,7 @@ import (
 // machinery.
 //
 // The template owns everything that has to be correct and is tedious or
-// dangerous to get right by hand — the pinned image, the port, the health
+// dangerous to get right by hand: the pinned image, the port, the health
 // check, the generated password, where the volume mounts, and how it is
 // dumped for a backup. You tune only size.
 type Template struct {
@@ -76,9 +76,9 @@ type TemplateSpec struct {
 	// by them.
 	Entrypoint []string
 
-	// Args are the image's arguments. Tune's are appended after them, so a
-	// template can have both — they were once set by two code paths, the
-	// second silently replacing the first.
+	// Args are the image's arguments. Tune's are appended after them rather
+	// than replacing them, so a template can have both without one silently
+	// dropping the other.
 	Args []string
 
 	// Tune returns image arguments derived from the size the author asked
@@ -135,9 +135,9 @@ var Templates = map[string]TemplateSpec{
 		Tune: postgresTune,
 	},
 
-	// Redis, for a service whose state lives in it — so it is run as a
-	// database of record rather than a cache: every write is appended to disk
-	// and fsynced each second, and nothing is ever evicted.
+	// Redis, for a service whose state lives in it, and so run as a database
+	// of record rather than a cache: every write is appended to disk and
+	// fsynced each second, and nothing is ever evicted.
 	//
 	// The official image, which from Redis 8 carries JSON, search, time series
 	// and probabilistic types itself; Redis Stack, which used to be how you got
@@ -171,8 +171,8 @@ var Templates = map[string]TemplateSpec{
 	// Unlike a database, it is not usable the moment its process is up. A
 	// fresh Garage node holds no data at all until a storage layout is
 	// assigned and applied, and an S3 endpoint with no access key is an S3
-	// endpoint nobody can use — so the template does both, and hands back a
-	// key the way postgres hands back a password.
+	// endpoint nobody can use. The template does both, and hands back a key
+	// the way postgres hands back a password.
 	"garage": {
 		Image:          "dxflrs/garage:v%s",
 		Versions:       []string{"2.3.0"},
@@ -197,8 +197,8 @@ var Templates = map[string]TemplateSpec{
 		Init: &TemplateFile{
 			Path: "local/init.sh",
 			Body: garageInit,
-			// Garage's image holds the binary and nothing else — no shell, no
-			// coreutils — so the setup it still needs cannot run inside it.
+			// Garage's image holds the binary and nothing else (no shell, no
+			// coreutils), so the setup it still needs cannot run inside it.
 			// This drives the admin API instead, reached on loopback because
 			// the task shares the allocation's network namespace.
 			Image: "alpine:3.20",
@@ -275,7 +275,7 @@ if [ -z "$ROLE" ] || [ "$ROLE" = "null" ]; then
   # The role goes in a "roles" list. The map form {node: {...}} that Garage's
   # v1 API took is still accepted by v2 with a 200 and stages nothing at all,
   # so the apply that follows fails with "number of nodes with positive
-  # capacity (0) is smaller than the replication factor" — an error about the
+  # capacity (0) is smaller than the replication factor", an error about the
   # wrong thing entirely.
   api POST UpdateClusterLayout "$(jq -n --arg n "$NODE" \
     '{roles: [{id: $n, zone: "orca", capacity: 1000000000000, tags: []}]}')" >/dev/null
@@ -325,7 +325,7 @@ echo "garage ready: bucket $BUCKET, key $KEY_ID"
 // appendonly is the setting that makes this a database: without it Redis
 // only snapshots now and then, and a crash loses every write since the last
 // one. With it a crash loses at most a second. The snapshot a backup takes is
-// separate — redis-cli --rdb has the server produce one on demand.
+// separate: redis-cli --rdb has the server produce one on demand.
 const redisConfig = `requirepass "{{ with nomadVar "%[1]s_password" }}{{ .value }}{{ end }}"
 dir /data
 appendonly yes
@@ -336,7 +336,7 @@ maxmemory-policy noeviction
 // redisTune caps the dataset below the allocation.
 //
 // Past the cap a write is refused with an error the application sees, where
-// without one the container is killed by the kernel and restarts — losing
+// without one the container is killed by the kernel and restarts, losing
 // the last second of writes, and doing it again at the next write. The
 // quarter left over is for what Redis does not count as its dataset: the
 // copy-on-write pages of the fork that writes a snapshot or rewrites the AOF,
@@ -355,7 +355,7 @@ type GeneratedSecretSpec struct {
 	Env string
 
 	// Prefix is prepended to the generated value, for a format that demands
-	// one — a Garage access key id begins "GK".
+	// one: a Garage access key id begins "GK".
 	Prefix string
 
 	// Bytes of randomness. Zero takes the default length.
@@ -377,7 +377,7 @@ type TemplateFile struct {
 	Body string
 
 	// Image runs it, for a file that is a script. Empty uses the service's
-	// own image, which only works when that image has a shell — Garage's is
+	// own image, which only works when that image has a shell. Garage's is
 	// the binary and nothing else, which is why this exists.
 	Image string
 }

@@ -32,14 +32,14 @@ import (
 // FirewallConfig locks the public interface down to what the manifests ask
 // for. It has no settings: what is open is derived from the raw tcp/udp ports
 // the manifests declare and from
-// whether ingress runs, which is the whole point — a port is open because
+// whether ingress runs, which is the whole point: a port is open because
 // something asked for it, never because someone edited a rule.
 type FirewallConfig struct {
 	Enabled bool `yaml:"-"`
 }
 
 // DNSConfig is the cluster resolver, which is how services find each other by
-// name. Turning it off leaves them with no way to, so it has no settings —
+// name. Turning it off leaves them with no way to, so it has no settings,
 // only an on and an off.
 type DNSConfig struct {
 	Enabled bool `yaml:"-"`
@@ -48,21 +48,21 @@ type DNSConfig struct {
 // IngressConfig is the HTTP front door: hostnames, TLS, and the one place a
 // request from the internet enters the cluster.
 //
-// Everything here was once a top-level cluster setting, which read as though it
-// described the cluster. It does not: every one of these is consumed only
-// by the front door, and with ingress off none of them mean anything.
+// None of this is a top-level cluster setting, because none of it describes
+// the cluster: every one of these is consumed only by the front door, and
+// with ingress off none of them mean anything.
 type IngressConfig struct {
 	Enabled bool `yaml:"-"`
 
 	// HTTPS is whether ingress gets certificates from Let's Encrypt and
 	// serves HTTPS. On unless it is false. Off is for hostnames Let's
-	// Encrypt cannot reach to verify — ones that exist only in your own
-	// /etc/hosts — where asking for certificates can only fail.
+	// Encrypt cannot reach to verify (ones that exist only in your own
+	// /etc/hosts), where asking for certificates can only fail.
 	HTTPS *bool `yaml:"https"`
 
 	// ACMEEmail is an optional contact on the Let's Encrypt account. It
-	// once decided whether there was HTTPS at all; it does not, because
-	// Let's Encrypt issues certificates to an account with no contact.
+	// does not decide whether there is HTTPS at all, because Let's Encrypt
+	// issues certificates to an account with no contact.
 	ACMEEmail string `yaml:"acme_email"`
 
 	// Node is the machine ingress runs on, and so the one your DNS points
@@ -73,7 +73,7 @@ type IngressConfig struct {
 // MonitoringConfig is knowing what your services are doing: their logs and
 // their metrics, collected and kept.
 //
-// One capability with two halves, because that is how it is thought about —
+// One capability with two halves, because that is how it is thought about,
 // but each half is separately disablable, because wanting logs without metrics
 // on a small machine is an ordinary thing to want.
 type MonitoringConfig struct {
@@ -108,7 +108,7 @@ type LogsConfig struct {
 	Retention string `yaml:"retention"`
 
 	// Disk is a hard ceiling on the log store. When it is reached the oldest
-	// days are dropped — logs never grow into the space the database needs.
+	// days are dropped: logs never grow into the space the database needs.
 	Disk string `yaml:"disk"`
 }
 
@@ -270,7 +270,7 @@ func (c *MonitoringConfig) UnmarshalYAML(node *yaml.Node) error {
 	c.Enabled = on
 
 	// `monitoring: false` turns off both halves, so everything downstream can
-	// ask one question — "are logs on?" — instead of two.
+	// ask one question ("are logs on?") instead of two.
 	if !on {
 		c.Logs.Enabled = false
 		c.Metrics.Enabled = false

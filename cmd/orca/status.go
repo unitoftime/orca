@@ -13,8 +13,8 @@ import (
 // HealthTimeout bounds how long apply waits for a deploy to settle.
 //
 // Bounded, not infinite: a cold image pull is slow and perfectly healthy, while
-// a crash loop never resolves. Waiting forever is the bug that hung the first
-// real apply.
+// a crash loop never resolves. Waiting forever would leave apply hanging on
+// the first crash loop it meets.
 const HealthTimeout = 2 * time.Minute
 
 // healthPoll is how often the cluster is asked. Two seconds is frequent enough
@@ -24,7 +24,7 @@ const healthPoll = 2 * time.Second
 
 // cmdStatus reports what is actually running, as opposed to what was last
 // submitted. A matching spec hash says a deploy happened, not that anything
-// works — this is the command that answers the second question.
+// works. This is the command that answers the second question.
 func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 	cluster, err := clusterFor(ctx, cfg)
 	if err != nil {
@@ -67,7 +67,7 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 	}
 
 	// Data whose service no longer exists. Removing a service keeps its data
-	// deliberately, so this is what stops "kept" from meaning "invisible" —
+	// deliberately, so this is what stops "kept" from meaning "invisible",
 	// and it is the only way to find out that `orca purge` has something to
 	// do. When the manifests do not load, what is declared is unknown, so it
 	// says that instead of calling every volume orphaned.
@@ -114,7 +114,7 @@ func readStatus(ctx context.Context, cluster *Cluster) ([]deploy.ServiceStatus, 
 }
 
 // waitForHealth blocks until every named job settles or the deadline passes,
-// then returns an error if anything ended unhealthy — so a broken deploy fails
+// then returns an error if anything ended unhealthy, so a broken deploy fails
 // the command, and therefore fails CI, instead of being reported as a success.
 //
 // Every service in scope is checked, not only the ones this apply changed. An
@@ -199,10 +199,10 @@ func waitForHealth(ctx context.Context, cluster *Cluster, jobIDs []string, timeo
 	return nil
 }
 
-// unhealthy names every waited-on job that did not end healthy — including
-// one that never appeared in the cluster at all. That case used to count as
-// neither healthy nor bad, so a job missing from the listing let apply exit
-// zero while reporting fewer healthy services than it waited for.
+// unhealthy names every waited-on job that did not end healthy, including
+// one that never appeared in the cluster at all. That case counts as bad:
+// otherwise a job missing from the listing would let apply exit zero while
+// reporting fewer healthy services than it waited for.
 func unhealthy(want map[string]bool, settled map[string]deploy.ServiceStatus) []string {
 	var bad []string
 	for id := range want {

@@ -19,11 +19,11 @@ func hostileSpec() deploy.BackupSpec {
 	}
 }
 
-// A backup's filename comes from listing the bucket, so it is remote input. It
-// was interpolated into a double-quoted shell string, where $(...) still runs:
-// writing a file into the backup bucket was command execution as root on the
-// machine, taken at the moment someone runs a restore — which is when things
-// are already going badly.
+// A backup's filename comes from listing the bucket, so it is remote input,
+// and the restore script must quote it. Inside a double-quoted shell string
+// $(...) still runs, so writing a file into the backup bucket would be
+// command execution as root on the machine, taken at the moment someone runs
+// a restore, when things are already going badly.
 func TestRestoreScriptQuotesRemoteInput(t *testing.T) {
 	evil := `x$(touch /tmp/pwned).pgc`
 	script := restoreScript(hostileSpec(), "shop", "db", "shop/db", evil, "postgres:17-alpine")
@@ -124,7 +124,7 @@ func TestRedisRestoreScriptQuotesRemoteInput(t *testing.T) {
 }
 
 // Redis with appendonly on ignores dump.rdb and starts empty when it finds no
-// append-only file — checked against redis 8.10 rather than assumed. So the
+// append-only file (checked against redis 8.10 rather than assumed). So the
 // restore has to load the snapshot with the AOF off and switch it on, and the
 // order of those steps is the restore.
 func TestRedisRestoreLoadsWithoutAOFThenWritesIt(t *testing.T) {

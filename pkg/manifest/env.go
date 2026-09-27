@@ -18,10 +18,9 @@ type EnvPart struct {
 // ParseEnvValue splits an env value into literal text and ${secret.NAME}
 // references.
 //
-// It is the one reader of this syntax. There were two — a regular expression
-// here that validated, and a substring search in the job builder that
-// rendered — and they disagreed about $$: "$${secret.x}" validated as a
-// literal and was rendered as a reference, so the task blocked forever on a
+// It is the one reader of this syntax, used both to validate and to render.
+// Two readers could disagree about $$: "$${secret.x}" would validate as a
+// literal and render as a reference, so the task would block forever on a
 // secret the preflight never asked for.
 //
 // $$ is a literal $. Any other ${...} is an error rather than literal text, so

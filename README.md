@@ -12,12 +12,12 @@ services: it assumes you wrote all of them.
 
 - **A server** running Debian or Ubuntu on x86-64, reachable over SSH **as
   root**, with cgroups v2 (any current release). orca installs Docker and
-  Nomad on it itself, from pinned versions — you install nothing by hand.
+  Nomad on it itself, from pinned versions; you install nothing by hand.
 - **On your own machine:** Go 1.26 or newer, `ssh` and `rsync`.
 - **For HTTPS:** DNS for each hostname your services use, pointing at the
   server. **For the web UIs:** a domain with a wildcard record
   (`*.example.com`) pointing there too. No domain? Your server's IP with
-  dashes, under sslip.io, works as one — `203-0-113-10.sslip.io` — since
+  dashes, under sslip.io, works as one (`203-0-113-10.sslip.io`), since
   every name beneath it resolves to that IP. It relies on sslip.io's DNS
   servers, and the names change if the IP does.
 
@@ -27,8 +27,8 @@ Install:
 go install github.com/unitoftime/orca/cmd/orca@latest
 ```
 
-To try it first, [example/](example/) is a small cluster — a web server, a
-background worker, and Postgres with an app using it — that you point at your
+To try it first, [example/](example/) is a small cluster (a web server, a
+background worker, and Postgres with an app using it) that you point at your
 server and bring up in a few commands.
 
 ## Setting up
@@ -71,8 +71,8 @@ orca bootstrap                  # or: orca --ssh-copy-id bootstrap, for a fresh 
 ```
 
 Bootstrap updates the OS, turns on automatic security updates, installs Docker
-and Nomad, and caps Docker's own log files. It is safe to run again — that is
-how an orca upgrade reaches the server.
+and Nomad, and caps Docker's own log files. It is safe to run again, and that
+is how an orca upgrade reaches the server.
 
 orca finds `cluster.yaml` by walking up from the current directory, like git
 finds `.git`, so every command works from anywhere inside the tree. Use
@@ -122,7 +122,7 @@ ports:
   7777: [tcp, udp]            # both protocols
 ```
 
-(Those are alternatives — a port number appears once per service.)
+(Those are alternatives: a port number appears once per service.)
 
 - `internal` and hostname ports publish nothing on the server's public
   address; a hostname is reached through ingress.
@@ -133,7 +133,8 @@ ports:
   can be on any domain; point its DNS at the ingress machine.
 - 22 is SSH's, and 80 and 443 are ingress's while it runs; apply refuses a
   `tcp` port on any of them.
-- A service with no `ports` listens for nothing — most background workers.
+- A service with no `ports` listens for nothing, as most background workers
+  do.
 
 ### Finding other services
 
@@ -161,8 +162,8 @@ more than one replica.
 ### The command
 
 `cmd:` replaces the image's command **and its entrypoint**, and runs through
-`/bin/sh -c`, so it can be a small script. That means an image with no shell —
-`scratch`, distroless — cannot use `cmd:`; configure it through `env:`
+`/bin/sh -c`, so it can be a small script. That means an image with no shell
+(`scratch`, distroless) cannot use `cmd:`; configure it through `env:`
 instead.
 
 ### Variables
@@ -397,7 +398,7 @@ standard node exporter series (`node_cpu_seconds_total`,
 `node_filesystem_avail_bytes`, …) labelled with the machine's `node` name.
 
 A service is `running`, `pending` (starting or rolling out), `failed`, or
-`unplaced` — accepted but with nowhere to run, with the reason. `status` also
+`unplaced` (accepted but with nowhere to run, with the reason). `status` also
 lists data left behind by services you have removed.
 
 Logs are kept for 14 days (10G at most) by default, and outlive the container
@@ -407,14 +408,14 @@ With `monitoring.domain` set, there are also web UIs, behind a password: user
 `admin`, and the password `orca password` prints, generated for the cluster at
 bootstrap. `orca password set` changes it, from the next apply. `status.<domain>` links to the rest:
 
-- `status.<domain>` — every node, store and service and its status: each
+- `status.<domain>`: every node, store and service and its status (each
   node's CPU, memory, disks, network and last hour; how full the log and
-  metric stores are; each service's health and memory against its limit.
+  metric stores are; each service's health and memory against its limit).
   Click a service for its logs, with search and follow. `orca top` shows
   the same in a terminal, but for the logs
-- `logs.<domain>` — search logs
-- `metrics.<domain>` — query metrics
-- `nomad.<domain>` — the Nomad UI: what is running, what has restarted
+- `logs.<domain>`: search logs
+- `metrics.<domain>`: query metrics
+- `nomad.<domain>`: the Nomad UI, with what is running and what has restarted
 
 ## Removing things
 
@@ -470,7 +471,7 @@ nodes:
 ```
 
 - The machines must share a private network (your provider's, or
-  Tailscale/WireGuard), and each needs `private_ip` — including the one that
+  Tailscale/WireGuard), and each needs `private_ip`, including the one that
   was running alone.
 - Servers (`role: server`, the default for the first node) must be an odd
   number: 1, 3 or 5.
@@ -520,13 +521,13 @@ Between the two, services on the new machine cannot yet reach the old one's.
 - **Garage is single-node.** No replication; back up what matters elsewhere.
 - **HTTPS needs hostnames Let's Encrypt can reach.** It checks each one over
   port 80, so names that exist only in your own `/etc/hosts` cannot get
-  certificates. `https: false` serves plain HTTP instead — the dashboard
+  certificates. `https: false` serves plain HTTP instead, the dashboard
   password included.
 - **An older cluster with no `acme_email` switches to HTTPS on its next
   apply.** That setting used to be what turned HTTPS on; now HTTPS is on
   unless `https: false` says otherwise.
 - **Secrets live only on the cluster.** Rebuild the cluster and you set them
-  again — `orca secret list` shows which. The dashboard password is generated
+  again; `orca secret list` shows which. The dashboard password is generated
   anew with it. A generated database password is the
   exception you cannot simply re-set: the database was initialised with it.
   `orca secret set` and `rm` refuse generated secrets unless you pass
@@ -548,8 +549,8 @@ Between the two, services on the new machine cannot yet reach the old one's.
   there, so it has to be statically linked. `make build` is. A `go install`
   on Linux is not, so the first apply of each version builds a static copy
   from the module cache, which takes a little longer.
-- **Internal ports can't be reached from your machine** — a profiler, a
-  database console. For now that means an SSH tunnel to the allocation's
+- **Internal ports can't be reached from your machine**, such as a profiler
+  or a database console. For now that means an SSH tunnel to the allocation's
   address, which `orca status` does not show.
 - **Upgrading a pinned image is an edit.** With the tag in a `vars.yaml` it
   is one line; nothing writes it for you. There is no rollback command:
@@ -587,5 +588,5 @@ Global flags go before the command:
 
 ## Further reading
 
-- [spec/model.md](spec/model.md) — how orca works and why each decision was
+- [spec/model.md](spec/model.md): how orca works and why each decision was
   made.

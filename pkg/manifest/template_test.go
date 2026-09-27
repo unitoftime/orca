@@ -149,8 +149,8 @@ func TestGarageKeyFormats(t *testing.T) {
 // Garage's v2 API takes the role in a "roles" list. The map form its v1 API
 // used is still accepted with a 200 and stages nothing at all, so the apply
 // that follows fails with "the number of nodes with positive capacity (0) is
-// smaller than the replication factor" — an error about the wrong thing
-// entirely, on a server that then stores nothing.
+// smaller than the replication factor". That error is about the wrong thing
+// entirely, and the server then stores nothing.
 func TestGarageLayoutUsesTheRolesForm(t *testing.T) {
 	if !strings.Contains(garageInit, "{roles: [{id: $n") {
 		t.Errorf("layout must be staged as a roles list:\n%s", garageInit)

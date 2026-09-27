@@ -16,7 +16,7 @@ import (
 //
 // The fast way off the machine: something is misbehaving and you want it down
 // now, without editing files and waiting for an apply. Because the manifests
-// are unchanged, the next apply brings it back — which is said out loud rather
+// are unchanged, the next apply brings it back, which is said out loud rather
 // than left to be discovered.
 func cmdStop(ctx context.Context, cfg Config, args []string) error {
 	if len(args) != 1 {
@@ -57,9 +57,9 @@ func cmdStop(ctx context.Context, cfg Config, args []string) error {
 // cmdPurge deletes a group's data.
 //
 // The one irreversible verb. It refuses while the manifests still declare the
-// group, so the only way to reach it is to have already deleted the directory
-// — which makes an accidental purge take two deliberate steps rather than one
-// mistyped word.
+// group, so the only way to reach it is to have already deleted the
+// directory, which makes an accidental purge take two deliberate steps rather
+// than one mistyped word.
 func cmdPurge(ctx context.Context, cfg Config, args []string) error {
 	yes := false
 	var names []string
@@ -75,7 +75,7 @@ func cmdPurge(ctx context.Context, cfg Config, args []string) error {
 	}
 	group := names[0]
 
-	// The reserved group is never "declared" — it has no directory — so the
+	// The reserved group is never "declared" (it has no directory), so the
 	// rule below cannot protect it, and without this `orca purge orca` would
 	// take ingress, the resolver and both stores with one confirmed word.
 	// Turning a capability off in cluster.yaml is the way to remove one, and
@@ -83,13 +83,13 @@ func cmdPurge(ctx context.Context, cfg Config, args []string) error {
 	if group == manifest.ReservedGroup {
 		return fmt.Errorf(
 			"%q holds the jobs orca runs for you, and is not yours to purge\n\n"+
-				"turn one off in %s/%s instead — `ingress: false`, `monitoring: false` — "+
+				"turn one off in %s/%s instead (`ingress: false`, `monitoring: false`) "+
 				"and apply removes it, keeping its data",
 			group, cfg.Root, manifest.ClusterFile)
 	}
 
 	// Fails closed. If the manifests cannot be read, whether this group is
-	// still declared is unknown — and a purge guard that answers "no" when it
+	// still declared is unknown, and a purge guard that answers "no" when it
 	// does not know is one a typo in some other group's file switches off.
 	isDeclared, err := declared(cfg, group)
 	if err != nil {

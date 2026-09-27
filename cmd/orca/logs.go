@@ -22,8 +22,8 @@ type LogLine = logsql.Line
 // It reads from VictoriaLogs rather than from Docker, so logs outlive the
 // container that wrote them: a service that crashed, was redeployed, or moved
 // to another machine still has its history. It also goes over SSH rather than
-// through ingress, so reading logs does not depend on the front door being up
-// — which is exactly when you want them.
+// through ingress, so reading logs does not depend on the front door being up,
+// and a broken front door is exactly when you want them.
 func cmdLogs(ctx context.Context, cfg Config, args []string) error {
 	opts, err := parseLogArgs(args)
 	if err != nil {
@@ -42,8 +42,8 @@ func cmdLogs(ctx context.Context, cfg Config, args []string) error {
 
 	if opts.follow {
 		// The history first, then the stream. Following a service you just
-		// deployed is the common case, and the interesting lines — the ones
-		// explaining why it is not running — were written before you asked.
+		// deployed is the common case, and the interesting lines (the ones
+		// explaining why it is not running) were written before you asked.
 		//
 		// The two reads overlap by however long the first took, so the last
 		// line or two would otherwise arrive twice.
@@ -60,7 +60,7 @@ func cmdLogs(ctx context.Context, cfg Config, args []string) error {
 // just before it.
 //
 // A repeat is dropped once and then forgotten, so a service that really does
-// log the same message again still shows it — only the overlap is removed.
+// log the same message again still shows it; only the overlap is removed.
 type boundary struct {
 	printed map[string]bool
 }
@@ -103,10 +103,9 @@ func parseLogArgs(args []string) (logOptions, error) {
 	opts := logOptions{since: "1h", limit: 200}
 
 	// Flags are recognised wherever they appear, and everything else is
-	// positional. An earlier version stopped parsing at the first positional
-	// argument and folded the rest of the line into the search, so
-	// `orca logs worker tick -n 3` searched for the literal "tick -n 3" and
-	// silently found nothing.
+	// positional. Stopping at the first positional argument would fold the
+	// rest of the line into the search, so `orca logs worker tick -n 3` would
+	// search for the literal "tick -n 3" and silently find nothing.
 	var positional []string
 
 	for i := 0; i < len(args); i++ {
@@ -152,8 +151,8 @@ func parseLogArgs(args []string) (logOptions, error) {
 // logsql.Queries for why they differ).
 //
 // The target is resolved against the manifests so a mistyped service name
-// fails here, naming what does exist, rather than silently returning no lines
-// — which is indistinguishable from a service that simply said nothing.
+// fails here, naming what does exist, rather than silently returning no
+// lines, which is indistinguishable from a service that simply said nothing.
 func buildLogQuery(cfg Config, opts logOptions) (history, tail string, err error) {
 	var jobs []logJob
 	if opts.target != "" {
@@ -172,9 +171,9 @@ type logJob = logsql.Job
 // the jobs the log store knows.
 //
 // The jobs come from deploy.ServiceJobIDs, the same list that decides which
-// job names a service owns, so a service's backup runs are among its logs.
-// They were missing — a failing nightly backup was the one job whose output
-// `orca logs` could not show, and exactly the one nobody is watching.
+// job names a service owns, so a service's backup runs are among its logs. A
+// failing nightly backup must not be the one job whose output `orca logs`
+// cannot show, since it is exactly the one nobody is watching.
 func resolveLogTarget(cfg Config, target string) ([]logJob, error) {
 	groups, err := loadGroups(cfg)
 	if err != nil {

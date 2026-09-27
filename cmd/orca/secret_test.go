@@ -86,8 +86,9 @@ func TestCheckSecretsIgnoresGroupsWithout(t *testing.T) {
 }
 
 // A backup target's credentials live in the target's group, which a scoped
-// apply of the database's group never looked at — so a backup job with no way
-// to authenticate was deployed, and failed where nobody was watching.
+// apply of the database's group does not otherwise look at. They must still
+// be required, or a backup job with no way to authenticate is deployed and
+// fails where nobody is watching.
 func TestPreflightCoversBackupTargetsInOtherGroups(t *testing.T) {
 	shop := groupWith(t, "shop", "{name: db, template: postgres:17, volume: 1G, backup: {to: storage/offsite}}")
 	storage := groupWith(t, "storage", "{name: offsite, target: s3, endpoint: https://x, bucket: b}")
@@ -103,7 +104,7 @@ func TestPreflightCoversBackupTargetsInOtherGroups(t *testing.T) {
 }
 
 // A generated secret that does not exist yet is one apply will create, so it
-// is not missing — and plan reports it rather than creating it.
+// is not missing; plan reports it rather than creating it.
 func TestGeneratedSecretsCountAsSetButAreNotCreatedByTheCheck(t *testing.T) {
 	shop := groupWith(t, "shop", "{name: db, template: postgres:17, volume: 1G}\n---\n{name: app, image: i:1, env: {URL: \"${secret.db_password}\"}}")
 	groups := []*manifest.Manifest{shop}
@@ -122,7 +123,7 @@ func TestGeneratedSecretsCountAsSetButAreNotCreatedByTheCheck(t *testing.T) {
 	}
 }
 
-// A PEM key piped in was once stored as its first line.
+// A PEM key piped in is stored whole, not as its first line.
 func TestPipedSecretIsReadWhole(t *testing.T) {
 	pem := "-----BEGIN KEY-----\nabc\ndef\n-----END KEY-----\n"
 	got, err := readPipedSecret(strings.NewReader(pem))

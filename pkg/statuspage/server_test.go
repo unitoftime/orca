@@ -37,8 +37,8 @@ func TestPageLoadsNothingFromElsewhere(t *testing.T) {
 	}
 }
 
-// With nothing reachable, the summary still answers — saying what it could
-// not ask — rather than failing the page.
+// With nothing reachable, the summary still answers, saying what it could not
+// ask, rather than failing the page.
 func TestSummaryWhenNothingAnswers(t *testing.T) {
 	srv := httptest.NewServer((&Server{Nomad: "http://127.0.0.1:1"}).Handler())
 	defer srv.Close()

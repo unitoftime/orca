@@ -28,9 +28,9 @@ addresses {
 # Serf are all unreachable from off the box. Above one machine it is the node's
 # private_ip, and bootstrap refuses an address on the default-route interface.
 # That is why there is no ACL stanza and no TLS stanza below: at no size is
-# there a hostile network path to protect. The one path left —
-# a container reaching a scheduler over the bridge — is closed by the
-# firewall. orca reaches Nomad by running commands over SSH on the host.
+# there a hostile network path to protect. The one path left, a container
+# reaching a scheduler over the bridge, is closed by the firewall. orca
+# reaches Nomad by running commands over SSH on the host.
 
 {{NOMAD_SERVER_STANZA}}
 
@@ -51,7 +51,7 @@ client {
   #   internal  everything that is not public: orca's own stores, and every
   #             internal or ingress-routed port above one machine. The
   #             container bridge on a single machine, the private NIC once
-  #             there is a cluster — either way, reachable by every container
+  #             there is a cluster. Either way, reachable by every container
   #             and by nothing outside the machines.
   #   public    ingress (80/443) and raw tcp/udp ports, deliberately
   #
@@ -77,7 +77,7 @@ plugin "docker" {
 
     # Nomad labels containers with alloc_id and nothing else unless asked.
     # Without these, every log line arrives at the log store knowing only a
-    # container id — so "show me the API server's errors" has no field to
+    # container id, so "show me the API server's errors" has no field to
     # filter on. This is what makes a log line self-describing.
     extra_labels = ["job_name", "task_group_name", "task_name", "namespace"]
 

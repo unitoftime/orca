@@ -43,7 +43,7 @@ func FindRoot(dir string) (string, error) {
 //
 // One rule covers every depth you might want. `blog/` is the group "blog";
 // `blog/prod/` is "blog-prod". Whether a directory means an app, a project or a
-// stage is your decision, expressed by how deep you nest it — orca does not
+// stage is your decision, expressed by how deep you nest it; orca does not
 // need to know which you meant.
 func GroupName(root, dir string) (string, error) {
 	rel, err := filepath.Rel(root, dir)
@@ -58,11 +58,11 @@ func GroupName(root, dir string) (string, error) {
 
 // Discover finds every group under root.
 //
-// A directory holding at least one service file — any .yaml but vars.yaml —
-// is a group; the directory is the
-// identity, so nothing inside has to repeat it and two groups cannot collide
-// because two directories cannot share a path. Hidden directories are skipped,
-// so a .git directory full of nothing relevant costs nothing.
+// A directory holding at least one service file (any .yaml but vars.yaml) is
+// a group; the directory is the identity, so nothing inside has to repeat it
+// and two groups cannot collide because two directories cannot share a path.
+// Hidden directories are skipped, so a .git directory full of nothing relevant
+// costs nothing.
 func Discover(root string) ([]*Manifest, error) {
 	var groups []*Manifest
 	var errs []error

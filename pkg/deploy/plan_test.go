@@ -155,7 +155,7 @@ func TestPlanRecreatesAStoppedJob(t *testing.T) {
 }
 
 // A nil scope is the whole-cluster apply, and it has to reach jobs whose group
-// no longer exists on disk — which is exactly the set that most needs
+// no longer exists on disk. That is exactly the set that most needs
 // stopping, and exactly the set a scope derived from the directories could
 // never contain.
 func TestNilScopeStopsGroupsThatNoLongerExist(t *testing.T) {

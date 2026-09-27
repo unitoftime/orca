@@ -308,7 +308,7 @@ func assembleMetrics(results map[string][]sample, history map[string][]series) *
 }
 
 // assembleDisks joins the filesystem series into one Disk per device per
-// machine. A device mounted in several places — a bind mount — is one disk,
+// machine. A device mounted in several places (a bind mount) is one disk,
 // shown at its shortest mount point.
 func assembleDisks(results map[string][]sample) map[string][]Disk {
 	type key struct{ node, mount string }

@@ -141,7 +141,7 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		spec := tmpl.Spec()
 
 		// The template's own arguments, then whatever it derives from the
-		// size asked for — appended to the image's entrypoint, which is how
+		// size asked for, appended to the image's entrypoint, which is how
 		// the postgres image takes server settings.
 		args := append([]string(nil), spec.Args...)
 		if spec.Tune != nil {
@@ -176,14 +176,14 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		// The entrypoint is overridden, not just the command. Docker's command
 		// and args replace an image's CMD but leave its ENTRYPOINT in front, so
 		// setting only those on an image that has one runs
-		// `<entrypoint> /bin/sh -c <cmd>` — the flags land on the wrong binary
+		// `<entrypoint> /bin/sh -c <cmd>`: the flags land on the wrong binary
 		// and the container dies with something unhelpful like "Too many
 		// arguments!". Overriding the entrypoint makes `cmd` mean the same
 		// thing on every image.
 		//
 		// A shell, so `cmd` can be a small script rather than forcing exec-form
 		// argv on someone writing three lines of setup. The cost is that an
-		// image with no shell (scratch, distroless) cannot use `cmd` — such an
+		// image with no shell (scratch, distroless) cannot use `cmd`; such an
 		// image should be run with its own entrypoint instead.
 		task.Config["entrypoint"] = []string{"/bin/sh", "-c"}
 		task.Config["args"] = []string{s.Cmd}
@@ -290,7 +290,7 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 // process starts.
 //
 // A poststart hook in the same allocation, so it shares the network namespace
-// and reaches the service on loopback — which is why the service's admin
+// and reaches the service on loopback. That is why the service's admin
 // interface never has to be reachable from anywhere else. It is not a sidecar:
 // it does its work once and exits, and it runs again on every deploy, which is
 // why everything it does has to be idempotent.
@@ -363,10 +363,10 @@ func portLabels(ports []portSpec) []string {
 // because an allocation address is ambiguous there and a resolver answers
 // with an address and no port.
 //
-// HTTP ports were once a third case: a dynamic port on the public interface,
-// kept unreachable only by the firewall. That broke the rule that nothing is
+// HTTP ports are not a third case. A dynamic port on the public interface,
+// kept unreachable only by the firewall, would break the rule that nothing is
 // published publicly unless a manifest names a protocol, and above one
-// machine it made them unreachable by ingress on any other node.
+// machine it would be unreachable by ingress on any other node.
 func buildPorts(s *manifest.Service, opts Options) (ports []portSpec, portLabel string, allocAddressed bool) {
 	byContainer := map[int]string{}
 
@@ -455,7 +455,7 @@ func buildService(m *manifest.Manifest, s *manifest.Service, portLabel string, a
 // metricsService registers a service's metrics port as a scrape target.
 //
 // Every target shares one catalog name, and the metric store's scrape config
-// ranges over it — so a service that grows a metrics port is scraped from the
+// ranges over it, so a service that grows a metrics port is scraped from the
 // apply that deployed it, without the metric store being redeployed. Its
 // group and service travel as tags because a catalog name cannot be split
 // back into them, and they become the series' labels.
@@ -489,13 +489,13 @@ func metricsService(m *manifest.Manifest, s *manifest.Service, opts Options) *no
 }
 
 // traefikTags produce HTTP routing for the one port (at most) routed by
-// hostname: the one its manifest names. Traefik reads these straight off the Nomad catalog, and routes to
-// the address and port registered alongside them — which is why the routed
-// port is the one registered.
+// hostname: the one its manifest names. Traefik reads these straight off the
+// Nomad catalog, and routes to the address and port registered alongside
+// them, which is why the routed port is the one registered.
 //
 // The entrypoint and resolver are the names ingress's own configuration
-// defines. These tags once named an entrypoint "websecure" that did not
-// exist, and Traefik drops a route whose entrypoint is missing.
+// defines. They must match exactly, because Traefik drops a route whose
+// entrypoint is missing.
 func traefikTags(m *manifest.Manifest, s *manifest.Service, opts Options) []string {
 	for _, cport := range s.PortNumbers() {
 		ex := s.Ports[cport]

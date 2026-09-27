@@ -451,8 +451,8 @@ function spark(machine, series, t0, t1) {
 // ---- stores ---------------------------------------------------------------
 
 // orca's own log and metric stores. The log store has a hard cap and drops
-// its oldest days at it — the cap working, so it is said, not flagged. The
-// metric store has no cap and stops storing below a free-space floor. The
+// its oldest days at it. That is the cap working, so it is said, not flagged.
+// The metric store has no cap and stops storing below a free-space floor. The
 // status words are the summary's, as orca top shows them.
 
 function renderStores(stores) {

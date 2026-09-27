@@ -18,8 +18,8 @@ import (
 // directory that is not a service file.
 //
 // Variables exist so that a value repeated across a group's files is written
-// once — the commit three services are built from, above all, so moving them
-// to the next build is one edit rather than one per file:
+// once. Above all that is the commit three services are built from, so moving
+// them to the next build is one edit rather than one per file:
 //
 //	# blog/prod/vars.yaml
 //	commit: 4f2a9c1
@@ -41,7 +41,7 @@ var varName = secretName
 
 // serviceLikeKeys are fields no variable file has any reason to hold. A
 // vars.yaml carrying one is a service file that happens to have the reserved
-// name, and reading it as variables would silently drop the service — which the
+// name, and reading it as variables would silently drop the service, which the
 // next apply would then stop.
 var serviceLikeKeys = []string{"image", "template", "target"}
 
@@ -197,11 +197,11 @@ func expandVars(n *yaml.Node, vars Vars, used map[string]bool) error {
 
 // expandString fills in the ${var.NAME} references in one value.
 //
-// $$ is passed through untouched, so $${var.x} is not a reference — the same
-// escape env values use, and env values are read after this, where $$ becomes
-// $. Every other ${...} is left alone: ${secret.NAME} is resolved on the
-// machine, and anything else is for whatever reads that value to accept or
-// refuse.
+// $$ is passed through untouched, so $${var.x} is not a reference. It is the
+// same escape env values use, and env values are read after this, where $$
+// becomes $. Every other ${...} is left alone: ${secret.NAME} is resolved on
+// the machine, and anything else is for whatever reads that value to accept
+// or refuse.
 func expandString(s string, vars Vars, used map[string]bool) (string, bool, error) {
 	if !strings.Contains(s, "${var") {
 		return s, false, nil
@@ -255,8 +255,8 @@ func undefinedVar(name string, vars Vars) error {
 
 // serviceFields are the keys a service document may have.
 //
-// Checked by hand because a service is decoded from a yaml.Node — which is
-// what lets variables be filled in first — and Node.Decode does not carry the
+// Checked by hand because a service is decoded from a yaml.Node (which is
+// what lets variables be filled in first), and Node.Decode does not carry the
 // decoder's KnownFields setting. The nested types already check their own
 // fields for the same reason; this is the one level that relied on the
 // decoder.

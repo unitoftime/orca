@@ -93,7 +93,7 @@ func TestVarsFileIsNotAServiceFile(t *testing.T) {
 }
 
 // Filled in on the parsed document, so an unquoted value takes the type of
-// what it holds and a quoted one stays a string — exactly as if written out.
+// what it holds and a quoted one stays a string, exactly as if written out.
 func TestVarsAreTypedLikeTheValueTheyHold(t *testing.T) {
 	vars := Vars{"n": "3", "mem": "2G", "cpu": "1.5", "tag": "007"}
 	services, err := ParseServices([]byte(`
@@ -221,10 +221,10 @@ func TestVarsYmlIsNamedAsTheMistake(t *testing.T) {
 	}
 }
 
-// A service is now decoded from a node so variables can be filled in first,
-// and Node.Decode does not carry KnownFields — so the strictness the decoder
-// used to give is checked by hand. These are the regressions that would slip
-// through if it were not.
+// A service is decoded from a node so variables can be filled in first, and
+// Node.Decode does not carry KnownFields, so the strictness the decoder would
+// give is checked by hand. Unknown fields and duplicate keys must still be
+// refused, or a typo in a service file is silently ignored.
 func TestServiceStrictnessSurvivesNodeDecoding(t *testing.T) {
 	_, err := ParseServices([]byte("name: web\nimage: i:1\ntier: app\n"), "web.yaml", nil)
 	if err == nil || !strings.Contains(err.Error(), "line 3: field tier not found") {

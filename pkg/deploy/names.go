@@ -9,12 +9,12 @@ import (
 
 // Every name orca derives from a group and a service lives in this file.
 //
-// They were spread across the files that used them, and some were built inline
-// wherever they were needed — which is how purge came to match volumes by a
-// "<group>-" prefix that also matched a group with a longer name. One place
-// makes each name's shape, and whether it can be read back, a single decision.
+// Names built inline wherever they are needed drift apart, and a mismatch is
+// quiet: a purge matching volumes by a "<group>-" prefix also matches a group
+// with a longer name. One place makes each name's shape, and whether it can be
+// read back, a single decision.
 //
-// The flat names below — <group>-<service> — are one namespace across every
+// The flat names below, <group>-<service>, are one namespace across every
 // group, and cannot be split back because both halves may contain dashes.
 // That is safe only because apply refuses two services producing the same one
 // (see ServiceJobIDs); nothing may parse them. Where a name has to be read
@@ -50,7 +50,7 @@ const SecretItemKey = "value"
 // per secret rather than one per group.
 //
 // That makes listing which secrets exist a listing of paths, which returns no
-// values at all — so `orca secret list` never pulls plaintext off the machine
+// values at all, so `orca secret list` never pulls plaintext off the machine
 // just to tell you a name is set.
 func SecretPath(group, name string) string {
 	return SecretPrefix + "/" + group + "/" + name
@@ -75,8 +75,8 @@ const RegistryPrefix = "orca-registry"
 // registry host, holding a username and a password.
 //
 // Nomad refuses a "." or ":" in a variable path, so they are written as "_"
-// and "~" — neither of which can appear in a host name, which is what makes
-// the path readable back into the host by RegistryHost. The credential helper
+// and "~". Neither can appear in a host name, which is what makes the path
+// readable back into the host by RegistryHost. The credential helper
 // on each machine does the same substitution, so the two must stay in step.
 func RegistryPath(host string) string {
 	return RegistryPrefix + "/" + registryPathReplacer.Replace(host)
@@ -109,9 +109,9 @@ func SearchDomains(group string) []string {
 // answers for it.
 //
 // The resolver's hosts file is rendered from the catalog by this tag rather
-// than from a list of services baked into its own job. The list meant that
-// only an apply including orca's own group updated the resolver, so a service
-// added by `orca apply shop` did not resolve until some later, unrelated full
+// than from a list of services baked into its own job. With a list, only an
+// apply including orca's own group would update the resolver, so a service
+// added by `orca apply shop` would not resolve until some later, unrelated full
 // apply. A tag travels with the service's own registration, so whatever
 // registers is resolvable, from whichever apply deployed it.
 const DNSTagPrefix = "orca-dns="

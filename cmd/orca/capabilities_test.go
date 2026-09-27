@@ -64,8 +64,8 @@ nodes:
 	if got := cfg.Monitoring.LogDiskBytes(); got != 2<<30 {
 		t.Errorf("disk bytes = %d, want %d", got, 2<<30)
 	}
-	// This was once a top-level cluster setting that only the front door
-	// ever read.
+	// Only the front door reads this, so it lives under ingress rather than
+	// at the top level.
 	if cfg.Ingress.ACMEEmail != "me@example.com" {
 		t.Errorf("ingress = %+v", cfg.Ingress)
 	}

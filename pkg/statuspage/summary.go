@@ -190,8 +190,8 @@ type Store struct {
 
 	ReadOnly bool `json:"readOnly,omitempty"`
 
-	// Status is the store's state in a few words — accepting, at its cap,
-	// near its floor, not accepting data — shown as it is by the page and by
+	// Status is the store's state in a few words (accepting, at its cap,
+	// near its floor, not accepting data), shown as it is by the page and by
 	// orca top.
 	Status string `json:"status"`
 	Level  Level  `json:"level"`
@@ -211,7 +211,7 @@ const (
 
 	// A large disk at 90% can still have plenty left, and a small one at 80%
 	// may have almost nothing. Below this much free it is critical whatever
-	// the percentage — on any disk big enough for that to be meaningful,
+	// the percentage, on any disk big enough for that to be meaningful,
 	// which an EFI partition is not.
 	diskFreeCrit      = 1 << 30
 	diskFreeFloorSize = 4 << 30
@@ -535,7 +535,7 @@ func buildServices(nv *nomadView, mv *metricsView) []Service {
 }
 
 // allocUsage sums what a service's current allocations use. Nil when none of
-// them has reported yet — unknown, which is not the same as zero.
+// them has reported yet: unknown, which is not the same as zero.
 func allocUsage(mv *metricsView, allocIDs []string) (*float64, *Usage) {
 	var cpu, used, limit float64
 	var sawCPU, sawMem bool

@@ -13,16 +13,16 @@ import (
 // OrcaApp is the group the jobs orca runs for you are filed under: ingress,
 // the resolver, the log and metric stores. They are ordinary Nomad jobs
 // carrying ordinary orca metadata, so plan, apply, status and the health wait
-// all work on them with no special cases — they are simply an app you did not
+// all work on them with no special cases. They are simply an app you did not
 // write, and they are named so you can see that.
 const OrcaApp = manifest.ReservedGroup
 
 // OrcaServices are those services that register an address.
 //
-// One list, because there were three: the resolver's name list, the log
-// command's target list, and the jobs themselves. Two of three would be
-// updated when a component was added, and the third would silently miss it.
-// vector is absent deliberately — it registers no port, so there is no address
+// One list serves the resolver's name list, the log command's target list
+// and the jobs themselves. With three separate lists, two would be updated
+// when a component was added and the third would silently miss it.
+// vector is absent deliberately: it registers no port, so there is no address
 // to resolve or to filter logs by.
 var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-exporter", "status", "dns"}
 
@@ -37,8 +37,8 @@ const (
 
 // Well-known ports for the platform's data stores. They are fixed rather than
 // dynamic so a store keeps its address across restarts, and they bind the
-// internal host network — the container bridge, or the private address above
-// one machine — so a fixed port is not a fixed hole in the machine. Everything
+// internal host network (the container bridge, or the private address above
+// one machine), so a fixed port is not a fixed hole in the machine. Everything
 // that talks to them finds the address through the catalog.
 const (
 	LogsPort    = 9428
@@ -63,8 +63,8 @@ type PlatformOptions struct {
 
 	// MonitoringNode and IngressNode are the machines the platform's pinned
 	// jobs run on: the log and metric stores and the status page on one,
-	// ingress on the other — the same machine unless cluster.yaml separates
-	// them. Pinned because each owns data on one disk: without it a
+	// ingress on the other (the same machine unless cluster.yaml separates
+	// them). Pinned because each owns data on one disk: without it a
 	// reschedule would start a store against an empty directory and report
 	// it healthy while serving nothing. The jobs on every machine (the
 	// resolver, the log shipper, the node exporter) are pinned to neither.
@@ -114,7 +114,7 @@ type IngressSpec struct {
 	ACMEEmail string
 
 	// AuthHash is a bcrypt hash of the admin password. Empty means the
-	// platform dashboards are not published at all — failing closed, because
+	// platform dashboards are not published at all. This fails closed, because
 	// the alternative is putting your logs on the internet behind nothing.
 	AuthHash string
 }
@@ -124,7 +124,7 @@ type IngressSpec struct {
 //
 // It is orca itself, run as `orca serve-status`. Image is what the task runs
 // in. Binary, when set, is the path on the host of an orca binary apply
-// shipped there, mounted in as /orca — which is how orca gets onto the machine
+// shipped there, mounted in as /orca. That is how orca gets onto the machine
 // until it publishes an image of its own. An image of its own would carry orca
 // at /orca, and Binary would simply be empty: the job is otherwise the same.
 type StatusSpec struct {
@@ -147,8 +147,8 @@ type LogsSpec struct {
 	Retention string
 
 	// DiskBytes is a plain byte count. The size is resolved before it gets
-	// here because these flags reject "10G" — they want a bare number or a
-	// decimal suffix like "10GB" — and a rejected flag is a container that
+	// here because these flags reject "10G" (they want a bare number or a
+	// decimal suffix like "10GB"), and a rejected flag is a container that
 	// exits 2 with its usage text on stdout and nothing on stderr, which is a
 	// genuinely hard failure to read.
 	DiskBytes int64
@@ -247,9 +247,10 @@ func platformJob(opts PlatformOptions, name, image string, cpu, memMB int) (*nom
 	// A second machine turns the "internal" host network from the container
 	// bridge into the private NIC, but a running allocation keeps the address
 	// it was placed with, and a spec that did not change is never resubmitted.
-	// So without this, the stores stayed on the first machine's bridge address
-	// after it joined a cluster, and every other machine resolved that address
-	// to its own bridge: logs, metrics and ingress quietly reaching nothing.
+	// So without this, the stores would stay on the first machine's bridge
+	// address after it joined a cluster, and every other machine would resolve
+	// that address to its own bridge: logs, metrics and ingress quietly
+	// reaching nothing.
 	// Stamped only above one machine, so a one-machine cluster's specs are
 	// exactly what they were.
 	if opts.MultiNode {
@@ -339,9 +340,9 @@ func metricsJob(opts PlatformOptions) *nomad.Job {
 // reports per-allocation CPU, memory and disk, so one target per machine covers
 // every workload on it without a per-service exporter.
 //
-// The stores are scraped where they actually listen. They were scraped at
-// 127.0.0.1, but they bind the internal network — the container bridge or the
-// private address, never loopback — so both targets were permanently down.
+// The stores are scraped where they actually listen, not at 127.0.0.1: they
+// bind the internal network (the container bridge or the private address,
+// never loopback), so a loopback target would be permanently down.
 // The metric store's own address is the one Nomad bound for it; the log
 // store's comes from the catalog, since it may be on another machine.
 func scrapeConfig(opts PlatformOptions) string {
@@ -382,8 +383,8 @@ const nomadMetrics = `    metrics_path: /v1/metrics
 `
 
 // nomadScrape scrapes every machine's Nomad agent. Each agent reports only
-// the allocations running on its own machine, so scraping one of them —
-// which this used to do — silently left out every service on the others.
+// the allocations running on its own machine, so scraping any one of them
+// alone would silently leave out every service on the others.
 //
 // On one machine the agent answers on loopback only. Above one, it also
 // answers on the machine's private address, which is the address that
@@ -410,9 +411,9 @@ func nomadScrape(opts PlatformOptions) string {
 // Rendered from the catalog, like the log store's address above, so the target
 // list follows services and machines as they come, go and move, and a change
 // reaches the store as a SIGHUP rather than a restart. Each target's tags
-// become its labels: a service's group and service — an app's prod and test
-// servers export the same metric names, and those two labels are what keep
-// them apart — and a machine's node name.
+// become its labels: a service's group and service, and a machine's node name.
+// An app's prod and test servers export the same metric names, and group and
+// service are what keep them apart.
 //
 // Values are quoted: they are DNS labels, and a group named "123" or "yes"
 // would otherwise reach VictoriaMetrics as a number or a boolean.
@@ -438,7 +439,7 @@ const NodeTag = "node=${node.unique.name}"
 // Nomad's telemetry covers what each allocation uses; this is the machine
 // underneath them, which is what actually fills up.
 //
-// A system job, like vector, so every machine reports — including one added
+// A system job, like vector, so every machine reports, including one added
 // later, with no change here. It reads the host's /proc, /sys and mounts, which
 // is why it is part of the platform rather than something a manifest could
 // declare.
@@ -503,7 +504,7 @@ func nodeMountExclude(dataDir string) string {
 
 // statusJob runs the status page.
 //
-// Host networking, because it reads Nomad's API, which answers on loopback —
+// Host networking, because it reads Nomad's API, which answers on loopback
 // and which the firewall deliberately keeps every container on the bridge
 // away from. It only ever reads. A dynamic port on the internal network, found
 // through the catalog by ingress and by `orca top`, so it takes no number a
@@ -618,7 +619,7 @@ func vectorJob(opts PlatformOptions) *nomad.Job {
 
 	task.Config["network_mode"] = "host"
 	// The Docker socket is how Vector discovers containers and reads their
-	// logs, which also gets it the container labels Nomad sets — so a log line
+	// logs, which also gets it the container labels Nomad sets, so a log line
 	// arrives already knowing which job and task produced it.
 	task.Config["volumes"] = []string{
 		"/var/run/docker.sock:/var/run/docker.sock:ro",
@@ -657,13 +658,13 @@ func vectorConfig() string {
 	// while the store runs on one, so a hardcoded 127.0.0.1 would silently
 	// drop the logs of every machine except that one.
 	//
-	// The default keeps the config valid before the store has registered —
+	// The default keeps the config valid before the store has registered;
 	// otherwise Vector would crash-loop on unparseable YAML until it did.
 	//
 	// Each line carries the machine as `node`, the name cluster.yaml gives it
 	// and the label every metric series has, so a log line and a graph say
-	// the same thing about where. Vector's own `host` is the OS hostname —
-	// whatever the provider called the box — and is dropped rather than left
+	// the same thing about where. Vector's own `host` is the OS hostname
+	// (whatever the provider called the box) and is dropped rather than left
 	// to disagree with it. The node is part of the stream: a job on every
 	// machine is one source per machine.
 	return fmt.Sprintf(`{{ $addr := "127.0.0.1:%d" }}{{ range nomadService "%s" }}{{ $addr = printf "%%s:%%d" .Address .Port }}{{ end }}
@@ -739,8 +740,8 @@ func ingressJob(opts PlatformOptions) *nomad.Job {
 		// provider, is how the dashboards get published.
 		//
 		// noop, not restart: the file provider watches it and reloads on its
-		// own. It changes whenever a dashboard's backend moves — the status
-		// page gets a new port every time orca is upgraded — and restarting
+		// own. It changes whenever a dashboard's backend moves (the status
+		// page gets a new port every time orca is upgraded), and restarting
 		// ingress for that would drop every HTTP service to re-route one.
 		task.Templates = append(task.Templates, &nomad.Template{
 			EmbeddedTmpl: ptr(dyn),
@@ -769,7 +770,7 @@ func traefikConfig(opts PlatformOptions) string {
 	var b strings.Builder
 
 	// Without an explicit entryPoint, Traefik serves /ping on its internal
-	// "traefik" entrypoint, which is not defined here — so the health check
+	// "traefik" entrypoint, which is not defined here, so the health check
 	// would fail forever on a Traefik that is working perfectly.
 	fmt.Fprintf(&b, `ping:
   entryPoint: %[1]s
@@ -853,7 +854,7 @@ type dashboard struct {
 // traefikDynamicConfig publishes the platform's web UIs on subdomains, behind
 // basic auth.
 //
-// vmui — the query UI built into both Victoria binaries — is what makes logs
+// vmui, the query UI built into both Victoria binaries, is what makes logs
 // and metrics explorable in a browser without running Grafana. The Nomad UI is
 // included because "what is actually running" is the other question you have at
 // the same moment.
@@ -867,7 +868,7 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 
 	// Backends are resolved from the catalog rather than assumed to be on
 	// loopback. Once the stores bind the private address instead, nothing is
-	// listening on 127.0.0.1 for ingress to reach — the catalog is the only
+	// listening on 127.0.0.1 for ingress to reach: the catalog is the only
 	// thing that knows where they actually are.
 	//
 	// Nomad's own API is the exception: it binds loopback on every machine by

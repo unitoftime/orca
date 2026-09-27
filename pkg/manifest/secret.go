@@ -31,7 +31,7 @@ const EnvFile = "orca.env"
 //
 // That delivers the value as the file /secrets/apiToken. Files are the
 // default because they are what a process can read without its value ever
-// being in the environment — where it is inherited by every child process,
+// being in the environment, where it is inherited by every child process,
 // printed by an unlucky crash handler, and visible in /proc to anything else
 // on the box.
 //
@@ -91,7 +91,8 @@ func (s *Secret) UnmarshalYAML(node *yaml.Node) error {
 	}
 
 	// node.Decode does not inherit the parent decoder's KnownFields setting,
-	// so strictness is enforced by hand here — the same reason volume does it.
+	// so strictness is enforced by hand here, for the same reason volume does
+	// it.
 	if err := checkKnownFields(node, "secret", "name", "env", "path"); err != nil {
 		return err
 	}

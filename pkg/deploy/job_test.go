@@ -153,7 +153,7 @@ volume: 20G
 }
 
 // Above one machine an allocation address is ambiguous, because every node's
-// bridge uses the same CIDR. The port is published — on the private network,
+// bridge uses the same CIDR. The port is published on the private network,
 // never the public interface, and at the container's own number, because the
 // resolver answers with an address and no port: `db.shop:5432` has to mean
 // 5432 on whichever machine db is on.
@@ -231,8 +231,8 @@ ports:
 }
 
 // Without certificates there is no https entrypoint, so a route must attach
-// to http — and every entrypoint a route names must be one ingress defines.
-// Routes once named "websecure", which ingress never defined.
+// to http, and every entrypoint a route names must be one ingress defines.
+// Traefik drops a route naming one it does not, such as "websecure".
 func TestRoutesNameEntrypointsIngressDefines(t *testing.T) {
 	for _, tls := range []bool{true, false} {
 		opts := defaultOpts()
@@ -254,8 +254,9 @@ func TestRoutesNameEntrypointsIngressDefines(t *testing.T) {
 	}
 }
 
-// Ingress routes to the registered port. With a lower internal port beside
-// the routed one, the lower one was registered, and web traffic went to it.
+// Ingress routes to the registered port, so the routed port must be the one
+// registered even with a lower internal port beside it, or web traffic goes
+// to the lower one.
 func TestTheRoutedPortIsTheRegisteredOne(t *testing.T) {
 	job := buildOneIn(t, "shop", `
 name: web
@@ -272,8 +273,8 @@ ports:
 }
 
 // An HTTP port is reached by ingress, not by the internet, so it is addressed
-// like an internal one and publishes nothing on the public interface. It was
-// once a dynamic port there, unreachable only because the firewall said so.
+// like an internal one and publishes nothing on the public interface. It must
+// not be a dynamic port there, unreachable only because the firewall says so.
 func TestHTTPPortPublishesNothingPublic(t *testing.T) {
 	job := buildOneIn(t, "shop", "{name: web, image: i:1, ports: {8080: web.example.com}}", "web", defaultOpts())
 	net := job.TaskGroups[0].Networks[0]
@@ -421,7 +422,7 @@ func TestNoCmdLeavesTheImageAlone(t *testing.T) {
 // A metrics port is registered as a scrape target alongside the service's own
 // registration: under the shared catalog name the metric store ranges over,
 // tagged with where it came from, and never with the tag the resolver answers
-// for — or `server` would resolve to its metrics endpoint.
+// for, or `server` would resolve to its metrics endpoint.
 func TestMetricsPortIsAScrapeTarget(t *testing.T) {
 	body := `
 name: server
@@ -496,7 +497,7 @@ func TestNoMetricsPortNoScrapeTarget(t *testing.T) {
 
 // A replicated service drains before it stops: it leaves the catalog, and
 // only once ingress and the resolver have stopped sending it anything is it
-// killed. A single copy does not — waiting would only lengthen the outage.
+// killed. A single copy does not: waiting would only lengthen the outage.
 func TestShutdownDelayOnlyWithAnotherCopy(t *testing.T) {
 	tests := []struct {
 		name    string

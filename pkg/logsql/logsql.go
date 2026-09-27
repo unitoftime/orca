@@ -29,10 +29,10 @@ func (j Job) Filter() string {
 // history, bounded by since, and tail, which is not.
 //
 // They differ only in that filter because VictoriaLogs' live tailing endpoint
-// refuses a query carrying `_time` — and refuses it by streaming nothing at
-// all, with no error and a 200. Sending one query to both endpoints is
-// therefore a follow that hangs forever against a service that is logging
-// steadily, which is what it did.
+// refuses a query carrying `_time`, and refuses it by streaming nothing at
+// all, with no error and a 200. Sending one query to both endpoints would
+// therefore make a follow that hangs forever against a service that is
+// logging steadily.
 func Queries(jobs []Job, grep, since string) (history, tail string) {
 	var filters []string
 	if len(jobs) > 0 {

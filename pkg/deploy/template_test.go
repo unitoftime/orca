@@ -41,7 +41,7 @@ env:
 	}
 	// A backslash here means the quotes inside the template action were
 	// escaped, which makes the template unparseable and no secret would ever
-	// render. Worth asserting directly: the symptom on a real box is an opaque
+	// render. Worth asserting directly: the symptom on a machine is an opaque
 	// template error, not a missing variable.
 	if strings.Contains(tmpl, `\"`) {
 		t.Errorf("template action must not be escaped, got:\n%s", tmpl)
@@ -69,9 +69,9 @@ env:
 	}
 }
 
-// Siblings are found by name through the resolver. Their addresses were once
-// rendered as ORCA_<SVC>_ADDR with change_mode restart, which restarted every
-// service in a group whenever any other moved.
+// Siblings are found by name through the resolver. Their addresses must not be
+// rendered as ORCA_<SVC>_ADDR with change_mode restart, which would restart
+// every service in a group whenever any other moved.
 func TestNoSiblingAddressesAreRendered(t *testing.T) {
 	job := buildOneIn(t, "blog", `
 name: db
@@ -89,9 +89,9 @@ ports:
 	}
 }
 
-// An escaped $${secret.x} is literal text. Validation and rendering once read
-// the syntax differently, so this validated as a literal and was rendered as
-// a lookup of a secret nobody set — blocking the task forever.
+// An escaped $${secret.x} is literal text. Validation and rendering must read
+// the syntax the same way, or this validates as a literal and renders as a
+// lookup of a secret nobody set, blocking the task forever.
 func TestEscapedReferenceIsLiteralEverywhere(t *testing.T) {
 	job := buildOneIn(t, "blog", `
 name: api
@@ -109,7 +109,7 @@ env:
 }
 
 // What the template renders is what the container gets: values that break an
-// env-file line — quotes, backslashes, newlines — survive, and a {{ in the
+// env-file line (quotes, backslashes, newlines) survive, and a {{ in the
 // manifest is text rather than a template action. Rendered with stand-ins for
 // Nomad's functions and parsed with the parser Nomad itself uses.
 func TestEnvTemplateRoundTrips(t *testing.T) {

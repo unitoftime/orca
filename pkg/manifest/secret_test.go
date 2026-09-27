@@ -266,7 +266,7 @@ func TestSecretValidationErrors(t *testing.T) {
 	}
 }
 
-// A nested path is allowed — only escaping upward is not.
+// A nested path is allowed; only escaping upward is not.
 func TestSecretNestedPathAllowed(t *testing.T) {
 	m, err := ParseGroup("app", []byte("{name: x, image: i:1, secrets: [{name: tok, path: tls/key.pem}]}"), "app.yaml")
 	if err != nil {
@@ -300,7 +300,7 @@ func equalStrings(a, b []string) bool {
 }
 
 // orca files its own jobs under this group, so a directory of the same name
-// would put your services in the same namespace — and a service called traefik
+// would put your services in the same namespace, and a service called traefik
 // or dns would collide with the real one outright.
 func TestReservedGroupIsRefused(t *testing.T) {
 	_, err := ParseGroup(ReservedGroup, []byte("{name: web, image: i:1}"), "web.yaml")

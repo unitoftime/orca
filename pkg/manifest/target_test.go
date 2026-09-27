@@ -23,7 +23,7 @@ bucket: orca-backups
 		t.Errorf("region = %q, want the default %q", s.Region, DefaultRegion)
 	}
 	// A target runs nothing, so the sizing defaults every container gets must
-	// not be applied to it — a cpu on a thing with no process is noise.
+	// not be applied to it: a cpu on a thing with no process is noise.
 	if s.CPU != 0 || s.Replicas != 0 || s.Memory != 0 {
 		t.Errorf("a target should not be sized: cpu=%v replicas=%d memory=%v", s.CPU, s.Replicas, s.Memory)
 	}

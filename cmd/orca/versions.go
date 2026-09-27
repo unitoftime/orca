@@ -4,7 +4,7 @@ package main
 // a node. It is the single source of truth for "what does this cluster run":
 // bump a field, rebuild orca, re-run `orca bootstrap`, and the node converges.
 //
-// Versions live in code rather than cluster.yaml on purpose — they travel with the
+// Versions live in code rather than cluster.yaml on purpose: they travel with the
 // binary and an upgrade is a reviewable commit, not a per-box config edit.
 //
 // Each comment is the browse URL for finding newer releases. Mind the version
@@ -29,7 +29,7 @@ type Stack struct {
 	// never something that happens because a tag moved.
 	// Rclone is the S3 client backups use. Chosen over MinIO's mc because it
 	// speaks every S3 dialect, configures entirely from environment variables
-	// with no config file, and is still published where it can be pulled —
+	// with no config file, and is still published where it can be pulled;
 	// mc's images have disappeared from both Docker Hub and quay.io.
 	//
 	// Alpine is the image the status page's orca binary is mounted into, until

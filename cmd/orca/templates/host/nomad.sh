@@ -33,7 +33,7 @@ fi
 echo "=== 2. Installing CNI reference plugins ${CNI_VERSION} ==="
 # Nomad's bridge network mode is implemented with the upstream CNI plugins.
 # Without them every allocation fails placement on the constraint
-# ${attr.plugins.cni.version.bridge} and nothing is ever scheduled — with no
+# ${attr.plugins.cni.version.bridge} and nothing is ever scheduled, with no
 # error anywhere except the job's placement failure.
 CNI_VERSION="{{CNI_VERSION}}"
 if [ -x /opt/cni/bin/bridge ] && /opt/cni/bin/bridge 2>&1 | grep -qF "${CNI_VERSION#v}"; then
@@ -108,16 +108,16 @@ fi
 
 # A lone server whose address changes has to be told so. Raft keeps the
 # address every server had, and a second machine moves the first from loopback
-# to its private address. Nomad still elects the one server leader — raft
-# counts its vote by ID — but the old address stays in the raft configuration,
+# to its private address. Nomad still elects the one server leader (raft
+# counts its vote by ID), but the old address stays in the raft configuration,
 # and every reconcile then tries to replace it by removing the only voter,
 # which raft refuses: an error every ten seconds, for as long as it runs.
 # peers.json is Nomad's own recovery file: read once at the next start, it
 # replaces the configuration and is deleted.
 #
 # One server only. With several, peers.json has to list them all with the
-# addresses each will have, written on every server while all are stopped —
-# not something one machine's bootstrap can do alone.
+# addresses each will have, written on every server while all are stopped,
+# which is not something one machine's bootstrap can do alone.
 OLD_RPC=$(grep -oP '^\s*rpc\s*=\s*"\K[^"]+' /etc/nomad.d/nomad.hcl 2>/dev/null || true)
 RAFT_DIR="${DATA_DIR}/nomad/server/raft"
 if [ "{{SERVER_COUNT}}" = "1" ] && [ "{{ROLE}}" = "server" ] \

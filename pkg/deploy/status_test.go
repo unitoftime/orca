@@ -165,7 +165,7 @@ func TestSummarizeSortsByAppThenService(t *testing.T) {
 
 // A failed allocation Nomad has already replaced is history, not current
 // state. Reporting a service as broken because of a failure it recovered from
-// makes apply fail on a healthy cluster — which is worse than not checking at
+// makes apply fail on a healthy cluster, which is worse than not checking at
 // all, because it trains you to ignore the check.
 func TestSummarizeIgnoresRecoveredFailures(t *testing.T) {
 	jobs := map[string]JobState{"a-web": job("a-web", "a", "web", 1)}
@@ -209,9 +209,9 @@ func TestSummarizeIgnoresDrainingAllocs(t *testing.T) {
 
 // A periodic job never owns an allocation: Nomad attributes every run to a
 // dispatched child. Reporting the parent by its own (always empty) allocation
-// set made a failing nightly backup look "scheduled" forever — which is what a
-// silent backup failure looks like from outside, and the exact thing backups
-// exist to prevent.
+// set would make a failing nightly backup look "scheduled" forever. That is
+// what a silent backup failure looks like from outside, and the exact thing
+// backups exist to prevent.
 func TestPeriodicHealthIsItsLastRun(t *testing.T) {
 	jobs := map[string]JobState{
 		"shop-db-backup": {ID: "shop-db-backup", App: "shop", Service: "db-backup", Count: 1, Periodic: true},
@@ -296,7 +296,7 @@ func TestFailedTaskIsStillAFailure(t *testing.T) {
 
 // A deployment that failed is a fact about the past and Nomad never changes
 // it. A task that crashed, exhausted its restart attempts, and then recovered
-// once the cause was cleared is running — reporting it as failed sends you to
+// once the cause was cleared is running. Reporting it as failed sends you to
 // look at a container that is working.
 func TestRecoveredTaskOutranksAFailedDeployment(t *testing.T) {
 	jobs := map[string]JobState{
@@ -335,7 +335,7 @@ func TestRecoveredTaskOutranksAFailedDeployment(t *testing.T) {
 }
 
 // The move must not hide a deployment that failed and left the allocations
-// broken — only the recovered case changes.
+// broken; only the recovered case changes.
 func TestFailedDeploymentWithBrokenAllocsStillFails(t *testing.T) {
 	jobs := map[string]JobState{
 		"a-web": {ID: "a-web", App: "a", Service: "web", Count: 1},

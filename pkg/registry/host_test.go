@@ -105,8 +105,8 @@ func TestResolvePublicIsNotPrivate(t *testing.T) {
 	}
 }
 
-// With no local credentials for it, a private image fails to resolve at all,
-// the same as before — the anonymous attempt changes nothing for it.
+// With no local credentials for it, a private image fails to resolve at all;
+// the anonymous attempt changes nothing for it.
 func TestResolvePrivateWithoutLocalCredentialsFails(t *testing.T) {
 	srv := fakeRegistry(t, true)
 	host := strings.TrimPrefix(srv.URL, "http://")

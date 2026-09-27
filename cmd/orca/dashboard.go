@@ -12,7 +12,7 @@ import (
 
 // The dashboards' password belongs to the cluster, not to a file: bootstrap
 // generates one and keeps it in Nomad's variable store, `orca password` reads
-// it back, and `orca password set` changes it — the way a secret is set.
+// it back, and `orca password set` changes it, the way a secret is set.
 
 // adminPassword is the password the dashboards are behind: the cluster's,
 // generated now if it has none, which is what a cluster bootstrapped before
@@ -116,7 +116,7 @@ func passwordSet(ctx context.Context, cluster *Cluster) error {
 // configuration.
 //
 // bcrypt salts randomly, so hashing the password afresh on every apply would
-// change the job spec every time and redeploy ingress forever — breaking the
+// change the job spec every time and redeploy ingress forever, breaking the
 // guarantee that an unchanged cluster is a no-op. So the hash already deployed
 // is reused whenever it still matches the configured password, and a new one is
 // generated only when the password actually changed.

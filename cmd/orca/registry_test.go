@@ -59,7 +59,7 @@ func TestParseLoginArgs(t *testing.T) {
 // TestCredentialHelper runs the helper script as Nomad would, against a stub
 // curl standing in for Nomad's variable store. The contract that matters is
 // Nomad's: exit zero always, JSON always, and {} whenever there is nothing to
-// give — a non-zero exit fails the pull of every public image too.
+// give: a non-zero exit fails the pull of every public image too.
 func TestCredentialHelper(t *testing.T) {
 	for _, tool := range []string{"sh", "jq", "tr"} {
 		if _, err := exec.LookPath(tool); err != nil {

@@ -81,9 +81,9 @@ func TestHashDoesNotDependOnMapOrder(t *testing.T) {
 	}
 }
 
-// Every task image is pinned — a template's init task and the platform's
-// images went out as tags — and a job whose spec changed is re-hashed, or the
-// plan would compare against a stale hash.
+// Every task image is pinned, a template's init task and the platform's
+// images included, and a job whose spec changed is re-hashed, or the plan
+// would compare against a stale hash.
 func TestPinImagesPinsEveryTask(t *testing.T) {
 	job := buildOneIn(t, "files", "{name: store, template: garage:2.3.0, volume: 1G}", "store", defaultOpts())
 	before := job.Meta[MetaHash]

@@ -24,11 +24,10 @@ const TargetS3 = "s3"
 //	endpoint: https://<account>.r2.cloudflarestorage.com
 //	bucket: orca-backups
 //
-// It is the one service document that runs no container. That is a real cost —
-// every other noun here is something running — and it buys the thing the
-// cluster-level `backups:` block used to buy and nothing else did: the endpoint
-// and the credentials are written once, and everything that backs up somewhere
-// refers to them by name.
+// It is the one service document that runs no container. That is a real cost
+// (every other noun here is something running), and it buys what nothing else
+// does: the endpoint and the credentials are written once, and everything that
+// backs up somewhere refers to them by name.
 //
 // Its credentials are two secrets in its own group, named after it the way a
 // template's generated secrets are:
@@ -53,7 +52,7 @@ const DefaultRegion = "auto"
 // Backup is a service's backup policy: where its dumps go, and how often.
 //
 // Only a templated service whose template knows how to dump itself may have
-// one — orca can back up a database because it knows what a database is, and
+// one: orca can back up a database because it knows what a database is, and
 // cannot back up an arbitrary volume because it does not know what is safe to
 // copy while it is being written.
 type Backup struct {

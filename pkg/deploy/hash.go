@@ -14,14 +14,14 @@ import (
 // Hash is the content hash of a job spec, stamped into the job's own meta and
 // compared against the deployed job's to decide whether anything changed.
 //
-// This is what makes a no-op apply quiet and fast — the requirement that lets
+// This is what makes a no-op apply quiet and fast, the requirement that lets
 // `orca apply` run from CI on every commit. Nomad would also treat an identical
 // submission as a no-op, but only after a round trip per job; comparing hashes
 // answers the question for every app in one read.
 //
 // The hash covers the whole rendered job, so anything that would alter what
-// runs — a resolved image digest, a resource change, a new env var, a template
-// edit — changes it, with no separate list of significant fields to keep in
+// runs (a resolved image digest, a resource change, a new env var, a template
+// edit) changes it, with no separate list of significant fields to keep in
 // sync.
 func Hash(job *nomad.Job) string {
 	// The hash field itself is excluded, or stamping it would change what it is
@@ -51,11 +51,11 @@ func Hash(job *nomad.Job) string {
 // PinImages rewrites every task image in the jobs to the digest resolve
 // returns for it, and re-stamps the hash of any job it changed.
 //
-// One rule for every image orca submits: a service's own image was pinned,
-// but the platform's, the init task a template adds and the backup's S3
-// client went out as tags — so a tag moving upstream changed what ran
-// without apply noticing, and two machines could run two different builds
-// of "the same" component. resolve is injected so this stays offline.
+// One rule pins every image orca submits: a service's own image, the
+// platform's, the init task a template adds and the backup's S3 client. Any
+// image left as a tag lets a tag moving upstream change what runs without
+// apply noticing, and two machines could run two different builds of "the
+// same" component. resolve is injected so this stays offline.
 func PinImages(jobs []*nomad.Job, resolve func(ref string) (string, error)) error {
 	cache := map[string]string{}
 	pin := func(ref string) (string, error) {

@@ -56,7 +56,7 @@ const NomadSerfPort = 4648
 //
 // Filtering happens in prerouting rather than input because published
 // container ports are destination-NAT'd by the CNI and then traverse the
-// forward path, never input — an input-only ruleset looks correct and blocks
+// forward path, never input. An input-only ruleset looks correct and blocks
 // none of them. At this hook the packet still carries the port it was sent to,
 // before any rewriting, which is exactly what the rules are written against.
 func Firewall(publicIface, bridgeIface string, ports FirewallPorts) string {
@@ -116,16 +116,16 @@ table inet orca {
 
 	// The one hole the binding rules cannot close. Above one machine the
 	// scheduler binds the private network, which a container can reach through
-	// the bridge — so a compromised container could submit jobs. Nothing that
+	// the bridge, so a compromised container could submit jobs. Nothing that
 	// legitimately talks to Nomad does so from inside a container: the agent
 	// renders templates itself, and ingress runs on the host's network.
 	//
 	// Two hooks, because there are two paths. A container reaching its own
 	// machine's scheduler arrives on input; one reaching another machine's is
-	// routed out through forward and never touches input here — and at the
-	// other end it arrives from the private network, masqueraded, looking
-	// like the machine itself. Guarding input alone closed the first path and
-	// left every other machine's scheduler open to every container.
+	// routed out through forward and never touches input here. At the other
+	// end it arrives from the private network, masqueraded, looking like the
+	// machine itself. Guarding input alone would close the first path and
+	// leave every other machine's scheduler open to every container.
 	nomad := joinPorts(NomadPorts)
 	fmt.Fprintf(&b, `
   chain host {

@@ -21,15 +21,15 @@ type Node struct {
 // A bounded ConnectTimeout keeps any command against a dead box from hanging
 // on the default multi-minute TCP timeout.
 //
-// The rest share one connection per host. orca runs a command per ssh — a
-// status is three, an apply dozens, `top -w` one every few seconds — and each
-// was its own TCP connection and key exchange. On a machine on the public
-// internet, sshd admits only ten connections at a time that have not yet
-// logged in, bots trying passwords hold those slots, and past ten it drops
-// new arrivals at random: one of orca's handshakes was dropped with
+// The rest share one connection per host. orca runs a command per ssh (a
+// status is three, an apply dozens, `top -w` one every few seconds), and on
+// its own each would be a TCP connection and key exchange. On a machine on
+// the public internet, sshd admits only ten connections at a time that have
+// not yet logged in, bots trying passwords hold those slots, and past ten it
+// drops new arrivals at random, which shows up as
 // "kex_exchange_identification: Connection reset by peer" in the middle of a
-// status. Now the first ssh to a host leaves a connection behind that the
-// rest reuse, and it closes itself after a minute unused, so a run makes one
+// status. So the first ssh to a host leaves a connection behind that the rest
+// reuse, and it closes itself after a minute unused: a run makes one
 // handshake instead of dozens, and each command skips a round trip.
 func sshOptions() []string {
 	opts := []string{"-o", "ConnectTimeout=10"}
@@ -49,8 +49,8 @@ func sshOptions() []string {
 
 // sshControlPath is where the shared connections' sockets live: a directory
 // only you can open, since whoever can reach a socket can run commands through
-// it. Empty — each command connecting on its own, as before — when there is
-// nowhere to put one.
+// it. Empty when there is nowhere to put one, and each command then connects
+// on its own.
 var sshControlPath = onceControlPath()
 
 func onceControlPath() func() string { return sync.OnceValue(controlPath) }

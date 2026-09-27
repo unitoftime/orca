@@ -29,7 +29,7 @@ func loadGroups(cfg Config) ([]*manifest.Manifest, error) {
 }
 
 // discoverGroups is loadGroups without requiring that any group exists. An
-// empty tree is a real answer — every group has been deleted — and the
+// empty tree is a real answer (every group has been deleted), and the
 // questions purge asks ("is this still declared?") need it rather than an
 // error.
 func discoverGroups(cfg Config) ([]*manifest.Manifest, error) {
@@ -83,8 +83,8 @@ type machinePort struct {
 
 // machinePorts are the public ports no service may claim. sshd is listening
 // on 22 whatever orca does, and ingress takes 80 and 443 when it runs. Nomad
-// knows about neither — sshd is not its job and Traefik binds through host
-// networking — so a service asking for one of these places without complaint
+// knows about neither (sshd is not its job, and Traefik binds through host
+// networking), so a service asking for one of these places without complaint
 // and then fails on the box with "address already in use".
 func machinePorts(cfg Config) []machinePort {
 	out := []machinePort{{proto: "tcp", port: 22, owner: "ssh"}}

@@ -66,7 +66,7 @@ const (
 	HealthStopped Health = "stopped"
 
 	// HealthScheduled means a periodic job that has not run yet. Once it has,
-	// its health is its last run's — see classifyPeriodic.
+	// its health is its last run's (see classifyPeriodic).
 	HealthScheduled Health = "scheduled"
 )
 
@@ -88,15 +88,15 @@ type ServiceStatus struct {
 
 // Summarize folds the cluster's raw state into one row per service.
 //
-// It is a pure function of its inputs so the classification — which is the part
-// with actual judgement in it — is testable without a machine.
+// It is a pure function of its inputs so the classification, which is the part
+// with actual judgement in it, is testable without a machine.
 func Summarize(jobs map[string]JobState, allocs []AllocState, deployments []DeploymentState) []ServiceStatus {
 	latest := latestDeployments(deployments)
 
 	// A periodic job never owns an allocation: Nomad attributes every run to a
 	// dispatched child. Collecting them under the parent is what lets a
 	// failing nightly backup be reported as failing, rather than as forever
-	// "scheduled" — which is how a silent backup failure looks from the
+	// "scheduled". That is how a silent backup failure looks from the
 	// outside, and the exact thing backups exist to prevent.
 	runsByParent := map[string][]AllocState{}
 	for _, a := range allocs {
@@ -110,9 +110,9 @@ func Summarize(jobs map[string]JobState, allocs []AllocState, deployments []Depl
 		// Only allocations Nomad still wants running describe the present.
 		// Every other one is history: a replaced allocation, a drained one, or
 		// one that failed and was already rescheduled. Counting those reports
-		// replicas that are on their way out, and — the case this rule exists
-		// for — reports a service as broken because of a failure it has
-		// already recovered from.
+		// replicas that are on their way out and, worse, reports a service as
+		// broken because of a failure it has already recovered from. That last
+		// case is the one this rule exists for.
 		if a.DesiredStatus != "" && a.DesiredStatus != "run" {
 			continue
 		}
@@ -241,7 +241,7 @@ func classify(s *ServiceStatus, job JobState, allocs []AllocState, dep *Deployme
 	}
 
 	// Nomad accepted the job but placed nothing. The task has no logs and no
-	// events, because it never ran — so without naming this state the only
+	// events, because it never ran, so without naming this state the only
 	// symptom is a service that stays "pending" forever.
 	if len(allocs) == 0 && (dep == nil || dep.Placed == 0) {
 		s.Health = HealthUnplaced
@@ -261,7 +261,7 @@ func classify(s *ServiceStatus, job JobState, allocs []AllocState, dep *Deployme
 	// is a fact about the past and never changes: Nomad leaves it "failed"
 	// forever, even after the task it was waiting on starts and stays up. A
 	// task that crashed, exhausted its restart attempts, and then recovered
-	// once the cause was cleared is running — reporting it as failed sends you
+	// once the cause was cleared is running. Reporting it as failed sends you
 	// to look at a container that is working.
 	//
 	// This is below anyTaskFailing, so a deployment that failed *and* left the
@@ -279,7 +279,7 @@ func classify(s *ServiceStatus, job JobState, allocs []AllocState, dep *Deployme
 	}
 
 	// A past failure explains a service that is not working. Next to one that
-	// is, it only misleads — the exit code that sent it into a restart loop is
+	// is, it only misleads: the exit code that sent it into a restart loop is
 	// not news once it came back.
 	if s.Health == HealthOK {
 		s.Message = ""
@@ -298,7 +298,7 @@ func (a AllocState) Since() time.Time {
 }
 
 // anyTaskFailing reports a task that is dead or restarting under a job that is
-// supposed to be running — the crash-loop case that a spec-hash comparison
+// supposed to be running: the crash-loop case that a spec-hash comparison
 // cannot see, because the spec is perfectly current while nothing works.
 func anyTaskFailing(allocs []AllocState) bool {
 	for _, a := range allocs {
@@ -312,7 +312,7 @@ func anyTaskFailing(allocs []AllocState) bool {
 			// Deliberately not "any dead task": a task that has finished its
 			// work is dead too. A poststart task that sets a service up exits
 			// as soon as it is done, and a completed batch run ends the same
-			// way — neither is a failure, and Nomad says so by leaving Failed
+			// way. Neither is a failure, and Nomad says so by leaving Failed
 			// unset. Restarting is the signal that something ended when it
 			// should not have.
 			if strings.Contains(t.Last, "restarting") || strings.Contains(t.Last, "Restarting") {

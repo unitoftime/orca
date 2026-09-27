@@ -25,7 +25,7 @@ import (
 // There is no HTTP client here on purpose: Nomad binds loopback on a
 // single-machine cluster, so it has no network listener to connect to. SSH is
 // the transport, which is also why every operation below is written to need one
-// round trip rather than one per job — an SSH round trip is a tenth of a second
+// round trip rather than one per job. An SSH round trip is a tenth of a second
 // and a CI apply should not spend ten of them discovering that nothing changed.
 type Cluster struct {
 	node Node
@@ -46,14 +46,14 @@ const NomadAddr = "http://127.0.0.1:4646"
 // the machine so the reply stays small.
 //
 // It fails rather than answering short. Without pipefail an unreachable Nomad
-// produced an empty list and a zero exit — "nothing is deployed" — which is
-// the answer every caller would act on: status reported an empty cluster,
-// and apply planned to create everything. Periodic children are left out of
-// the fetch: they are not services, and their IDs carry a slash.
+// would produce an empty list and a zero exit, which reads as "nothing is
+// deployed": the answer every caller acts on, so status would report an empty
+// cluster and apply would plan to create everything. Periodic children are
+// left out of the fetch: they are not services, and their IDs carry a slash.
 //
 // curl rather than `nomad operator api`, which infers a write method when its
-// stdin is not a terminal — which over SSH it never is — and gets back
-// "Invalid method".
+// stdin is not a terminal (over SSH it never is) and gets back "Invalid
+// method".
 const listJobsScript = `set -eo pipefail
 IDS=$(curl -sf --max-time 10 ` + NomadAddr + `/v1/jobs | jq -r '.[] | select((.ParentID // "") == "") | .ID')
 for id in $IDS; do
@@ -183,7 +183,7 @@ type VolumeDir struct {
 // them start.
 //
 // Docker would create a missing bind-mount source itself, but as root and at
-// whatever path was asked for — creating them deliberately keeps every byte
+// whatever path was asked for. Creating them deliberately keeps every byte
 // orca writes under the data directory. The ownership matters for the same
 // reason: a bind mount keeps the host's ownership, so an image that drops
 // privileges cannot write to a directory created as root, and fails at
@@ -360,7 +360,7 @@ func parseRuntime(out string) ([]deploy.AllocState, []deploy.DeploymentState, er
 //
 // This costs a call per job, so it runs only when something has actually failed
 // to place. The reason lives in the evaluation rather than anywhere a user
-// would think to look — the task has no logs, because it never started.
+// would think to look: the task has no logs, because it never started.
 func (c *Cluster) PlacementFailure(ctx context.Context, jobID string) string {
 	script := fmt.Sprintf(`curl -sf --max-time 10 %s/v1/job/%s/evaluations | jq -r '%s' 2>/dev/null`,
 		NomadAddr, jobID, placementJQ)
@@ -393,9 +393,9 @@ const placementJQ = `
 // the machine. That is the reason a secret is one variable rather than one key
 // inside a per-group variable.
 func (c *Cluster) SecretPaths(ctx context.Context) (map[string]bool, error) {
-	// Fails closed. This used to end in `|| true`, so an unreachable Nomad
-	// read as "no secrets are set" — and the caller that decides whether to
-	// generate a database password acts on exactly that answer.
+	// Fails closed. An unreachable Nomad must not read as "no secrets are
+	// set", because the caller that decides whether to generate a database
+	// password acts on exactly that answer.
 	script := fmt.Sprintf(`set -o pipefail
 curl -sf --max-time 10 "%s/v1/vars?prefix=%s/" | jq -r '.[].Path'`,
 		NomadAddr, deploy.SecretPrefix)
@@ -417,7 +417,7 @@ curl -sf --max-time 10 "%s/v1/vars?prefix=%s/" | jq -r '.[].Path'`,
 // PutSecret writes one secret into Nomad's variable store.
 //
 // The value travels on stdin and is assembled into the request body on the
-// machine, so it never appears in an argument list — a command line is visible
+// machine, so it never appears in an argument list: a command line is visible
 // in the process table for as long as the command runs, on both ends.
 func (c *Cluster) PutSecret(ctx context.Context, group, name, value string) error {
 	if err := c.putVariable(ctx, deploy.SecretPath(group, name), deploy.SecretItemKey, value); err != nil {
@@ -443,7 +443,7 @@ jq -n --arg p %q --arg k %q --arg v "$VALUE" '{Path: $p, Items: {($k): $v}}' \
 // whether it did.
 //
 // Nomad's check-and-set with index 0 means "create, never overwrite", so the
-// guarantee a generated password depends on — made once, never replaced — is
+// guarantee a generated password depends on (made once, never replaced) is
 // enforced by the store itself rather than by a list read a moment earlier
 // that may be stale or may have failed.
 func (c *Cluster) CreateSecret(ctx context.Context, group, name, value string) (bool, error) {
@@ -597,8 +597,8 @@ func (c *Cluster) DeleteRegistry(ctx context.Context, host string) error {
 
 // HasCredentialHelper reports whether this machine's Nomad will use the
 // registry credential helper: the helper installed, and the config naming it.
-// Either alone pulls anonymously — which is what a machine bootstrapped by an
-// older orca does, until it is bootstrapped again.
+// Either alone pulls anonymously, which is what a machine bootstrapped by an
+// older orca does until it is bootstrapped again.
 func (c *Cluster) HasCredentialHelper(ctx context.Context) (bool, error) {
 	const script = `if command -v docker-credential-orca >/dev/null && grep -q 'helper *= *"orca"' /etc/nomad.d/nomad.hcl; then echo yes; else echo no; fi`
 	out, err := c.node.RunOutput(ctx, script)
@@ -666,7 +666,7 @@ fi`
 
 // statusSummaryScript finds the status page in the catalog and asks it for
 // the summary. Over SSH, like the log store, so `orca top` depends on neither
-// ingress nor a password — and works when the front door is what is broken.
+// ingress nor a password, and works when the front door is what is broken.
 //
 // Not being registered exits with its own code and says nothing: the message
 // is written in Go, where a backtick is not a command substitution.
@@ -822,7 +822,7 @@ func parseVolumeListing(out string) VolumeListing {
 // validVolumePart is the guard in front of an rm -rf.
 //
 // A group or service is one directory name, never a path. The inputs come from
-// a listing of the volume root, so this can only fire on a bug — which is
+// a listing of the volume root, so this can only fire on a bug, which is
 // exactly when a check in front of a recursive delete earns its place.
 func validVolumePart(name string) error {
 	switch {
@@ -909,12 +909,12 @@ fi
 // script.
 //
 // Every value orca puts in a remote script goes through this or is built from
-// a name the manifest validator already constrained. The one that made it
-// necessary is a backup's filename: it comes from listing the bucket, so it is
-// remote input, and it was interpolated into a double-quoted string where
-// $(...) still runs. Writing a file into the backup bucket was command
-// execution as root on the machine, taken at the moment someone runs a
-// restore — which is when things are already going badly.
+// a name the manifest validator already constrained. The one that needs it
+// most is a backup's filename: it comes from listing the bucket, so it is
+// remote input. Inside a double-quoted string $(...) still runs, so writing a
+// file into the backup bucket would be command execution as root on the
+// machine, taken at the moment someone runs a restore, when things are
+// already going badly.
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
@@ -926,10 +926,9 @@ func (c *Cluster) ListBackups(ctx context.Context, spec deploy.BackupSpec, prefi
 	// Checked against rclone rather than assumed: listing an empty prefix in a
 	// bucket that exists exits 0 with no output, a missing bucket exits 3, and
 	// bad credentials exit 1. So "no backups yet" is exactly the empty exit-0
-	// case and nothing else — an earlier version treated 3 as empty too, which
-	// answered "no backups yet for shop/db" to someone whose bucket name was
-	// wrong. That is the reassuring-but-false answer this command exists to
-	// avoid giving.
+	// case and nothing else. Treating 3 as empty too would answer "no backups
+	// yet for shop/db" to someone whose bucket name is wrong: the
+	// reassuring-but-false answer this command exists to avoid giving.
 	script := fmt.Sprintf(`set -eu
 %[1]s
 BUCKET=%[3]s
@@ -1046,7 +1045,7 @@ func (c *Cluster) RestoreRedis(ctx context.Context, spec deploy.BackupSpec, grou
 
 // PreRestorePrefix is where a restore leaves the data it replaced, suffixed
 // with the time of the restore. Outside the volume root, so it is never
-// mistaken for a volume of its own — and kept rather than deleted, because
+// mistaken for a volume of its own. It is kept rather than deleted, because
 // deleting data is purge's job and nothing else's.
 func PreRestorePrefix(group, service string) string {
 	return path.Join(DataDir, "pre-restore", group+"-"+service)
@@ -1056,7 +1055,7 @@ func PreRestorePrefix(group, service string) string {
 // the reason restoreScript is: the backup name is remote input.
 //
 // A snapshot cannot simply be dropped into the volume. With appendonly on,
-// Redis loads the append-only file and ignores dump.rdb — and finding none, it
+// Redis loads the append-only file and ignores dump.rdb; finding none, it
 // starts empty and writes an empty one, so the restore would appear to work
 // and hold nothing. So the snapshot is loaded by a throwaway server with the
 // AOF off, which is then switched on: that rewrites the AOF from the loaded

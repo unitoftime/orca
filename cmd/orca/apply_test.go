@@ -149,7 +149,8 @@ func TestSelectGroups(t *testing.T) {
 
 // Naming a deleted group alongside a live one narrows the apply to both: the
 // live one is deployed, the deleted one's jobs are in scope to be stopped.
-// This once dropped the live group's manifests too, planning to stop all of it.
+// The live group's manifests must not be dropped too, or the plan stops all
+// of it.
 func TestScopeGroupsKeepsLiveGroupsBesideDeletedOnes(t *testing.T) {
 	groups := []*manifest.Manifest{
 		parseManifest(t, "shop", "{name: app, image: i:1}"),
@@ -226,8 +227,9 @@ func TestHostPortCollisionAcrossGroups(t *testing.T) {
 }
 
 // Ingress holds 80 and 443 through host networking and sshd holds 22, none of
-// which Nomad knows about, so a service claiming one used to validate, place,
-// and then fail on the box with "address already in use".
+// which Nomad knows about, so a service claiming one would validate, place,
+// and then fail on the box with "address already in use" unless loading the
+// manifests refuses it.
 func TestHostPortTakenByTheMachine(t *testing.T) {
 	cases := []struct {
 		name, cluster, ports, want string

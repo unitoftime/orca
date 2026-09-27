@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// Flags must be recognised wherever they appear. An earlier version stopped
-// parsing at the first positional argument and folded the rest of the line
-// into the search, so `orca logs worker tick -n 3` searched for the literal
-// "tick -n 3" and silently found nothing — which is indistinguishable from a
-// service that said nothing.
+// Flags must be recognised wherever they appear. Stopping at the first
+// positional argument would fold the rest of the line into the search, so
+// `orca logs worker tick -n 3` would search for the literal "tick -n 3" and
+// silently find nothing, which is indistinguishable from a service that said
+// nothing.
 func TestParseLogArgsFlagsAfterPositional(t *testing.T) {
 	opts, err := parseLogArgs([]string{"worker", "tick", "-n", "3"})
 	if err != nil {
@@ -98,9 +98,9 @@ func logCluster(t *testing.T) Config {
 }
 
 // VictoriaLogs' live tailing endpoint refuses a query carrying _time, and
-// refuses it by streaming nothing at all with a 200 — so `orca logs -f` on a
-// service logging every 20 seconds printed nothing, forever. Verified against
-// a real store: the same query tails fine with the filter removed.
+// refuses it by streaming nothing at all with a 200, so `orca logs -f` on a
+// service logging every 20 seconds would print nothing, forever. Verified
+// against a real store: the same query tails fine with the filter removed.
 func TestTailQueryHasNoTimeFilter(t *testing.T) {
 	cfg := logCluster(t)
 
@@ -131,7 +131,8 @@ func TestTailQueryHasNoTimeFilter(t *testing.T) {
 }
 
 // A backed-up database's logs include its backup runs, which are periodic
-// children named <id>/periodic-<time>. They were unreachable by any target.
+// children named <id>/periodic-<time>. Naming the database has to reach them
+// too, or a failing backup is the one job whose output cannot be shown.
 func TestLogTargetIncludesBackupRuns(t *testing.T) {
 	root := writeTree(t, map[string]string{
 		"cluster.yaml":         "nodes:\n  - host: root@203.0.113.10\n",

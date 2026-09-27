@@ -18,7 +18,7 @@ var (
 
 	// secretName is what a secret may be called. It is also a file name under
 	// /secrets by default, and it is interpolated into a command that runs on
-	// the machine, so it matches cmd/orca's own pattern exactly — a name that
+	// the machine, so it matches cmd/orca's own pattern exactly. A name that
 	// validates here but not there would be one that can be declared and never
 	// set.
 	secretName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -99,7 +99,7 @@ func (m *Manifest) Validate() error {
 		validateBackup(se, s)
 
 		// A target runs no container, so the validators below have nothing to
-		// check on it — and validateSource has already refused every field
+		// check on it, and validateSource has already refused every field
 		// they would have looked at.
 		if !s.IsTarget() {
 			validateSizing(se, s)
@@ -210,7 +210,7 @@ func validateVolume(e *errList, s *Service) {
 	}
 	// A host volume is one directory on one machine. Several replicas writing
 	// to it concurrently corrupts anything that was not built for it, and the
-	// two things most likely to have a volume — a database and a file store —
+	// two things most likely to have a volume (a database and a file store)
 	// emphatically were not.
 	if s.Replicas > 1 {
 		e.addf("has a volume and %d replicas; a volume is one directory on one machine, so it cannot be shared", s.Replicas)
@@ -362,7 +362,7 @@ func validatePorts(e *errList, s *Service, claimed map[string]string) {
 
 // validateNode checks the shape of a node reference. Whether that machine is
 // actually in cluster.yaml is checked by apply, which is the first thing that
-// knows what machines exist — a manifest lives in its own repo and cannot know.
+// knows what machines exist; a manifest lives in its own repo and cannot know.
 func validateNode(e *errList, s *Service) {
 	if s.Node == "" {
 		return
@@ -446,7 +446,7 @@ func validateTarget(e *errList, s *Service) {
 // validateBackup checks a service's backup policy.
 //
 // Whether the target it names actually exists is checked by apply, which is
-// the first thing that has every group in hand — a group is validated on its
+// the first thing that has every group in hand; a group is validated on its
 // own, and the target is usually in another one.
 func validateBackup(e *errList, s *Service) {
 	// endpoint, bucket and region belong to a target. On anything else they

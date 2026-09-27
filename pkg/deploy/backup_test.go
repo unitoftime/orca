@@ -93,7 +93,7 @@ func TestDumpGatesTheUpload(t *testing.T) {
 }
 
 // The dump uses the database's own image, so the client is never older than
-// the server — which pg_dump refuses outright.
+// the server, which pg_dump refuses outright.
 func TestDumpUsesTheDatabaseImage(t *testing.T) {
 	m, s := backupJob(t)
 	job := mustBackup(t, m, s)
@@ -189,8 +189,8 @@ func mustBackup(t *testing.T, m *manifest.Manifest, s *manifest.Service) *nomad.
 }
 
 // A template's arguments and the ones derived from its size are composed, not
-// one replacing the other: garage's config path once overwrote whatever Tune
-// produced, from a branch that knew garage's command line.
+// one replacing the other: garage's config path, a branch that knows
+// garage's command line, must not overwrite whatever Tune produces.
 func TestTemplateArgsComeFromTheRegistry(t *testing.T) {
 	job := buildOneIn(t, "files", "{name: store, template: garage:2.3.0, volume: 1G}", "store", defaultOpts())
 	args, _ := job.TaskGroups[0].Tasks[0].Config["args"].([]string)
@@ -255,7 +255,7 @@ func TestRedisTemplate(t *testing.T) {
 
 // A Redis backup is a snapshot the server streams over the replication
 // protocol, taken with the database's own image and logged in with its
-// generated password — which reaches redis-cli through the environment, never
+// generated password, which reaches redis-cli through the environment, never
 // the command line.
 func TestRedisBackupDumpsOverReplication(t *testing.T) {
 	m, err := manifest.ParseGroup("blog", []byte("{name: redis, template: redis:8.10, volume: 2G, backup: {to: storage/offsite}}"), "blog/redis.yaml")

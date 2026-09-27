@@ -220,8 +220,8 @@ func TestStatusIsPublishedWithTheDashboards(t *testing.T) {
 	}
 }
 
-// A dashboard's backend moving — the status page gets a new port on every
-// upgrade — must re-route it without restarting ingress, which would drop
+// A dashboard's backend moving (the status page gets a new port on every
+// upgrade) must re-route it without restarting ingress, which would drop
 // every HTTP service for the sake of one route.
 func TestDashboardRoutesReloadWithoutRestart(t *testing.T) {
 	job := platformJobNamed(t, platformOpts(), "traefik")
@@ -565,8 +565,9 @@ func TestScrapeConfigScrapesMetricsPorts(t *testing.T) {
 	})
 }
 
-// Each Nomad agent reports only its own machine's allocations. Scraping one
-// agent left every service on the other machines without usage numbers.
+// Each Nomad agent reports only its own machine's allocations, so every agent
+// must be scraped. Scraping one would leave every service on the other
+// machines without usage numbers.
 func TestScrapeConfigScrapesEveryNomadAgent(t *testing.T) {
 	nodes := []registration{
 		{Address: "10.0.0.10", Port: 23456, Tags: []string{"node=box0"}},
@@ -637,7 +638,7 @@ func (f scrapeFile) job(name string) *scrapeJob {
 // A machine joining changes what "internal" is, and a running allocation
 // keeps the address it was placed with. Every platform job's spec has to
 // change with it, or apply sees nothing to do and the stores stay on the
-// first machine's bridge — an address every other machine has for itself.
+// first machine's bridge, an address every other machine has for itself.
 func TestPlatformJobsChangeWhenTheClusterGrows(t *testing.T) {
 	one := map[string]string{}
 	for _, j := range BuildPlatform(platformOpts()) {

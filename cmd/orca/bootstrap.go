@@ -20,7 +20,7 @@ type phase struct {
 
 // hostPhases take a fresh box to a running Nomad node. Each script is
 // idempotent, so re-running bootstrap on a live node converges it rather than
-// rebuilding it — that is how a version bump in versions.go rolls out.
+// rebuilding it. That is how a version bump in versions.go rolls out.
 var hostPhases = []phase{
 	{name: "prep", script: "prep.sh"},
 	{name: "docker", script: "docker.sh"},
@@ -51,7 +51,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string, sshCopyID bool) e
 	// The leader check happens once, after every machine is up, rather than at
 	// the end of each one. bootstrap_expect is the server count, so on a
 	// three-server cluster the first machine cannot elect a leader until the
-	// other two exist — waiting for one there would fail every multi-machine
+	// other two exist, so waiting for one there would fail every multi-machine
 	// bootstrap on its first node.
 	servers := cfg.Servers()
 	if len(servers) == 0 {
@@ -153,7 +153,7 @@ func nodeVars(cfg Config, nc NodeConfig) (map[string]string, error) {
 
 // nomadServerStanza renders the server block for this node, or nothing if the
 // node is a pure client. retry_join is omitted on a single-node cluster because
-// there are no peers to join — the one server bootstraps itself.
+// there are no peers to join: the one server bootstraps itself.
 func nomadServerStanza(cfg Config, nc NodeConfig) string {
 	if nc.Role != RoleServer {
 		return "# client-only node: no server stanza"

@@ -35,7 +35,7 @@ type JobState struct {
 
 	// AuthHash is the bcrypt hash ingress is currently using for the
 	// dashboards. Read back so an unchanged password produces an unchanged
-	// job spec — see resolveAuthHash.
+	// job spec; see resolveAuthHash.
 	AuthHash string
 }
 
@@ -131,7 +131,7 @@ func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, node
 
 	for _, s := range m.Services {
 		// A target names somewhere outside the cluster. There is no container,
-		// so there is nothing to schedule — it exists to be referred to.
+		// so there is nothing to schedule: it exists to be referred to.
 		if s.IsTarget() {
 			continue
 		}
@@ -172,7 +172,7 @@ func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, node
 // BuildPlan diffs the desired jobs against what the cluster is running.
 //
 // scope names the apps this apply covers, and a nil scope covers everything.
-// A job outside the scope is left alone entirely — that is what makes
+// A job outside the scope is left alone entirely. That is what makes
 // `orca apply blog` safe to run when other apps exist, and it is the reason
 // scope is an explicit argument rather than being inferred from the desired
 // set.
@@ -180,9 +180,9 @@ func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, node
 // nil is the whole-cluster case and has to be distinct from "the set of groups
 // that currently have a directory". Deriving the scope from what is on disk
 // looks equivalent and is not: the jobs that most need stopping belong to a
-// group whose directory is *gone*, so they were never in the derived set and
-// apply could not see them. A renamed group did it to the platform; deleting
-// any directory did it to anything.
+// group whose directory is *gone*, so they would never be in the derived set
+// and apply could not see them. Renaming a group or deleting any directory
+// must still stop what it left behind, the platform's jobs included.
 func BuildPlan(desired []*nomad.Job, current map[string]JobState, scope map[string]bool) Plan {
 	var plan Plan
 	seen := map[string]bool{}
@@ -215,7 +215,7 @@ func BuildPlan(desired []*nomad.Job, current map[string]JobState, scope map[stri
 
 	// Anything orca owns, inside the scope, that the manifests no longer
 	// declare. The manifest is desired state, so this is how a deleted service
-	// actually stops — and it stops only; the volume is kept, and only purge
+	// actually stops. It stops only: the volume is kept, and only purge
 	// deletes data.
 	for id, cur := range current {
 		if seen[id] || cur.Stopped {

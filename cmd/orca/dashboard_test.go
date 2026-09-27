@@ -29,7 +29,7 @@ func TestResolveAuthHashGeneratesUsableHash(t *testing.T) {
 
 // bcrypt salts randomly, so two hashes of the same password differ. If orca
 // hashed afresh on every apply the ingress job spec would change every time and
-// redeploy forever — this documents why the deployed hash is reused rather than
+// redeploy forever. This documents why the deployed hash is reused rather than
 // regenerated.
 func TestBcryptIsNotDeterministic(t *testing.T) {
 	a, _ := bcrypt.GenerateFromPassword([]byte("same"), bcrypt.MinCost)

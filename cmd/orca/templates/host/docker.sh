@@ -18,8 +18,8 @@ DATA_DIR="{{DATA_DIR}}"
 
 # CHANGED tracks whether anything that requires a daemon restart moved.
 #
-# Restarting dockerd kills every running container — live-restore does not
-# survive a unit restart — so an unconditional restart means re-running
+# Restarting dockerd kills every running container (live-restore does not
+# survive a unit restart), so an unconditional restart means re-running
 # bootstrap takes down every workload on the machine. It has also been seen to
 # leave stale CNI address reservations behind, so allocations come back and then
 # fail with a duplicate-address error. Bootstrap must be safe to re-run on a
@@ -131,7 +131,7 @@ echo "=== 3. Configuring the daemon ==="
 # without bound; one chatty container can fill the disk and take down every
 # other workload plus the database next to it. 10m x 3 per container caps the
 # blast radius. Logs you actually keep are shipped to VictoriaLogs, which has
-# its own disk ceiling — these files are only the local ring buffer.
+# its own disk ceiling; these files are only the local ring buffer.
 #
 # live-restore keeps containers running across a dockerd reload, so a config
 # change that does not need a restart does not bounce every workload.

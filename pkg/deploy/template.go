@@ -25,11 +25,11 @@ type envFile struct {
 //
 // Every value is written as a single JSON string. Nomad reads this file with
 // go-envparse, which decodes JSON escapes inside double quotes, so a secret
-// holding a quote, a backslash or a newline arrives intact. It once broke the
-// line instead — and nothing before the machine could have escaped it, since
-// the value does not exist until the template renders there. Literal text is
-// placed in the template as a quoted string rather than raw text, so a {{ in
-// a manifest's env value is text and not a template action.
+// holding a quote, a backslash or a newline arrives intact. Written raw, such
+// a value would break the line, and nothing before the machine can escape it,
+// since the value does not exist until the template renders there. Literal
+// text is placed in the template as a quoted string rather than raw text, so a
+// {{ in a manifest's env value is text and not a template action.
 func (f *envFile) set(key string, parts []manifest.EnvPart) {
 	args := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -68,10 +68,10 @@ func (f *envFile) String() string { return f.b.String() }
 // environment. Returns "" when a service has none, so simple services get a
 // jobspec with no template block at all.
 //
-// Siblings' addresses are deliberately not in it. They once were, as
-// ORCA_<SVC>_ADDR read from the catalog with change_mode restart — so every
-// service in a group restarted whenever any other moved. Services find each
-// other by name through the resolver instead.
+// Siblings' addresses are deliberately not in it. As ORCA_<SVC>_ADDR read from
+// the catalog with change_mode restart, they would restart every service in a
+// group whenever any other moved. Services find each other by name through the
+// resolver instead.
 func renderTemplate(m *manifest.Manifest, s *manifest.Service) string {
 	f := envFile{group: m.App}
 
@@ -123,7 +123,7 @@ func renderTemplate(m *manifest.Manifest, s *manifest.Service) string {
 
 // secretFiles builds one Nomad template per file-delivered secret, each
 // rendering a single secret's value into its own file under the allocation's
-// secrets directory — which the docker driver mounts at manifest.SecretDir.
+// secrets directory, which the docker driver mounts at manifest.SecretDir.
 //
 // One file per secret rather than one file of many: an application reading a
 // secret from a file expects the file to *be* the secret, and the format it
@@ -142,8 +142,8 @@ func secretFiles(m *manifest.Manifest, s *manifest.Service) []*nomad.Template {
 				SecretPath(m.App, sec.Name), SecretItemKey)),
 			DestPath: ptr("secrets/" + sec.File()),
 			// Read-only, and readable by whoever the image runs as. A stricter
-			// mode would have to guess that user — distroless images run as
-			// nonroot, the postgres image as postgres — and guessing wrong
+			// mode would have to guess that user (distroless images run as
+			// nonroot, the postgres image as postgres), and guessing wrong
 			// fails at startup with a permission error that says nothing about
 			// secrets. It costs no isolation: the secrets directory is a
 			// private tmpfs that only this allocation can see.

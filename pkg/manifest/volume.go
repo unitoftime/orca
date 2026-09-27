@@ -41,7 +41,8 @@ func (v *Volume) UnmarshalYAML(node *yaml.Node) error {
 
 	// node.Decode does not inherit the parent decoder's KnownFields setting, so
 	// strictness has to be enforced by hand here or a typo inside `volume:`
-	// silently takes a default — exactly what strict decoding exists to prevent.
+	// silently takes a default, which is exactly what strict decoding exists
+	// to prevent.
 	if err := checkKnownFields(node, "volume", "size", "mount"); err != nil {
 		return err
 	}

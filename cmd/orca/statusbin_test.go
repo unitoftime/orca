@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// Pruning keeps the build being deployed and the two newest others — the
-// previous job, which a failed rollout reverts to, names one of them — even
+// Pruning keeps the build being deployed and the two newest others (the
+// previous job, which a failed rollout reverts to, names one of them), even
 // when the build being deployed is the oldest file there, as it is when going
 // back to an earlier orca.
 func TestPruneStatusBinaries(t *testing.T) {

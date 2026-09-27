@@ -124,7 +124,7 @@ func (p palette) bold(s string) string {
 
 // renderTop writes the summary for a terminal.
 // It is laid out as the page is: nodes, stores and services, each with its
-// status. There is no verdict above them; trouble shows where it is — a red
+// status. There is no verdict above them; trouble shows where it is: a red
 // bar, a failed service and why, a store near its floor.
 func renderTop(w io.Writer, s statuspage.Summary, color bool, now time.Time) {
 	p := palette(color)

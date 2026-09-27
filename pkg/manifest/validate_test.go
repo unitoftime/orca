@@ -14,8 +14,8 @@ func TestValidationErrors(t *testing.T) {
 		wantErr string
 	}{
 		{
-			// `services:` was the old whole-app wrapper. A file is now a
-			// stream of service documents, so the key is simply unknown.
+			// A file is a stream of service documents with no whole-app
+			// wrapper, so `services:` is simply an unknown key.
 			"the old services wrapper",
 			"services:\n  - {name: x, image: i:1}\n",
 			"field services not found",
@@ -210,7 +210,7 @@ memory: 256
 }
 
 // The group name comes from the directory, so an unusable one means a
-// directory that needs renaming — and the error has to say that, since there
+// directory that needs renaming, and the error has to say that, since there
 // is no field in any file to go and fix.
 func TestBadGroupName(t *testing.T) {
 	_, err := ParseGroup("My_Group", []byte("{name: x, image: i:1}"), "My_Group/x.yaml")
@@ -237,7 +237,7 @@ func TestErrorsArePrefixed(t *testing.T) {
 }
 
 // normalize is the only step that changes a manifest. Validate reads, so
-// checking twice — or checking at all — cannot change what gets deployed.
+// checking twice, or checking at all, cannot change what gets deployed.
 func TestValidateDoesNotMutate(t *testing.T) {
 	m, err := ParseGroup("shop", []byte(`
 name: db

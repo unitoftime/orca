@@ -1,5 +1,5 @@
 // Package manifest parses and validates a group: one directory and the services
-// in it. It is pure data — no Nomad, no SSH, no network — so the whole surface
+// in it. It is pure data (no Nomad, no SSH, no network), so the whole surface
 // is testable without a machine.
 package manifest
 
@@ -22,9 +22,9 @@ type CPU int
 const MilliCPU CPU = 1
 
 func ParseCPU(f float64) (CPU, error) {
-	// Rounded rather than truncated, and refused below one thousandth: that
-	// once became 0, which reads as "not set", and was quietly replaced by the
-	// default half a core.
+	// Rounded rather than truncated, and refused below one thousandth: less
+	// would become 0, which reads as "not set" and would be quietly replaced
+	// by the default half a core.
 	c := CPU(math.Round(f * 1000))
 	if c < 1 {
 		return 0, fmt.Errorf("cpu must be at least 0.001, got %v", f)
@@ -54,7 +54,7 @@ func (c *CPU) UnmarshalYAML(node *yaml.Node) error {
 func (c CPU) MarshalYAML() (any, error) { return c.Float(), nil }
 
 // Manifest is one group: the services in one directory. The files are desired
-// state — a service removed from them is stopped on the next apply, so there
+// state: a service removed from them is stopped on the next apply, so there
 // is no enabled field and no way to express "declared but off".
 //
 // Neither field is written in a file. App comes from the directory name, so
@@ -103,7 +103,7 @@ type Service struct {
 
 	// Ports the service listens on, keyed by container port, each saying who
 	// can reach it. A service with no ports listens for nothing and registers
-	// nothing — which is most bots.
+	// nothing, which is most bots.
 	Ports map[int]Port `yaml:"ports,omitempty"`
 
 	// Secrets the service needs at run time, delivered as files under
@@ -112,13 +112,13 @@ type Service struct {
 	// refuses to deploy until every one is set.
 	//
 	// Separate from Env's ${secret.NAME}, which stays for the case this cannot
-	// express — interpolating a secret into the middle of a larger value, as
+	// express: interpolating a secret into the middle of a larger value, as
 	// in postgres://user:${secret.pw}@db/app.
 	Secrets []Secret `yaml:"secrets,omitempty"`
 
 	// Node pins the service to a named machine from cluster.yaml. Leave it
 	// empty on a one-machine cluster. A service with a volume is pinned
-	// whether or not this is set, because its data is on one disk — this only
+	// whether or not this is set, because its data is on one disk; this only
 	// says which machine, for when there is more than one to choose from.
 	Node string `yaml:"node,omitempty"`
 
@@ -173,14 +173,14 @@ func (s *Service) ResolvedImage() string {
 // apply would look like a change and redeploy everything.
 func (s *Service) PortNumbers() []int { return sortedPorts(s.Ports) }
 
-// PrimaryPort is the port the service registers in the catalog — so that
-// `db.shop` resolves to something — and the one the health check targets.
+// PrimaryPort is the port the service registers in the catalog (so that
+// `db.shop` resolves to something) and the one the health check targets.
 //
 // The port routed through ingress when there is one, otherwise the lowest
 // declared. Ingress routes to the registered port, so registering anything
-// else sent a service's web traffic to whatever it listened on below it — a
-// metrics port on 2112 took the requests meant for the app on 3000. A service
-// has at most one routed port, so this is never a choice.
+// else would send a service's web traffic to whatever it listens on below it:
+// a metrics port on 2112 would take the requests meant for the app on 3000. A
+// service has at most one routed port, so this is never a choice.
 //
 // Without one, the lowest port that is not a metrics port: a server
 // declaring `2113: metrics` and `9000: internal` is found by name at 9000's
@@ -241,9 +241,8 @@ func (s *Service) PublicPorts() []int {
 
 // normalize fills in every default, and resolves the template that some
 // defaults depend on. It is the only step that changes a parsed manifest:
-// Validate only reads. The two were once interleaved — defaults set in five
-// places, three of them inside validators — so what a check saw depended on
-// which ran first.
+// Validate only reads. A default set anywhere else, least of all inside a
+// validator, would make what a check sees depend on which ran first.
 //
 // Idempotent, and it never fails: a template that does not parse is left
 // unresolved, for Validate to report.
@@ -257,7 +256,7 @@ func (m *Manifest) normalize() {
 
 func (s *Service) normalize() {
 	if s.IsTarget() {
-		// A target runs no container, so it has nothing to size — and
+		// A target runs no container, so it has nothing to size, and
 		// leaving those fields alone is what lets Validate report any that
 		// were set.
 		if s.Region == "" {
@@ -278,8 +277,8 @@ func (s *Service) normalize() {
 			s.tmpl = &t
 			spec := t.Spec()
 			// The template supplies the port so the author does not have to
-			// know it. Declaring it yourself is still allowed — that is how
-			// you publish a database deliberately — and only the number is
+			// know it. Declaring it yourself is still allowed (that is how
+			// you publish a database deliberately), and only the number is
 			// fixed, not the reach.
 			if len(s.Ports) == 0 {
 				s.Ports = map[int]Port{spec.Port: {Kind: PortInternal}}
@@ -319,8 +318,8 @@ func (m *Manifest) Service(name string) (*Service, bool) {
 }
 
 // GeneratedSecrets lists the secrets orca creates for this group's templated
-// services. They are not referenced anywhere — the template wires them in
-// directly — so they have to be reported rather than derived from usage.
+// services. They are not referenced anywhere (the template wires them in
+// directly), so they have to be reported rather than derived from usage.
 func (m *Manifest) GeneratedSecrets() []string {
 	var out []string
 	for _, s := range m.Services {
@@ -336,10 +335,10 @@ func (m *Manifest) GeneratedSecrets() []string {
 	return out
 }
 
-// Secrets lists every secret the manifest asks for — declared in `secrets:` or
-// referenced through ${secret.NAME} — sorted and deduplicated. Apply uses it to
-// check that every one exists before deploying anything, rather than after half
-// the app is already down.
+// Secrets lists every secret the manifest asks for, whether declared in
+// `secrets:` or referenced through ${secret.NAME}, sorted and deduplicated.
+// Apply uses it to check that every one exists before deploying anything,
+// rather than after half the app is already down.
 func (m *Manifest) Secrets() []string {
 	seen := map[string]bool{}
 	for _, s := range m.Services {
@@ -378,8 +377,8 @@ type HostPort struct {
 // HostPorts lists every raw host port this manifest claims, sorted. Host ports
 // are a single namespace across every app on the machine, so apply collects
 // these from all manifests to reject a collision before deploying rather than
-// letting it surface as a placement failure — and the firewall is generated
-// from exactly this list.
+// letting it surface as a placement failure. The firewall is generated from
+// exactly this list.
 func (m *Manifest) HostPorts() []HostPort {
 	var out []HostPort
 	for _, s := range m.Services {
@@ -410,7 +409,7 @@ func (m *Manifest) HostPorts() []HostPort {
 	return out
 }
 
-// ReservedGroup is the group name orca keeps for the jobs it runs for you —
+// ReservedGroup is the group name orca keeps for the jobs it runs for you:
 // ingress, the resolver, the log and metric stores.
 //
 // It is the reserved name rather than a hidden one: those jobs show up in

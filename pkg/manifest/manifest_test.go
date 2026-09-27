@@ -183,8 +183,8 @@ func TestUnknownFieldsRejected(t *testing.T) {
 }
 
 // yaml.Node.Decode drops the parent decoder's KnownFields setting, so the
-// custom unmarshalers have to enforce strictness themselves. This is the test
-// that catches that regression.
+// custom unmarshalers have to enforce strictness themselves. An unknown key
+// inside `volume:` must be an error that names it, not silently ignored.
 func TestVolumeStrictnessIsEnforcedByHand(t *testing.T) {
 	_, err := ParseGroup("a", []byte("name: x\nimage: i:1\nvolume: {size: 1G, mount: /d, typo: 1}"), "orca.yaml")
 	if err == nil {

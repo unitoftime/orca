@@ -190,7 +190,7 @@ PGPORT="{{ .Port }}"
 }
 
 // redisDumpScript has the server write a snapshot and stream it over the
-// replication protocol, which is how a replica is seeded — so it is a
+// replication protocol, which is how a replica is seeded. The snapshot is a
 // consistent point in time taken while the server keeps serving, and nothing
 // has to be read out of the volume while Redis is writing to it.
 func redisDumpScript(group, service string) string {

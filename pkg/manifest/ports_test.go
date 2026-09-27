@@ -126,7 +126,7 @@ func TestListErrors(t *testing.T) {
 }
 
 // orca serializes resolved manifests to hash desired state, so what comes back
-// has to be what went in — otherwise every plan shows a change that is not one.
+// has to be what went in; otherwise every plan shows a change that is not one.
 func TestPortRoundTrip(t *testing.T) {
 	for _, in := range []string{"internal", "metrics", "errors.example.com", "tcp", "udp:7778"} {
 		p, err := ParsePort(in)

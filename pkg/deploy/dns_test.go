@@ -21,9 +21,9 @@ func TestDNSNames(t *testing.T) {
 }
 
 // The hosts file comes from the catalog, by tag, so any service that
-// registers resolves — whichever apply deployed it. It was once a list baked
-// into the resolver's job, so a service added by `orca apply shop` did not
-// resolve until an apply that included orca's own group.
+// registers resolves, whichever apply deployed it. A list baked into the
+// resolver's job would leave a service added by `orca apply shop` unresolved
+// until an apply that included orca's own group.
 func TestDNSHostsComeFromTaggedRegistrations(t *testing.T) {
 	type svc struct {
 		Name string
@@ -99,8 +99,8 @@ func TestRegistrationsCarryTheirDNSName(t *testing.T) {
 	}
 }
 
-// Scoping the hosts file to the orca zone would mean "db.blog" — which is not
-// under .orca — never reaching it and being forwarded upstream to fail.
+// Scoping the hosts file to the orca zone would mean "db.blog", which is not
+// under .orca, never reaching it and being forwarded upstream to fail.
 func TestCorefileServesHostsForEveryName(t *testing.T) {
 	cf := corefile()
 	if !strings.Contains(cf, ".:53") {

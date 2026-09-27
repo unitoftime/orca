@@ -55,10 +55,10 @@ func TestDeclared(t *testing.T) {
 	}
 }
 
-// A manifest that does not parse must not read as "every group is gone". It
-// once did: declared() folded the load error into false, so a typo in any
-// group's file let `orca purge` delete a group whose directory still existed,
-// and listed its live database as orphaned data to delete with it.
+// A manifest that does not parse must not read as "every group is gone". If
+// declared() folded the load error into false, a typo in any group's file
+// would let `orca purge` delete a group whose directory still exists, and
+// list its live database as orphaned data to delete with it.
 func TestPurgeFailsClosedWhenManifestsDoNotLoad(t *testing.T) {
 	cfg := clusterTree(t)
 	if err := os.WriteFile(filepath.Join(cfg.Root, "blog", "broken.yaml"), []byte("{name: x, imgae: i:1}"), 0o644); err != nil {
@@ -77,7 +77,7 @@ func TestPurgeFailsClosedWhenManifestsDoNotLoad(t *testing.T) {
 }
 
 // With every group deleted there is nothing declared, which is an answer, not
-// an error — or the last group could never be purged.
+// an error; otherwise the last group could never be purged.
 func TestDeclaredWithNoGroupsLeft(t *testing.T) {
 	cfg := clusterTree(t)
 	if err := os.RemoveAll(filepath.Join(cfg.Root, "blog")); err != nil {
@@ -154,8 +154,8 @@ func TestGroupSecretPrefixIsExact(t *testing.T) {
 	}
 }
 
-// The reserved group has no directory, so purge's main safety rule — refuse a
-// group the manifests still declare — can never fire for it. Without a guard,
+// The reserved group has no directory, so purge's main safety rule (refuse a
+// group the manifests still declare) can never fire for it. Without a guard,
 // `orca purge orca` takes ingress, the resolver and both stores with one
 // confirmed word.
 func TestPurgeRefusesTheReservedGroup(t *testing.T) {

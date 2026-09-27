@@ -69,7 +69,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 
 	// orca's own jobs are a group you did not write. Including them here means
 	// plan, apply, health and status treat them exactly like anything else,
-	// with no separate verb and no special cases — and a capability switched
+	// with no separate verb and no special cases, and a capability switched
 	// off in cluster.yaml is simply a service orca no longer declares, so the
 	// ordinary "stop what is no longer declared" rule removes it.
 	platformInScope := len(args) == 0
@@ -80,7 +80,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	}
 
 	// A database with a `backup:` gets a periodic job, and its target is
-	// usually in a group this apply was not asked to touch — so it is looked
+	// usually in a group this apply was not asked to touch, so it is looked
 	// up in every group, not only the ones in scope.
 	backups, err := collectBackups(all, apps)
 	if err != nil {
@@ -95,7 +95,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	}
 
 	// The status page runs a build of orca on the machine, and its job names
-	// that build by its hash — so the build is found, and if need be made,
+	// that build by its hash, so the build is found, and if need be made,
 	// before the job can be rendered. Plan does this too; it only ships in
 	// apply.
 	var statusBin *statusBinary
@@ -121,7 +121,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		desired = append(desired, buildPlatformJobs(cfg, authHash, statusBin)...)
 	}
 
-	// Every image is submitted as the digest its tag points at right now —
+	// Every image is submitted as the digest its tag points at right now:
 	// orca's own and the ones templates and backups add, not only the ones a
 	// manifest names.
 	if err := deploy.PinImages(desired, pins.Pin); err != nil {
@@ -130,7 +130,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 
 	// The machine pulls with its own credentials, not yours, so an image that
 	// resolved only because you are logged in would otherwise fail at the
-	// pull — after the health timeout, as "unauthorized".
+	// pull, after the health timeout, as "unauthorized".
 	if err := preflightRegistries(ctx, cluster, pins.private); err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 
 	plan := deploy.BuildPlan(desired, current, scope)
 
-	// plan changes nothing — not a job, not a firewall rule, not a secret.
+	// plan changes nothing: not a job, not a firewall rule, not a secret.
 	// What apply would generate is said instead of done.
 	if planOnly {
 		for _, g := range toGenerate {
@@ -167,7 +167,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	fmt.Println(plan.String())
 
 	// Asked before anything changes, so answering no leaves the machine
-	// exactly as it was — including the firewall, which would otherwise
+	// exactly as it was, including the firewall, which would otherwise
 	// already have closed the ports of the services you just declined to
 	// stop.
 	if plan.HasWork() {
@@ -255,18 +255,18 @@ func missingGenerated(needed []secretRef, generated []generatedSecret, set map[s
 
 // execute applies the plan, stopping before creating and updating.
 //
-// This order was once the other way round, to let "a service that replaced
-// another start first". But a stop only ever targets a service the manifests
-// no longer declare — a service that merely changed gets an update to the same
-// job ID, never a stop and a create — so holding one open while its
-// replacement starts protects nothing, and costs exactly the case where the
-// two contend for the same resource.
+// Creating first would let "a service that replaced another" start before
+// the old one goes, but that protects nothing: a stop only ever targets a
+// service the manifests no longer declare, and a service that merely changed
+// gets an update to the same job ID, never a stop and a create. What creating
+// first does cost is exactly the case where the two contend for the same
+// resource.
 //
 // That case is a job ID changing, which is what renaming a group is. Creating
-// first put the new ingress on the machine while the old one still held :80
-// and the new log shipper against a buffer the old one had locked: the
-// replacements were unplaceable or crash-looping until the thing they replaced
-// went away.
+// first would put the new ingress on the machine while the old one still
+// holds :80, and the new log shipper against a buffer the old one has locked:
+// the replacements would be unplaceable or crash-looping until the thing they
+// replace goes away.
 //
 // The cost is that a failure partway through leaves fewer services running
 // rather than more. That is the right trade: what was stopped is what you
@@ -326,7 +326,7 @@ func buildJobs(cfg Config, pins *imageResolver, apps []*manifest.Manifest, backu
 
 	// On one machine an internal port needs no host port at all: every
 	// container reaches every other directly over the bridge. Once there is a
-	// second machine that address is ambiguous, so the port is published — on
+	// second machine that address is ambiguous, so the port is published on
 	// the private network, never the public interface.
 	if cfg.MultiNode() {
 		opts.InternalNetwork = "internal"
@@ -564,12 +564,12 @@ func resolveImages(pin func(ref string) (string, error), m *manifest.Manifest) (
 // would start it against an empty directory and look perfectly healthy while
 // serving nothing.
 //
-// Unless it says otherwise with `node:`, that disk is the first server's —
+// Unless it says otherwise with `node:`, that disk is the first server's:
 // the machine orca keeps its own stores on. On one machine that is the only
 // machine, so it is also where every volume already is when a second one is
 // added: the data stays put, and growing the cluster needs no edit to any
-// manifest. It once refused instead, which made adding a machine break every
-// database until each was pinned by hand to the place it already was.
+// manifest. Refusing instead would make adding a machine break every database
+// until each was pinned by hand to the place it already is.
 func nodeFor(cfg Config, s *manifest.Service) (string, error) {
 	if s.Node != "" {
 		if _, ok := cfg.FindNode(s.Node); !ok {
@@ -594,10 +594,10 @@ func nodeFor(cfg Config, s *manifest.Service) (string, error) {
 //
 // A name with no directory is still accepted while orca is running jobs for
 // it: that is how you remove a group you have already deleted, and it
-// contributes nothing to deploy — its jobs are in scope only to be stopped.
-// Decided per name. It was once decided for the whole list, so
-// `orca apply shop oldgroup` dropped shop's manifests along with oldgroup's
-// missing one, and planned to stop every service shop runs.
+// contributes nothing to deploy; its jobs are in scope only to be stopped.
+// Decided per name, not for the whole list, so `orca apply shop oldgroup`
+// keeps shop's manifests although oldgroup's are missing, rather than
+// planning to stop every service shop runs.
 func scopeGroups(all []*manifest.Manifest, names []string, current map[string]deploy.JobState) ([]*manifest.Manifest, error) {
 	var keep []string
 	for _, n := range names {
@@ -634,11 +634,10 @@ func runningGroup(current map[string]deploy.JobState, name string) bool {
 // confirmStops asks before stopping anything, unless --yes was given.
 //
 // Creates and updates come from something you wrote. A stop comes from the
-// absence of something — and absence is what a wrong `-C`, a half-finished
-// checkout or the wrong repository all look like. Before, pointing orca at a
-// directory missing most of your groups was close to a no-op, because the
-// scope was derived from the directories present; now that apply correctly
-// sees everything it owns, the same mistake stops the lot.
+// absence of something, and absence is what a wrong `-C`, a half-finished
+// checkout or the wrong repository all look like. Because apply sees
+// everything it owns, not only the groups whose directories are present,
+// pointing orca at a directory missing most of your groups stops the lot.
 //
 // No data is at stake either way: a stop keeps the volume and only `orca
 // purge` deletes. What is at stake is an outage nobody asked for.

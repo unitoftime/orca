@@ -17,8 +17,8 @@ import (
 // with Nomad's Go types. Both must arrive at the same state, or `orca status`
 // and the status page disagree about the same service. These run the CLI's
 // actual jq programs and the page's Go projections over the same captured
-// Nomad responses — real ones from a test machine, plus a crash loop and a
-// placement failure written by hand — and require identical results.
+// Nomad responses (real ones from a test machine, plus a crash loop and a
+// placement failure written by hand) and require identical results.
 
 func runJQ(t *testing.T, program string, input []byte, slurp bool) string {
 	t.Helper()
@@ -149,7 +149,7 @@ func TestRuntimeParity(t *testing.T) {
 		t.Errorf("crash loop not projected as expected: %+v", crash.Tasks)
 	}
 
-	// The judgement is shared, so equal inputs are equal answers — checked
+	// The judgement is shared, so equal inputs are equal answers. It is checked
 	// end to end anyway, since that is the property that matters.
 	var typedJobs []*nomad.Job
 	json.Unmarshal(fixture(t, "jobs.json"), &typedJobs)

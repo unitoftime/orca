@@ -61,7 +61,7 @@ backup:
 	if spec.Endpoint != "https://acct.r2.cloudflarestorage.com" || spec.Bucket != "orca-backups" {
 		t.Errorf("spec did not come from the target: %+v", spec)
 	}
-	// Unset on the target, so it takes the default rather than being empty —
+	// Unset on the target, so it takes the default rather than being empty:
 	// most S3-compatible stores ignore the region but require it set.
 	if spec.Region != manifest.DefaultRegion {
 		t.Errorf("region = %q, want %q", spec.Region, manifest.DefaultRegion)
@@ -80,7 +80,7 @@ backup:
 }
 
 // A target's credentials are required, not generated, so apply's existing
-// preflight has to demand them — otherwise the job is created, runs on
+// preflight has to demand them. Otherwise the job is created, runs on
 // schedule, fails inside a container nobody is watching, and the first anyone
 // knows is when a restore is needed.
 func TestTargetCredentialsAreRequiredSecrets(t *testing.T) {
