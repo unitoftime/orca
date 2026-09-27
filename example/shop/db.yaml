@@ -1,0 +1,13 @@
+# Postgres, configured by orca. It is reachable only by other services, as
+# `db` inside this group or `db.shop` from anywhere. orca generates its
+# password as the secret shop/db_password.
+name: db
+template: postgres:17
+memory: 512M
+volume: 2G
+
+# Nightly backups to an S3-compatible store, once one is declared. See "Adding
+# backups" in README.md.
+#
+# backup:
+#   to: storage/offsite

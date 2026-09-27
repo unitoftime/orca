@@ -1,0 +1,9 @@
+# A background worker: no ports, so nothing can reach it and it reaches out
+# on its own. It logs a line every 20 seconds; watch with
+#
+#   orca logs hello/worker -f
+name: worker
+image: alpine:3.20
+cpu: 0.1
+memory: 64M
+cmd: while true; do echo "tick $(date -Iseconds)"; sleep 20; done

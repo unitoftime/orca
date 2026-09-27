@@ -1,0 +1,10 @@
+# The machines orca manages. Each directory beside this file is a group of
+# services. Every other setting is optional; see "Configuring the cluster" in
+# the main README.
+
+nodes:
+  - host: root@203.0.113.10      # your server, reached over SSH
+    name: box0
+
+monitoring:
+  domain: 203-0-113-10.sslip.io  # dashboards at status.<domain>; same value as vars.yaml

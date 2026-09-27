@@ -1,0 +1,17 @@
+# An app that uses the database. It finds it by name and splices the generated
+# password into its connection string. Every 20 seconds it logs whether it got
+# through:
+#
+#   orca logs shop/app
+name: app
+image: alpine:3.20
+cpu: 0.1
+memory: 64M
+cmd: |
+  apk add --no-cache postgresql-client >/dev/null 2>&1
+  while true; do
+    psql "$DATABASE_URL" -tAc "select 'connected as ' || current_user || ' to ' || current_database()" || echo "psql failed"
+    sleep 20
+  done
+env:
+  DATABASE_URL: postgres://postgres:${secret.db_password}@db:5432/postgres

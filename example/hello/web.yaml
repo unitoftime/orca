@@ -1,0 +1,10 @@
+# A small web server at https://hello.<domain>. It answers with the request it
+# received, so you can see ingress and HTTPS working. With two replicas, a
+# deploy replaces them one at a time, with no downtime.
+name: web
+image: traefik/whoami:latest
+cpu: 0.1
+memory: 64M
+replicas: 2
+ports:
+  80: hello.${var.domain}

@@ -1,0 +1,5 @@
+# Variables beside cluster.yaml are shared by every group. A service uses one
+# as ${var.domain}.
+#
+# Set this to the same domain as monitoring.domain in cluster.yaml.
+domain: 203-0-113-10.sslip.io
