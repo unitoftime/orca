@@ -8,9 +8,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The manifest from spec/model.md. If this stops parsing, the spec and the code
-// have diverged and one of them is a bug.
-const specExample = `
+// A group file using most of the manifest: a template, a raw port, a secret
+// in the environment, and several services in one file.
+const fullExample = `
 name: db
 template: postgres:17
 memory: 2048M
@@ -33,10 +33,10 @@ ports:
   7777: tcp:7778
 `
 
-func TestParseSpecExample(t *testing.T) {
-	m, err := ParseGroup("blog", []byte(specExample), "orca.yaml")
+func TestParseFullExample(t *testing.T) {
+	m, err := ParseGroup("blog", []byte(fullExample), "orca.yaml")
 	if err != nil {
-		t.Fatalf("the spec's own example must parse: %v", err)
+		t.Fatalf("the full example must parse: %v", err)
 	}
 
 	if m.App != "blog" || len(m.Services) != 3 {
@@ -215,7 +215,7 @@ func TestVolumeScalarAndMappingForms(t *testing.T) {
 // Services must re-parse from what orca writes: plan diffs serialize resolved
 // services, and a parser that rejects its own output is a bug.
 func TestServiceRoundTrip(t *testing.T) {
-	m, err := ParseGroup("blog", []byte(specExample), "orca.yaml")
+	m, err := ParseGroup("blog", []byte(fullExample), "orca.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
