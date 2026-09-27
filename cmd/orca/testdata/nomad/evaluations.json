@@ -1,0 +1,44 @@
+[
+  {
+    "FailedTGAllocs": {
+      "web": {
+        "ClassFiltered": {},
+        "ConstraintFiltered": {
+          "${node.unique.name} = box9": 1
+        },
+        "DimensionExhausted": {}
+      }
+    },
+    "ID": "e1",
+    "ModifyIndex": 10
+  },
+  {
+    "FailedTGAllocs": {
+      "web": {
+        "ClassFiltered": {
+          "gpu": 1
+        },
+        "ConstraintFiltered": {
+          "${attr.kernel.name} = linux": 1,
+          "${node.unique.name} = box1": 2
+        },
+        "DimensionExhausted": {
+          "memory": 1,
+          "network: reserved port collision p8080=8080": 1
+        }
+      },
+      "zzz": {
+        "ConstraintFiltered": {
+          "other": 1
+        }
+      }
+    },
+    "ID": "e2",
+    "ModifyIndex": 30
+  },
+  {
+    "FailedTGAllocs": null,
+    "ID": "e3",
+    "ModifyIndex": 40
+  }
+]

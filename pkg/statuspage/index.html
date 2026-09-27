@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orca status</title>
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f3f4f6;
+  --surface: #ffffff;
+  --ink: #1d2330;
+  --ink-2: #535b69;
+  --muted: #8a919d;
+  --grid: #e7e9ed;
+  --axis: #cdd1d8;
+  --border: rgba(20, 28, 45, 0.08);
+  --fill: #7b93b5;
+  --good: #4a9d73;
+  --warn: #d6a12a;
+  --crit: #cf4a44;
+  --idle: #a3a9b3;
+  --series-1: #4a74b0;
+  --series-2: #c0764a;
+  --accent: #4a74b0;
+  --tooltip: #1d2330;
+  --tooltip-ink: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane: #101317;
+    --surface: #171b21;
+    --ink: #e5e8ed;
+    --ink-2: #a8b0bd;
+    --muted: #737c8a;
+    --grid: #252a32;
+    --axis: #353c47;
+    --border: rgba(255, 255, 255, 0.07);
+    --fill: #6a86ad;
+    --good: #5cb386;
+    --warn: #d6a12a;
+    --crit: #e0605a;
+    --idle: #666e7a;
+    --series-1: #5b8fe0;
+    --series-2: #c9764a;
+    --accent: #5b8fe0;
+    --tooltip: #2a303a;
+    --tooltip-ink: #e5e8ed;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #101317;
+  --surface: #171b21;
+  --ink: #e5e8ed;
+  --ink-2: #a8b0bd;
+  --muted: #737c8a;
+  --grid: #252a32;
+  --axis: #353c47;
+  --border: rgba(255, 255, 255, 0.07);
+  --fill: #6a86ad;
+  --good: #5cb386;
+  --warn: #d6a12a;
+  --crit: #e0605a;
+  --idle: #666e7a;
+  --series-1: #5b8fe0;
+  --series-2: #c9764a;
+  --accent: #5b8fe0;
+  --tooltip: #2a303a;
+  --tooltip-ink: #e5e8ed;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { padding: 14px 20px 32px; }
+header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.brand { font-weight: 600; font-size: 14px; }
+.brand span { color: var(--muted); font-weight: 400; }
+.side { display: flex; align-items: baseline; gap: 6px 20px; flex-wrap: wrap; }
+.links { display: flex; gap: 14px; }
+.links a { color: var(--ink-2); text-decoration: none; }
+.links a:hover { color: var(--ink); text-decoration: underline; text-decoration-color: var(--axis); text-underline-offset: 3px; }
+.links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.updated { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.notices { margin: 0 0 4px; padding: 0; list-style: none; color: var(--ink-2); font-size: 12px; }
+.notices li { display: flex; align-items: center; gap: 6px; }
+
+#content { transition: opacity 0.2s; }
+#content.refetching { opacity: 0.6; }
+
+h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 18px 0 6px; }
+
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; padding: 8px 12px 6px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { padding: 7px 12px; border-bottom: 1px solid var(--grid); vertical-align: middle; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The one column per table that takes the width left over, so the rest sit
+   at their natural size instead of drifting apart. */
+.fill { width: 100%; }
+.dim { color: var(--muted); }
+.strong { font-weight: 600; }
+td.wrap { white-space: normal; min-width: 180px; color: var(--ink-2); overflow-wrap: anywhere; }
+tr.first td { border-top: 1px solid var(--axis); }
+tbody tr:first-child td { border-top: 0; }
+
+/* State: a small dot and the word. The word carries it; the dot is for scanning. */
+.state { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--idle); }
+.dot.ok { background: var(--good); }
+.dot.warn { background: var(--warn); }
+.dot.crit { background: var(--crit); }
+.state.crit, .state.warn { font-weight: 500; }
+
+/* Meters: the fill is the level; the track is a tint of it. */
+.gauge { display: inline-grid; grid-template-columns: 90px 3.2em auto; align-items: center; column-gap: 8px; }
+.gauge .p { text-align: right; font-variant-numeric: tabular-nums; }
+.gauge .p.warn, .gauge .p.crit { font-weight: 600; }
+.gauge .x { color: var(--muted); font-variant-numeric: tabular-nums; }
+.meter { --f: var(--fill); height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--f) 20%, var(--surface)); overflow: hidden; }
+.meter > span { display: block; height: 100%; min-width: 3px; border-radius: 3px; background: var(--f); }
+.meter.warn { --f: var(--warn); }
+.meter.crit { --f: var(--crit); }
+/* Nodes: a card each, wide enough that the hour's chart can be read. */
+.nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 12px; }
+.node { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.node header { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }
+.node .name { font-weight: 600; font-size: 14px; }
+.node .up { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: auto minmax(60px, 1fr) 3.2em auto; align-items: center; column-gap: 10px; row-gap: 6px; }
+.stats .k { color: var(--ink-2); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats .p { text-align: right; font-variant-numeric: tabular-nums; }
+.stats .p.warn, .stats .p.crit { font-weight: 600; }
+.stats .x { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats .wide { grid-column: 2 / -1; font-variant-numeric: tabular-nums; }
+
+/* The hour chart, one per node: CPU and memory on one 0–100% axis. */
+.chart { margin-top: auto; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 120px auto; column-gap: 6px; }
+.chart .legend { grid-column: 1 / -1; color: var(--muted); font-size: 11px; margin-bottom: 10px; }
+.chart .yax { position: relative; width: 2.4em; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chart .yax span { position: absolute; right: 0; transform: translateY(-50%); line-height: 1; }
+.chart .xax { grid-column: 2; display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chart .none { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; justify-content: center; color: var(--muted); border: 1px dashed var(--grid); border-radius: 6px; }
+.sw { display: inline-block; width: 10px; height: 2px; border-radius: 1px; vertical-align: middle; margin: 0 4px 0 10px; }
+.spark { position: relative; height: 100%; outline: none; }
+.spark svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.spark .cross { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--axis); display: none; pointer-events: none; }
+.spark:focus-visible { box-shadow: 0 0 0 2px var(--accent); border-radius: 2px; }
+#tooltip {
+  position: fixed; z-index: 10; pointer-events: none; display: none;
+  background: var(--tooltip); color: var(--tooltip-ink);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; line-height: 1.5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); font-variant-numeric: tabular-nums;
+}
+#tooltip .sw { width: 8px; height: 8px; border-radius: 2px; margin: 0 6px 0 0; }
+#tooltip .t { opacity: 0.75; }
+
+/* Names that open the log drawer */
+button.link { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+button.link:hover { text-decoration: underline; text-decoration-color: var(--axis); text-underline-offset: 3px; }
+button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* The log drawer */
+#scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.25); z-index: 20; }
+#drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 21;
+  width: min(820px, 100vw); display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.16);
+}
+#drawer[hidden], #scrim[hidden] { display: none; }
+#drawer header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 8px; }
+#drawer h2 { margin: 0; font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+#drawer h2 span { color: var(--muted); font-weight: 400; }
+.close { font: inherit; font-size: 20px; line-height: 1; background: none; border: 0; color: var(--ink-2); cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.close:hover { background: var(--grid); }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 16px 10px; border-bottom: 1px solid var(--grid); }
+.controls input[type=search] { flex: 1 1 180px; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--axis); border-radius: 6px; background: var(--plane); color: var(--ink); }
+.controls select { font: inherit; padding: 5px 6px; border: 1px solid var(--axis); border-radius: 6px; background: var(--plane); color: var(--ink); }
+.controls label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); cursor: pointer; }
+.loglines { flex: 1; overflow: auto; padding: 8px 0; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.logline { display: grid; grid-template-columns: 64px auto 1fr; column-gap: 10px; padding: 1px 16px; }
+.logline:hover { background: color-mix(in srgb, var(--grid) 50%, transparent); }
+.logline .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+.logline .task { color: var(--ink-2); white-space: nowrap; }
+.logline .m { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.logline.stderr .m::before { content: "stderr "; color: var(--muted); }
+.logstatus { padding: 8px 16px; border-top: 1px solid var(--grid); color: var(--muted); font-size: 12px; min-height: 34px; }
+.loglines .empty { padding: 16px; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+.empty { color: var(--ink-2); padding: 14px 12px; }
+code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+@media (max-width: 760px) {
+  main { padding: 12px 12px 28px; }
+  .hide-narrow { display: none; }
+  th, td { padding-left: 8px; padding-right: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="side">
+      <div class="brand">orca <span id="domain"></span></div>
+      <nav class="links" id="links" aria-label="Other dashboards"></nav>
+    </div>
+    <div class="updated" id="updated" aria-live="polite"></div>
+  </header>
+  <div id="content"><div class="panel empty">Loading…</div></div>
+</main>
+<div id="tooltip" role="tooltip"></div>
+<div id="scrim" hidden></div>
+<aside id="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+  <header>
+    <h2 id="drawer-title"></h2>
+    <button class="close" id="drawer-close" aria-label="Close logs">×</button>
+  </header>
+  <div class="controls">
+    <input type="search" id="log-q" placeholder="Search these logs" aria-label="Search these logs">
+    <select id="log-since" aria-label="How far back">
+      <option value="15m">15 minutes</option>
+      <option value="1h" selected>1 hour</option>
+      <option value="6h">6 hours</option>
+      <option value="24h">24 hours</option>
+      <option value="7d">7 days</option>
+    </select>
+    <label><input type="checkbox" id="log-follow"> Follow</label>
+  </div>
+  <div class="loglines" id="log-lines" tabindex="0" role="log" aria-label="Log lines"></div>
+  <div class="logstatus" id="log-status" aria-live="polite"></div>
+</aside>
+<script>
+"use strict";
+
+// Everything here is drawn from /api/summary, which the status service
+// judges; the page only lays it out. Names come from the cluster, so they are
+// only ever set as text, never parsed as HTML.
+
+const REFRESH_MS = 15000;
+const SVG = "http://www.w3.org/2000/svg";
+
+let summary = null;
+let lastError = null;
+
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "style") el.style.cssText = v;
+    else if (k === "role" || k.startsWith("aria-") || k.startsWith("data-") || k === "tabindex" || k === "title") el.setAttribute(k, v);
+    else el[k] = v;
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    el.append(kid instanceof Node ? kid : String(kid));
+  }
+  return el;
+}
+
+function s(tag, attrs, ...kids) {
+  const el = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+  for (const kid of kids) if (kid) el.append(kid);
+  return el;
+}
+
+function bytes(n) {
+  if (n == null) return "–";
+  if (n < 1024) return Math.round(n) + "B";
+  const units = ["K", "M", "G", "T", "P"];
+  let v = n / 1024, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return (v >= 10 ? Math.round(v) : v.toFixed(1)) + units[i];
+}
+const pct = (v) => Math.round(v) + "%";
+function dur(seconds) {
+  if (seconds < 60) return Math.max(0, Math.round(seconds)) + "s";
+  if (seconds < 3600) return Math.floor(seconds / 60) + "m";
+  if (seconds < 86400) return Math.floor(seconds / 3600) + "h";
+  return Math.floor(seconds / 86400) + "d";
+}
+const since = (iso) => dur((Date.now() - Date.parse(iso)) / 1000);
+const clock = (unix) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const dash = () => h("span", { class: "dim" }, "–");
+
+// A state: the word, with a dot to scan by. level is ok, warn, crit, or idle
+// for things that are neither fine nor wrong (stopped, not run yet).
+function state(word, level) {
+  return h("span", { class: "state " + level }, h("span", { class: "dot " + level, "aria-hidden": "true" }), word);
+}
+
+function meter(percent, level, label) {
+  const p = Math.max(0, Math.min(100, percent));
+  return h("div", {
+    class: "meter" + (level && level !== "ok" ? " " + level : ""),
+    role: "meter", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(p), "aria-label": label,
+  }, h("span", { style: "width:" + p + "%" }));
+}
+
+function gauge(u, label, extra) {
+  return h("span", { class: "gauge" }, meter(u.percent, u.level, label),
+    h("span", { class: "p " + u.level }, pct(u.percent)),
+    h("span", { class: "x" }, extra || ""));
+}
+
+// ---- nodes ----------------------------------------------------------------
+
+function nodeState(m) {
+  const level = m.status === "ready" ? "ok" : m.status === "down" || m.status === "disconnected" ? "crit" : "warn";
+  let word = m.status;
+  if (m.draining) word += ", draining";
+  else if (!m.eligible) word += ", not taking work";
+  const out = [state(word, level)];
+  if (!m.reporting && m.status !== "down") out.push(h("span", { class: "dim" }, " · no metrics"));
+  return out;
+}
+
+function renderNodes(machines) {
+  return h("section", { class: "nodes", "aria-label": "Nodes" }, machines.map(nodeCard));
+}
+
+// One row of a card's stats: what, how full, and what that is in its own units.
+function statRow(label, u, meterLabel, extra, title) {
+  return [h("span", { class: "k", title: title || label }, label), meter(u.percent, u.level, meterLabel),
+    h("span", { class: "p " + u.level }, pct(u.percent)), h("span", { class: "x" }, extra || "")];
+}
+
+function nodeCard(m) {
+  const rows = [];
+  if (m.cpu) {
+    const extra = [m.load1 != null ? "load " + m.load1.toFixed(2) : "", m.cores ? m.cores + " cores" : ""].filter(Boolean).join(" · ");
+    rows.push(statRow("CPU", m.cpu, "CPU", extra));
+  }
+  if (m.memory) rows.push(statRow("Memory", m.memory, "Memory", bytes(m.memory.used) + " / " + bytes(m.memory.total)));
+  for (const d of m.disks || []) {
+    const level = d.inodes && d.inodes.level !== "ok" && d.level === "ok" ? d.inodes.level : d.level;
+    const free = bytes(d.total - d.used) + " free" + (d.inodes && d.inodes.level !== "ok" ? " · inodes " + pct(d.inodes.percent) : "");
+    rows.push(statRow(d.mount, { percent: d.percent, level }, "Disk " + d.mount, free, d.mount + " (" + d.device + ")"));
+  }
+  if (m.net) {
+    rows.push([h("span", { class: "k" }, "Network"),
+      h("span", { class: "wide" }, "↓ " + bytes(m.net.rxBytesPerSec) + "/s   ↑ " + bytes(m.net.txBytesPerSec) + "/s")]);
+  }
+
+  const series = [];
+  if (m.cpuHistory && m.cpuHistory.length > 1) series.push({ name: "CPU", color: "var(--series-1)", points: m.cpuHistory });
+  if (m.memoryHistory && m.memoryHistory.length > 1) series.push({ name: "Memory", color: "var(--series-2)", points: m.memoryHistory });
+
+  return h("article", { class: "node", "aria-label": m.name },
+    h("header", {},
+      h("span", { class: "name" }, m.name),
+      nodeState(m),
+      m.uptimeSeconds ? h("span", { class: "up" }, "up " + dur(m.uptimeSeconds)) : null),
+    rows.length ? h("div", { class: "stats" }, rows.flat()) : null,
+    chart(m.name, series));
+}
+
+// The last hour. CPU and memory are both shares of the same machine, so they
+// share one 0–100% axis honestly. The current values are in the rows above it;
+// the tooltip reads both at the pointer's minute, by mouse or arrow keys.
+function chart(machine, series) {
+  const legend = h("div", { class: "legend" }, "Last hour",
+    series.flatMap((sr) => [h("span", { class: "sw", style: "background:" + sr.color }), sr.name]));
+  if (!series.length) {
+    return h("div", { class: "chart" }, legend, h("div", { class: "none" }, "No metrics in the last hour"));
+  }
+  const t1 = Math.max(...series.map((sr) => sr.points[sr.points.length - 1].t));
+  const t0 = t1 - 3600;
+  const ticks = [100, 50, 0];
+  return h("div", { class: "chart" }, legend,
+    h("div", { class: "yax", "aria-hidden": "true" }, ticks.map((v) => h("span", { style: "top:" + (100 - v) + "%" }, v + "%"))),
+    spark(machine, series, t0, t1),
+    h("div", { class: "xax", "aria-hidden": "true" }, [t0, t0 + 1800, t1].map((t) => h("span", {}, clock(t)))));
+}
+
+function spark(machine, series, t0, t1) {
+  const H = 100;
+  const x = (t) => ((t - t0) / 3600) * 100;
+  const y = (v) => H - Math.max(0, Math.min(100, v));
+
+  const svg = s("svg", { viewBox: "0 0 100 " + H, preserveAspectRatio: "none", "aria-hidden": "true" });
+  for (const v of [100, 50]) {
+    svg.append(s("line", { x1: 0, x2: 100, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1, "vector-effect": "non-scaling-stroke" }));
+  }
+  svg.append(s("line", { x1: 0, x2: 100, y1: H, y2: H, stroke: "var(--axis)", "stroke-width": 1, "vector-effect": "non-scaling-stroke" }));
+  for (const sr of series) {
+    const d = sr.points.filter((p) => p.t >= t0).map((p, i) => (i ? "L" : "M") + x(p.t).toFixed(2) + " " + y(p.v).toFixed(2)).join("");
+    svg.append(s("path", { d, fill: "none", stroke: sr.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", "vector-effect": "non-scaling-stroke" }));
+  }
+  const peak = (sr) => Math.max(...sr.points.map((p) => p.v));
+  const plot = h("div", {
+    class: "spark", tabindex: 0, role: "img",
+    "aria-label": machine + ", last hour: " + series.map((sr) => sr.name + " peak " + pct(peak(sr))).join(", "),
+  }, svg);
+  const cross = h("div", { class: "cross" });
+  plot.append(cross);
+
+  const times = series[0].points.filter((p) => p.t >= t0).map((p) => p.t);
+  let index = -1;
+  const tip = () => document.getElementById("tooltip");
+  const show = (i) => {
+    index = Math.max(0, Math.min(times.length - 1, i));
+    const t = times[index];
+    cross.style.left = x(t) + "%";
+    cross.style.display = "block";
+    const el = tip();
+    el.replaceChildren(h("div", { class: "t" }, clock(t)));
+    for (const sr of series) {
+      const p = sr.points.reduce((best, q) => Math.abs(q.t - t) < Math.abs(best.t - t) ? q : best);
+      el.append(h("div", {}, h("span", { class: "sw", style: "background:" + sr.color }), sr.name + " " + pct(p.v)));
+    }
+    el.style.display = "block";
+    const r = plot.getBoundingClientRect();
+    const px = r.left + (x(t) / 100) * r.width;
+    const w = el.offsetWidth;
+    el.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, px - w - 12)) + "px";
+    el.style.top = r.top - 6 + "px";
+  };
+  const hide = () => { cross.style.display = "none"; tip().style.display = "none"; };
+  plot.addEventListener("pointermove", (e) => {
+    const r = plot.getBoundingClientRect();
+    const t = t0 + ((e.clientX - r.left) / r.width) * 3600;
+    let best = 0;
+    times.forEach((tt, i) => { if (Math.abs(tt - t) < Math.abs(times[best] - t)) best = i; });
+    show(best);
+  });
+  plot.addEventListener("pointerleave", hide);
+  plot.addEventListener("blur", hide);
+  plot.addEventListener("focus", () => show(times.length - 1));
+  plot.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { show(index - 1); e.preventDefault(); }
+    if (e.key === "ArrowRight") { show(index + 1); e.preventDefault(); }
+    if (e.key === "Escape") hide();
+  });
+  return plot;
+}
+
+// ---- stores ---------------------------------------------------------------
+
+// orca's own log and metric stores. The log store has a hard cap and drops
+// its oldest days at it — the cap working, so it is said, not flagged. The
+// metric store has no cap and stops storing below a free-space floor. The
+// status words are the summary's, as orca top shows them.
+
+function renderStores(stores) {
+  const table = h("table", {},
+    h("thead", {}, h("tr", {},
+      h("th", {}, "Store"), h("th", {}, "Status"), h("th", {}, "Holds"), h("th", {}, "Limit"),
+      h("th", { class: "num" }, "Free on its disk"), h("th", { class: "hide-narrow fill" }, ""))));
+  const body = h("tbody", {});
+  for (const st of stores) {
+    const holds = st.cap
+      ? gauge({ percent: (100 * st.used) / st.cap, level: st.level }, "Log store against its cap", bytes(st.used))
+      : h("span", {}, bytes(st.used));
+    const limit = st.cap ? bytes(st.cap) + " cap, oldest dropped first"
+      : st.minFree ? "stops below " + bytes(st.minFree) + " free" : dash();
+    body.append(h("tr", {},
+      h("td", { class: "strong" }, st.name === "logs" ? "Logs" : "Metrics"),
+      h("td", {}, state(st.status, st.level)),
+      h("td", {}, holds),
+      h("td", { class: "dim" }, limit),
+      h("td", { class: "num" }, bytes(st.free)),
+      h("td", { class: "wrap hide-narrow fill" }, st.note || "")));
+  }
+  table.append(body);
+  return h("section", { class: "panel", "aria-label": "Stores" }, table);
+}
+
+// ---- services -------------------------------------------------------------
+
+function serviceLevel(svc) {
+  return svc.health === "stopped" || svc.health === "scheduled" ? "idle" : svc.level;
+}
+
+function backupCell(b) {
+  if (!b) return dash();
+  if (b.health === "running" && b.since) return state("backed up " + since(b.since) + " ago", "ok");
+  if (b.health === "scheduled") return state("not run yet", "idle");
+  return state(b.health, b.level);
+}
+
+function renderServices(services) {
+  const table = h("table", {},
+    h("thead", {}, h("tr", {},
+      h("th", {}, "Group"), h("th", {}, "Service"), h("th", {}, "Status"), h("th", { class: "num" }, "Running"),
+      h("th", { class: "hide-narrow" }, "Node"), h("th", { class: "num hide-narrow" }, "Up"),
+      h("th", { class: "num hide-narrow", title: "CPU in use, in cores" }, "CPU (cores)"),
+      h("th", { title: "Memory in use, against the service's limit" }, "Memory of limit"),
+      h("th", { class: "num hide-narrow" }, "Restarts"), h("th", { class: "hide-narrow" }, "Backup"),
+      h("th", { class: "hide-narrow fill" }, "Detail"))));
+  const body = h("tbody", {});
+  let group = null;
+  for (const svc of services) {
+    const first = svc.group !== group;
+    group = svc.group;
+    body.append(h("tr", { class: first ? "first" : "" },
+      h("td", { class: first ? "strong" : "" }, first ? svc.group : ""),
+      h("td", {}, logLink(svc.group + "/" + svc.name, svc.name)),
+      h("td", {}, state(svc.health, serviceLevel(svc))),
+      h("td", { class: "num" }, svc.running + "/" + svc.desired),
+      h("td", { class: "hide-narrow" }, svc.node || dash()),
+      h("td", { class: "num hide-narrow" }, svc.since && svc.level === "ok" ? dur((Date.now() - Date.parse(svc.since)) / 1000) : dash()),
+      h("td", { class: "num hide-narrow" }, svc.cpuCores != null ? svc.cpuCores.toFixed(2) : dash()),
+      h("td", {}, svc.memory ? gauge(svc.memory, svc.name + " memory", "of " + bytes(svc.memory.total)) : dash()),
+      h("td", { class: "num hide-narrow" }, svc.restarts || dash()),
+      h("td", { class: "hide-narrow" }, backupCell(svc.backup)),
+      h("td", { class: "wrap hide-narrow fill" }, svc.level !== "ok" && svc.message ? svc.message : (svc.backup && svc.backup.level !== "ok" && svc.backup.message) || "")));
+  }
+  table.append(body);
+  return h("section", { class: "panel", "aria-label": "Services" }, table);
+}
+
+// ---- the log drawer -------------------------------------------------------
+
+const drawer = {
+  service: null,
+  opener: null,
+  lines: [],
+  poll: null,
+  seq: 0,
+};
+const MAX_LINES = 2000;
+const FOLLOW_MS = 3000;
+
+function logLink(service, label) {
+  return h("button", { class: "link", type: "button", title: "Logs for " + service, onclick: (e) => openLogs(service, e.currentTarget) }, label);
+}
+
+function openLogs(service, opener) {
+  drawer.service = service;
+  drawer.opener = opener || document.activeElement;
+  drawer.lines = [];
+  const [group, name] = service.split("/");
+  document.getElementById("drawer-title").replaceChildren(name, h("span", {}, " · " + group + " · logs"));
+  document.getElementById("drawer").hidden = false;
+  document.getElementById("scrim").hidden = false;
+  document.body.style.overflow = "hidden";
+  if (location.hash !== "#logs=" + service) history.replaceState(null, "", "#logs=" + service);
+  document.getElementById("log-q").focus();
+  loadLogs();
+}
+
+function closeLogs() {
+  if (!drawer.service) return;
+  drawer.service = null;
+  drawer.seq++;
+  clearTimeout(drawer.poll);
+  document.getElementById("drawer").hidden = true;
+  document.getElementById("scrim").hidden = true;
+  document.body.style.overflow = "";
+  history.replaceState(null, "", location.pathname + location.search);
+  if (drawer.opener && document.contains(drawer.opener)) drawer.opener.focus();
+}
+
+function logURL(after) {
+  const p = new URLSearchParams({ service: drawer.service, since: document.getElementById("log-since").value });
+  const q = document.getElementById("log-q").value.trim();
+  if (q) p.set("q", q);
+  if (after) p.set("after", after);
+  return "api/logs?" + p;
+}
+
+async function fetchLogs(after) {
+  const res = await fetch(logURL(after), { cache: "no-store" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || res.status + " " + res.statusText);
+  return body;
+}
+
+// A fresh read: the window, the search, or the service changed.
+async function loadLogs() {
+  clearTimeout(drawer.poll);
+  const seq = ++drawer.seq;
+  const box = document.getElementById("log-lines");
+  const status = document.getElementById("log-status");
+  status.textContent = "Loading…";
+  try {
+    const body = await fetchLogs();
+    if (seq !== drawer.seq) return;
+    drawer.lines = body.lines;
+    box.replaceChildren(...(body.lines.length ? body.lines.map(logLine) : [h("div", { class: "empty" }, emptyText())]));
+    box.scrollTop = box.scrollHeight;
+    status.textContent = describe(body);
+  } catch (err) {
+    if (seq !== drawer.seq) return;
+    box.replaceChildren(h("div", { class: "empty" }, "Could not read the logs: " + err.message));
+    status.textContent = "";
+  }
+  schedulePoll(seq);
+}
+
+// Following: only lines newer than the last one shown, appended.
+async function pollLogs(seq) {
+  const last = drawer.lines.length ? drawer.lines[drawer.lines.length - 1].time : null;
+  if (!last) return loadLogs();
+  try {
+    const body = await fetchLogs(last);
+    if (seq !== drawer.seq || !body.lines.length) return schedulePoll(seq);
+    const box = document.getElementById("log-lines");
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.append(...body.lines.map(logLine));
+    drawer.lines.push(...body.lines);
+    while (drawer.lines.length > MAX_LINES) { drawer.lines.shift(); box.firstElementChild.remove(); }
+    if (atBottom) box.scrollTop = box.scrollHeight;
+    document.getElementById("log-status").textContent = "Following · " + drawer.lines.length + " lines";
+  } catch (err) {
+    if (seq !== drawer.seq) return;
+    document.getElementById("log-status").textContent = "Could not refresh: " + err.message;
+  }
+  schedulePoll(seq);
+}
+
+function schedulePoll(seq) {
+  clearTimeout(drawer.poll);
+  if (seq === drawer.seq && drawer.service && document.getElementById("log-follow").checked) {
+    drawer.poll = setTimeout(() => pollLogs(seq), FOLLOW_MS);
+  }
+}
+
+function emptyText() {
+  const q = document.getElementById("log-q").value.trim();
+  const since = document.getElementById("log-since").selectedOptions[0].textContent;
+  return (q ? "Nothing matching \u201c" + q + "\u201d" : "Nothing logged") + " in the last " + since + ".";
+}
+
+function describe(body) {
+  const n = body.lines.length;
+  if (n === 0) return document.getElementById("log-follow").checked ? "Following · waiting for lines" : "";
+  const following = document.getElementById("log-follow").checked ? "Following · " : "";
+  if (body.truncated) return following + "The newest " + n + " lines; narrow the search or the window to see further back.";
+  return following + n + (n === 1 ? " line" : " lines") + ", newest at the bottom.";
+}
+
+function logLine(l) {
+  const t = new Date(l.time);
+  const service = drawer.service.split("/")[1];
+  // The task is named only when it is not the service itself: a template's
+  // helper, or a backup's dump and upload.
+  const task = l.task && l.task !== service ? l.task : "";
+  return h("div", { class: "logline" + (l.stream === "stderr" ? " stderr" : "") },
+    h("span", { class: "t", title: t.toLocaleString() }, t.toLocaleTimeString([], { hour12: false })),
+    h("span", { class: "task" }, task),
+    h("span", { class: "m" }, l.message));
+}
+
+let searchTimer = null;
+document.getElementById("log-q").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadLogs, 300);
+});
+document.getElementById("log-since").addEventListener("change", loadLogs);
+document.getElementById("log-follow").addEventListener("change", () => {
+  if (!drawer.service) return;
+  document.getElementById("log-status").textContent = describe({ lines: drawer.lines, truncated: false });
+  schedulePoll(drawer.seq);
+});
+document.getElementById("drawer-close").addEventListener("click", closeLogs);
+document.getElementById("scrim").addEventListener("click", closeLogs);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.service) closeLogs(); });
+window.addEventListener("hashchange", () => {
+  const m = location.hash.match(/^#logs=(.+)$/);
+  if (m && decodeURIComponent(m[1]) !== drawer.service) openLogs(decodeURIComponent(m[1]));
+  if (!m) closeLogs();
+});
+
+
+// ---- the page -------------------------------------------------------------
+
+function render() {
+  const content = document.getElementById("content");
+  if (!summary) {
+    content.replaceChildren(h("div", { class: "panel empty" }, "Could not reach the status service: " + (lastError || "no answer")));
+    return;
+  }
+  const parts = [];
+  const unavailable = Object.entries(summary.unavailable || {});
+  if (unavailable.length) {
+    parts.push(h("ul", { class: "notices" }, unavailable.map(([what, why]) =>
+      h("li", {}, state(what + " unavailable: " + why, what === "nomad" ? "crit" : "warn")))));
+  }
+
+  parts.push(h("h2", {}, "Nodes"));
+  parts.push(summary.machines.length ? renderNodes(summary.machines) : h("div", { class: "panel empty" }, "No nodes known."));
+
+  if (summary.stores && summary.stores.length) {
+    parts.push(h("h2", {}, "Stores"), renderStores(summary.stores));
+  }
+
+  parts.push(h("h2", {}, "Services"));
+  parts.push((summary.services || []).length ? renderServices(summary.services) : h("div", { class: "panel empty" }, "Nothing deployed."));
+
+  content.replaceChildren(...parts);
+  content.classList.toggle("refetching", !!lastError);
+  tick();
+}
+
+function tick() {
+  const el = document.getElementById("updated");
+  if (!summary) { el.textContent = ""; return; }
+  const age = (Date.now() - Date.parse(summary.time)) / 1000;
+  el.textContent = lastError
+    ? "Could not refresh (" + lastError + ") · showing " + dur(age) + " old"
+    : "Updated " + (age < 5 ? "just now" : dur(age) + " ago");
+}
+
+let timer = null;
+async function refresh() {
+  clearTimeout(timer);
+  // Hold the last render, dimmed, rather than flashing a blank page.
+  if (summary) document.getElementById("content").classList.add("refetching");
+  try {
+    const res = await fetch("api/summary", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status + " " + res.statusText);
+    summary = await res.json();
+    lastError = null;
+  } catch (err) {
+    lastError = err.message || String(err);
+  }
+  render();
+  const m = location.hash.match(/^#logs=(.+)$/);
+  if (m && !drawer.service && summary) openLogs(decodeURIComponent(m[1]));
+  if (!document.hidden) timer = setTimeout(refresh, REFRESH_MS);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTimeout(timer);
+  else refresh();
+});
+
+// The cluster's other web UIs, as deploy published them. They do not change
+// while the page is open: a new set comes with a new deploy, which restarts
+// the page.
+async function loadLinks() {
+  try {
+    const res = await fetch("api/links", { cache: "no-store" });
+    if (!res.ok) return;
+    const links = await res.json();
+    const label = (name) => name.charAt(0).toUpperCase() + name.slice(1);
+    document.getElementById("links").replaceChildren(...links
+      .filter((l) => /^https?:\/\//.test(l.url))
+      .map((l) => h("a", { href: l.url }, label(l.name))));
+  } catch (err) {
+    // Without them the page is still the page.
+  }
+}
+
+document.getElementById("domain").textContent = location.hostname.replace(/^status\./, "");
+setInterval(tick, 1000);
+loadLinks();
+refresh();
+</script>
+</body>
+</html>

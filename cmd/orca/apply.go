@@ -1,0 +1,686 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	nomad "github.com/hashicorp/nomad/api"
+	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/pkg/registry"
+	"golang.org/x/term"
+)
+
+// cmdApply converges the cluster to the manifests. With no argument it applies
+// every app in cluster.yaml; named apps narrow the scope, and anything outside
+// that scope is left completely alone.
+func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) error {
+	yes := false
+	var names []string
+	for _, a := range args {
+		if a == "--yes" || a == "-y" {
+			yes = true
+			continue
+		}
+		names = append(names, a)
+	}
+	args = names
+
+	// Every group, kept alongside the scoped set: a backup names its target
+	// by <group>/<service>, and that target is usually in a group this apply
+	// was not asked to touch.
+	all, err := loadGroups(cfg)
+	if err != nil {
+		return err
+	}
+
+	// The target machine. Multi-machine placement is per-service; this is the
+	// one orca talks to, which is the first server in the config.
+	cluster, err := clusterFor(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	current, err := cluster.Jobs(ctx)
+	if err != nil {
+		return err
+	}
+
+	apps, err := scopeGroups(all, args, current)
+	if err != nil {
+		return err
+	}
+
+	// scope is nil for a whole-cluster apply: everything orca owns is in play,
+	// including groups whose directory is gone, which is exactly what has to be
+	// stopped. Named groups narrow it, and nothing outside is touched.
+	var scope map[string]bool
+	if len(args) > 0 {
+		scope = map[string]bool{}
+		for _, a := range args {
+			scope[a] = true
+		}
+	}
+
+	// orca's own jobs are a group you did not write. Including them here means
+	// plan, apply, health and status treat them exactly like anything else,
+	// with no separate verb and no special cases — and a capability switched
+	// off in cluster.yaml is simply a service orca no longer declares, so the
+	// ordinary "stop what is no longer declared" rule removes it.
+	platformInScope := len(args) == 0
+	for _, a := range args {
+		if a == deploy.OrcaApp {
+			platformInScope = true
+		}
+	}
+
+	// A database with a `backup:` gets a periodic job, and its target is
+	// usually in a group this apply was not asked to touch — so it is looked
+	// up in every group, not only the ones in scope.
+	backups, err := collectBackups(all, apps)
+	if err != nil {
+		return err
+	}
+
+	pins := newImageResolver(ctx, registry.Remote{})
+
+	desired, volumeDirs, err := buildJobs(cfg, pins, apps, backups)
+	if err != nil {
+		return err
+	}
+
+	// The status page runs a build of orca on the machine, and its job names
+	// that build by its hash — so the build is found, and if need be made,
+	// before the job can be rendered. Plan does this too; it only ships in
+	// apply.
+	var statusBin *statusBinary
+	if platformInScope && cfg.Monitoring.Status.Enabled {
+		b, err := resolveStatusBinary(ctx)
+		if err != nil {
+			return err
+		}
+		statusBin = &b
+	}
+
+	if platformInScope {
+		// The existing auth hash is read from the cluster first, so an
+		// unchanged password produces an unchanged job spec.
+		password, err := adminPassword(ctx, cluster, planOnly)
+		if err != nil {
+			return err
+		}
+		authHash, err := resolveAuthHash(ctx, cluster, password)
+		if err != nil {
+			return err
+		}
+		desired = append(desired, buildPlatformJobs(cfg, authHash, statusBin)...)
+	}
+
+	// Every image is submitted as the digest its tag points at right now —
+	// orca's own and the ones templates and backups add, not only the ones a
+	// manifest names.
+	if err := deploy.PinImages(desired, pins.Pin); err != nil {
+		return err
+	}
+
+	// The machine pulls with its own credentials, not yours, so an image that
+	// resolved only because you are logged in would otherwise fail at the
+	// pull — after the health timeout, as "unauthorized".
+	if err := preflightRegistries(ctx, cluster, pins.private); err != nil {
+		return err
+	}
+
+	// Every secret the apply depends on is checked before anything is
+	// submitted. Nomad blocks a task whose secret is missing, so without this
+	// the failure arrives as a two-minute health timeout naming a raft path
+	// instead of a secret.
+	toGenerate, err := preflightSecrets(ctx, cluster, apps, backups)
+	if err != nil {
+		return err
+	}
+
+	plan := deploy.BuildPlan(desired, current, scope)
+
+	// plan changes nothing — not a job, not a firewall rule, not a secret.
+	// What apply would generate is said instead of done.
+	if planOnly {
+		for _, g := range toGenerate {
+			fmt.Printf("  generate secret %s\n", g)
+		}
+		fmt.Println(plan.String())
+		return nil
+	}
+
+	// Every service the manifests declare, whether or not this apply touched
+	// it. Health is checked against this set so a crash loop is reported even
+	// when the spec has not moved.
+	var inScope []string
+	for _, j := range desired {
+		inScope = append(inScope, *j.ID)
+	}
+
+	fmt.Println(plan.String())
+
+	// Asked before anything changes, so answering no leaves the machine
+	// exactly as it was — including the firewall, which would otherwise
+	// already have closed the ports of the services you just declined to
+	// stop.
+	if plan.HasWork() {
+		fmt.Println()
+		if err := confirmStops(plan, yes); err != nil {
+			return err
+		}
+	}
+
+	// Before anything is deployed, so a port is open by the time something is
+	// listening on it rather than a moment after. Also on a no-op apply,
+	// which is what makes rules flushed by hand come back.
+	if err := applyFirewall(ctx, cfg, cluster); err != nil {
+		return err
+	}
+
+	// A template's secret is orca's to create: the author never writes it and
+	// never sees the value.
+	if err := createGeneratedSecrets(ctx, cluster, toGenerate); err != nil {
+		return err
+	}
+
+	// Before the job that mounts it is submitted, and on a no-op apply too,
+	// so a build removed from the machine is back before the page restarts.
+	if statusBin != nil {
+		if err := shipStatusBinary(ctx, cfg, *statusBin); err != nil {
+			return err
+		}
+	}
+
+	if !plan.HasWork() {
+		return waitForHealth(ctx, cluster, inScope, HealthTimeout, false)
+	}
+
+	if err := ensureVolumeDirs(ctx, cfg, cluster, volumeDirs); err != nil {
+		return err
+	}
+
+	if err := execute(ctx, cluster, plan); err != nil {
+		return err
+	}
+
+	return waitForHealth(ctx, cluster, inScope, HealthTimeout, true)
+}
+
+// preflightSecrets checks that every secret the apply needs is set or about
+// to be generated, and returns the generated ones that do not exist yet. It
+// only reads: plan runs it too.
+func preflightSecrets(ctx context.Context, cluster *Cluster, apps []*manifest.Manifest, backups []backedUp) ([]generatedSecret, error) {
+	needed := neededSecrets(apps, backups)
+	generated := generatedSecrets(apps)
+	if len(needed) == 0 && len(generated) == 0 {
+		return nil, nil
+	}
+
+	set, err := cluster.SecretPaths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return missingGenerated(needed, generated, set)
+}
+
+// missingGenerated is preflightSecrets' judgement, without the cluster.
+//
+// A generated secret not yet created counts as set: apply creates it before
+// anything that reads it is submitted, and plan has to be able to say an apply
+// would work without creating anything itself.
+func missingGenerated(needed []secretRef, generated []generatedSecret, set map[string]bool) ([]generatedSecret, error) {
+	var toGenerate []generatedSecret
+	willBeSet := map[string]bool{}
+	for p := range set {
+		willBeSet[p] = true
+	}
+	for _, g := range generated {
+		if !set[g.Path()] {
+			toGenerate = append(toGenerate, g)
+			willBeSet[g.Path()] = true
+		}
+	}
+	if err := checkMissing(needed, willBeSet); err != nil {
+		return nil, err
+	}
+	return toGenerate, nil
+}
+
+// execute applies the plan, stopping before creating and updating.
+//
+// This order was once the other way round, to let "a service that replaced
+// another start first". But a stop only ever targets a service the manifests
+// no longer declare — a service that merely changed gets an update to the same
+// job ID, never a stop and a create — so holding one open while its
+// replacement starts protects nothing, and costs exactly the case where the
+// two contend for the same resource.
+//
+// That case is a job ID changing, which is what renaming a group is. Creating
+// first put the new ingress on the machine while the old one still held :80
+// and the new log shipper against a buffer the old one had locked: the
+// replacements were unplaceable or crash-looping until the thing they replaced
+// went away.
+//
+// The cost is that a failure partway through leaves fewer services running
+// rather than more. That is the right trade: what was stopped is what you
+// declared you no longer wanted.
+func execute(ctx context.Context, cluster *Cluster, plan deploy.Plan) error {
+	var errs []error
+
+	for _, c := range plan.Work() {
+		if c.Kind != deploy.ChangeStop {
+			continue
+		}
+		// Removed from Nomad, not merely stopped. A stopped job record is a
+		// tombstone that lingers in `status` forever, and it buys nothing:
+		// the manifests are the source of truth, so bringing a service back
+		// means declaring it again, which redeploys it either way.
+		//
+		// This deletes no data. The volume stays on disk and `orca status`
+		// reports it as orphaned, so "kept" never means "invisible".
+		fmt.Printf("  stop    %s/%s ... ", c.App, c.Service)
+		if err := cluster.Stop(ctx, c.JobID, true); err != nil {
+			fmt.Println("FAILED")
+			errs = append(errs, err)
+			continue
+		}
+		fmt.Println("ok")
+	}
+
+	for _, c := range plan.Work() {
+		if c.Kind == deploy.ChangeStop {
+			continue
+		}
+		fmt.Printf("  %-7s %s/%s ... ", c.Kind, c.App, c.Service)
+		if err := cluster.Submit(ctx, c.Job); err != nil {
+			fmt.Println("FAILED")
+			errs = append(errs, err)
+			continue
+		}
+		fmt.Println("ok")
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	return nil
+}
+
+// buildJobs resolves every image to a digest and renders the jobs, returning
+// the host directories the volumes need.
+func buildJobs(cfg Config, pins *imageResolver, apps []*manifest.Manifest, backups []backedUp) ([]*nomad.Job, []VolumeDir, error) {
+	opts := deploy.Options{
+		Datacenter: Datacenter,
+		Ingress:    cfg.Ingress.Enabled,
+		TLS:        cfg.Ingress.TLS(),
+		DataDir:    DataDir,
+	}
+
+	// On one machine an internal port needs no host port at all: every
+	// container reaches every other directly over the bridge. Once there is a
+	// second machine that address is ambiguous, so the port is published — on
+	// the private network, never the public interface.
+	if cfg.MultiNode() {
+		opts.InternalNetwork = "internal"
+	}
+	opts.DNS = cfg.DNS.Enabled
+
+	var jobs []*nomad.Job
+	var dirs []VolumeDir
+	var errs []error
+
+	imagesByGroup := map[string]map[string]string{}
+	for _, m := range apps {
+		images, err := resolveImages(pins.Pin, m)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		imagesByGroup[m.App] = images
+
+		appJobs, err := deploy.BuildApp(m, images, opts, func(s *manifest.Service) (string, error) {
+			return nodeFor(cfg, s)
+		})
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		jobs = append(jobs, appJobs...)
+
+		for _, s := range m.Services {
+			if s.Volume != nil {
+				node, err := nodeFor(cfg, s)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				dirs = append(dirs, VolumeDir{
+					Path:  deploy.VolumePath(DataDir, m.App, s.Name),
+					Owner: deploy.VolumeOwner(s),
+					Node:  node,
+				})
+			}
+		}
+	}
+
+	// A database with a `backup:` gets a periodic job. Naming a target is
+	// what turns backups on; there is no separate switch to forget.
+	for _, b := range backups {
+		images, ok := imagesByGroup[b.Manifest.App]
+		if !ok {
+			// Its group's images failed to resolve, which is already reported.
+			continue
+		}
+		o := opts
+		o.Node, _ = nodeFor(cfg, b.Service)
+		job, err := deploy.BuildBackup(b.Manifest, b.Service, images[b.Service.Name], b.Spec, o)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		jobs = append(jobs, job)
+	}
+
+	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Path < dirs[j].Path })
+	return jobs, dirs, errors.Join(errs...)
+}
+
+// buildPlatformJobs renders the platform jobs this cluster's config asks for.
+// statusBin is the build of orca the status page runs, when it is on.
+func buildPlatformJobs(cfg Config, authHash string, statusBin *statusBinary) []*nomad.Job {
+	return deploy.BuildPlatform(platformOptions(cfg, authHash, statusBin))
+}
+
+// ensureVolumeDirs creates each volume's directory on the machine that volume
+// lives on.
+//
+// Not on whichever machine orca happens to be talking to: a service pinned
+// elsewhere would then find no directory, and Docker would create one as root
+// that the image cannot write to.
+func ensureVolumeDirs(ctx context.Context, cfg Config, fallback *Cluster, dirs []VolumeDir) error {
+	byNode := map[string][]VolumeDir{}
+	for _, d := range dirs {
+		byNode[d.Node] = append(byNode[d.Node], d)
+	}
+
+	for node, list := range byNode {
+		target := fallback
+		if node != "" {
+			nc, ok := cfg.FindNode(node)
+			if !ok {
+				return fmt.Errorf("volume pinned to unknown node %q", node)
+			}
+			target = NewCluster(Node{Host: nc.Host})
+		}
+		if err := target.EnsureDirs(ctx, list); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyFirewall locks every machine's public interface down to the ports the
+// manifests ask for.
+//
+// Every machine, not only the one orca is talking to: a cluster where one
+// machine is firewalled and the rest are open is not a firewalled cluster, and
+// the difference is invisible from the machine that happens to be protected.
+//
+// The rules are derived from every group, not only the ones in scope, so a
+// narrowed apply does not close a port belonging to an app it was told to
+// leave alone. Every machine gets the same ruleset: an unpinned service can be
+// placed anywhere, so the union is the only set that is correct wherever it
+// lands. A port open on a machine running nothing behind it is reachable by
+// nothing.
+func applyFirewall(ctx context.Context, cfg Config, _ *Cluster) error {
+	if !cfg.Firewall.Enabled {
+		return nil
+	}
+
+	all, err := loadGroups(cfg)
+	if err != nil {
+		return err
+	}
+	var hostPorts []manifest.HostPort
+	for _, m := range all {
+		hostPorts = append(hostPorts, m.HostPorts()...)
+	}
+
+	ports := deploy.PublicPorts(hostPorts, cfg.Ingress.Enabled)
+	ruleset := deploy.Firewall("__PUBLIC_IFACE__", "nomad", ports)
+
+	anyChanged := false
+	for _, nc := range cfg.Nodes {
+		changed, err := NewCluster(Node{Host: nc.Host}).ApplyFirewall(ctx, ruleset)
+		if err != nil {
+			return fmt.Errorf("node %s: %w", nc.Name, err)
+		}
+		anyChanged = anyChanged || changed
+	}
+
+	if anyChanged {
+		open := append([]int{22}, ports.TCP...)
+		fmt.Printf("firewall updated: tcp %v", open)
+		if len(ports.UDP) > 0 {
+			fmt.Printf(", udp %v", ports.UDP)
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+// backupSpec is the resolved backup destination.
+// platformOptions turns the cluster config into the platform's resolved
+// options. A capability that is switched off becomes a nil spec, which
+// BuildPlatform renders as no job at all.
+func platformOptions(cfg Config, authHash string, statusBin *statusBinary) deploy.PlatformOptions {
+	opts := deploy.PlatformOptions{
+		Datacenter: Datacenter,
+		DataDir:    DataDir,
+		Domain:     cfg.Monitoring.Domain,
+		Images: deploy.PlatformImages{
+			CoreDNS:         "coredns/coredns:" + Versions.CoreDNS,
+			NodeExporter:    "prom/node-exporter:" + Versions.NodeExporter,
+			Traefik:         "traefik:" + Versions.Traefik,
+			Vector:          "timberio/vector:" + Versions.Vector + "-alpine",
+			VictoriaLogs:    "victoriametrics/victoria-logs:" + Versions.VictoriaLogs,
+			VictoriaMetrics: "victoriametrics/victoria-metrics:" + Versions.VictoriaMetrics,
+		},
+	}
+
+	// Every platform component owns data on one disk and has to be pinned, at
+	// any machine count. Leaving it to Nomad on a multi-machine cluster would
+	// let a reschedule start a store against an empty directory and report it
+	// healthy while serving nothing.
+	if n, err := cfg.MonitoringNode(); err == nil {
+		opts.MonitoringNode = n.Name
+	}
+	if n, err := cfg.IngressNode(); err == nil {
+		opts.IngressNode = n.Name
+	}
+
+	// Nothing the platform runs for itself binds a public interface. The
+	// internal network is the container bridge on one machine and the private
+	// NIC once there is a cluster, so the stores are reachable by name from
+	// any container and from nowhere outside the machines.
+	opts.StoreNetwork = "internal"
+	opts.MultiNode = cfg.MultiNode()
+
+	if cfg.DNS.Enabled {
+		opts.DNS = &deploy.DNSSpec{}
+	}
+	if cfg.Ingress.Enabled {
+		opts.Ingress = &deploy.IngressSpec{TLS: cfg.Ingress.TLS(), ACMEEmail: cfg.Ingress.ACMEEmail, AuthHash: authHash}
+	}
+	if cfg.Monitoring.Logs.Enabled {
+		opts.Logs = &deploy.LogsSpec{Retention: cfg.Monitoring.Logs.Retention, DiskBytes: cfg.Monitoring.LogDiskBytes()}
+	}
+	if cfg.Monitoring.Metrics.Enabled {
+		opts.Metrics = &deploy.MetricsSpec{Retention: cfg.Monitoring.Metrics.Retention, MinFreeBytes: cfg.Monitoring.MetricsMinFreeBytes()}
+	}
+	if cfg.Monitoring.Status.Enabled {
+		opts.Status = &deploy.StatusSpec{Image: "alpine:" + Versions.Alpine}
+		if statusBin != nil {
+			opts.Status.Binary = statusBin.Remote()
+		}
+	}
+	return opts
+}
+
+// resolveImages pins every tag to the digest it points at right now.
+func resolveImages(pin func(ref string) (string, error), m *manifest.Manifest) (map[string]string, error) {
+	out := make(map[string]string, len(m.Services))
+	var errs []error
+
+	for _, s := range m.Services {
+		if s.IsTarget() {
+			// A target names somewhere outside the cluster; there is no
+			// container and therefore no image to pin.
+			continue
+		}
+		ref := s.ResolvedImage()
+		pinned, err := pin(ref)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: service %q: %w", m.Path, s.Name, err))
+			continue
+		}
+		out[s.Name] = pinned
+	}
+	return out, errors.Join(errs...)
+}
+
+// nodeFor decides which machine a service is pinned to.
+//
+// A service with no volume is left to Nomad. A service with one has to be
+// pinned, because its data is on exactly one disk and a reschedule elsewhere
+// would start it against an empty directory and look perfectly healthy while
+// serving nothing.
+//
+// Unless it says otherwise with `node:`, that disk is the first server's —
+// the machine orca keeps its own stores on. On one machine that is the only
+// machine, so it is also where every volume already is when a second one is
+// added: the data stays put, and growing the cluster needs no edit to any
+// manifest. It once refused instead, which made adding a machine break every
+// database until each was pinned by hand to the place it already was.
+func nodeFor(cfg Config, s *manifest.Service) (string, error) {
+	if s.Node != "" {
+		if _, ok := cfg.FindNode(s.Node); !ok {
+			return "", fmt.Errorf("node %q is not in the cluster config", s.Node)
+		}
+		return s.Node, nil
+	}
+
+	if s.Volume == nil {
+		return "", nil
+	}
+
+	host, err := cfg.HostNode()
+	if err != nil {
+		return "", err
+	}
+	return host.Name, nil
+}
+
+// scopeGroups resolves the groups an apply names into the manifests it
+// deploys.
+//
+// A name with no directory is still accepted while orca is running jobs for
+// it: that is how you remove a group you have already deleted, and it
+// contributes nothing to deploy — its jobs are in scope only to be stopped.
+// Decided per name. It was once decided for the whole list, so
+// `orca apply shop oldgroup` dropped shop's manifests along with oldgroup's
+// missing one, and planned to stop every service shop runs.
+func scopeGroups(all []*manifest.Manifest, names []string, current map[string]deploy.JobState) ([]*manifest.Manifest, error) {
+	var keep []string
+	for _, n := range names {
+		if n != deploy.OrcaApp && !hasGroup(all, n) && runningGroup(current, n) {
+			continue
+		}
+		keep = append(keep, n)
+	}
+	if len(names) > 0 && len(keep) == 0 {
+		return nil, nil
+	}
+	return selectGroups(all, keep)
+}
+
+func hasGroup(groups []*manifest.Manifest, name string) bool {
+	for _, m := range groups {
+		if m.App == name {
+			return true
+		}
+	}
+	return false
+}
+
+// runningGroup reports whether orca is running any job for the group.
+func runningGroup(current map[string]deploy.JobState, name string) bool {
+	for _, j := range current {
+		if j.App == name && !j.Stopped {
+			return true
+		}
+	}
+	return false
+}
+
+// confirmStops asks before stopping anything, unless --yes was given.
+//
+// Creates and updates come from something you wrote. A stop comes from the
+// absence of something — and absence is what a wrong `-C`, a half-finished
+// checkout or the wrong repository all look like. Before, pointing orca at a
+// directory missing most of your groups was close to a no-op, because the
+// scope was derived from the directories present; now that apply correctly
+// sees everything it owns, the same mistake stops the lot.
+//
+// No data is at stake either way: a stop keeps the volume and only `orca
+// purge` deletes. What is at stake is an outage nobody asked for.
+func confirmStops(plan deploy.Plan, yes bool) error {
+	stops := plan.Stops()
+	if len(stops) == 0 || yes {
+		return nil
+	}
+
+	if gone := plan.VanishedGroups(); len(gone) > 0 {
+		fmt.Printf("no manifests here declare: %s\n", strings.Join(gone, ", "))
+	}
+
+	// Refused rather than assumed when there is nobody to ask. A pipeline that
+	// meant it says so with --yes; one that did not would otherwise discover
+	// it had stopped a database.
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return fmt.Errorf(
+			"this would stop %d running service(s) and there is no terminal to confirm at; "+
+				"re-run with --yes if that is what you meant", len(stops))
+	}
+
+	if !confirmYes(fmt.Sprintf("stop %d running service(s)? [y/N] ", len(stops))) {
+		return fmt.Errorf("cancelled")
+	}
+	return nil
+}
+
+// confirmYes asks a yes/no question, defaulting to no.
+//
+// Lighter than purge's "type the name": a stop keeps data and is undone by
+// applying again from the right directory, so the friction should match the
+// cost.
+func confirmYes(prompt string) bool {
+	fmt.Print(prompt)
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	}
+	return false
+}

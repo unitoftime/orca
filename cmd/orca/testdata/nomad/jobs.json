@@ -1,0 +1,1218 @@
+[
+  {
+    "Affinities": null,
+    "AllAtOnce": false,
+    "Constraints": null,
+    "ConsulNamespace": "",
+    "CreateIndex": 1114,
+    "Datacenters": [
+      "orca"
+    ],
+    "DispatchIdempotencyToken": "",
+    "Dispatched": false,
+    "ID": "shop-db",
+    "JobModifyIndex": 4413,
+    "Meta": {
+      "orca.app": "shop",
+      "orca.hash": "4092feb50ae9bb65223cfe0838c10d9987048853146877d68ad91053051eb539",
+      "orca.image": "index.docker.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "orca.managed": "true",
+      "orca.service": "db"
+    },
+    "ModifyIndex": 4452,
+    "Multiregion": null,
+    "Name": "shop-db",
+    "Namespace": "default",
+    "NodePool": "default",
+    "NomadTokenID": "",
+    "ParameterizedJob": null,
+    "ParentID": "",
+    "Payload": null,
+    "Periodic": null,
+    "Priority": 50,
+    "Region": "global",
+    "Spreads": null,
+    "Stable": true,
+    "Status": "running",
+    "StatusDescription": "",
+    "Stop": false,
+    "SubmitTime": 1790421297645453196,
+    "TaskGroups": [
+      {
+        "Affinities": null,
+        "Constraints": [
+          {
+            "LTarget": "${node.unique.name}",
+            "Operand": "=",
+            "RTarget": "box0"
+          },
+          {
+            "LTarget": "${attr.nomad.service_discovery}",
+            "Operand": "=",
+            "RTarget": "true"
+          },
+          {
+            "LTarget": "${attr.nomad.version}",
+            "Operand": "semver",
+            "RTarget": ">= 1.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.bridge}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.firewall}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.host-local}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.loopback}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.portmap}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          }
+        ],
+        "Consul": null,
+        "Count": 1,
+        "Disconnect": null,
+        "EphemeralDisk": {
+          "Migrate": false,
+          "SizeMB": 300,
+          "Sticky": false
+        },
+        "MaxClientDisconnect": null,
+        "MaxRunDuration": null,
+        "Meta": null,
+        "Migrate": {
+          "HealthCheck": "checks",
+          "HealthyDeadline": 300000000000,
+          "MaxParallel": 1,
+          "MinHealthyTime": 10000000000
+        },
+        "Name": "db",
+        "Networks": [
+          {
+            "DNS": {
+              "Options": null,
+              "Searches": [
+                "shop.orca",
+                "orca"
+              ],
+              "Servers": [
+                "172.26.64.1"
+              ]
+            },
+            "Mode": "bridge"
+          }
+        ],
+        "PreventRescheduleOnLost": false,
+        "ReschedulePolicy": {
+          "Attempts": 0,
+          "Delay": 30000000000,
+          "DelayFunction": "exponential",
+          "Interval": 0,
+          "MaxDelay": 3600000000000,
+          "Unlimited": true
+        },
+        "RestartPolicy": {
+          "Attempts": 3,
+          "Delay": 15000000000,
+          "Interval": 300000000000,
+          "Mode": "delay",
+          "RenderTemplates": false
+        },
+        "Scaling": null,
+        "Services": [
+          {
+            "Address": "",
+            "AddressMode": "alloc",
+            "CanaryMeta": null,
+            "CanaryTags": null,
+            "Checks": [
+              {
+                "AddressMode": "alloc",
+                "Args": null,
+                "Body": "",
+                "CheckRestart": null,
+                "Command": "",
+                "Expose": false,
+                "FailuresBeforeCritical": 0,
+                "FailuresBeforeWarning": 0,
+                "GRPCService": "",
+                "GRPCUseTLS": false,
+                "Header": null,
+                "InitialStatus": "",
+                "Interval": 10000000000,
+                "Method": "",
+                "Name": "service: \"shop-db\" check",
+                "Notes": "",
+                "OnUpdate": "require_healthy",
+                "Path": "",
+                "PortLabel": "5432",
+                "Protocol": "",
+                "SuccessBeforePassing": 0,
+                "TLSServerName": "",
+                "TLSSkipVerify": false,
+                "TaskName": "",
+                "Timeout": 2000000000,
+                "Type": "tcp"
+              }
+            ],
+            "Cluster": "default",
+            "Connect": null,
+            "EnableTagOverride": false,
+            "Identity": null,
+            "Kind": "",
+            "Meta": null,
+            "Name": "shop-db",
+            "Namespace": "default",
+            "OnUpdate": "require_healthy",
+            "PortLabel": "5432",
+            "Provider": "nomad",
+            "TaggedAddresses": null,
+            "Tags": [
+              "orca-dns=db.shop"
+            ],
+            "TaskName": "",
+            "Weights": null
+          }
+        ],
+        "ShutdownDelay": null,
+        "Spreads": null,
+        "StopAfterClientDisconnect": null,
+        "Tasks": [
+          {
+            "Actions": null,
+            "Affinities": null,
+            "Artifacts": null,
+            "CSIPluginConfig": null,
+            "Config": {
+              "args": [
+                "-c",
+                "shared_buffers=128MB",
+                "-c",
+                "effective_cache_size=256MB"
+              ],
+              "image": "index.docker.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+              "ports": [],
+              "volumes": [
+                "/var/orca/volumes/services/shop/db:/var/lib/postgresql/data"
+              ]
+            },
+            "Constraints": null,
+            "Consul": null,
+            "DispatchPayload": null,
+            "Driver": "docker",
+            "Env": null,
+            "Identities": null,
+            "Identity": {
+              "Audience": [
+                "nomadproject.io"
+              ],
+              "ChangeMode": "",
+              "ChangeSignal": "",
+              "Env": false,
+              "ExtraClaims": null,
+              "File": false,
+              "Filepath": "",
+              "Name": "default",
+              "ServiceName": "",
+              "TTL": 0
+            },
+            "KillSignal": "",
+            "KillTimeout": 5000000000,
+            "Kind": "",
+            "Leader": false,
+            "Lifecycle": null,
+            "LogConfig": {
+              "Disabled": false,
+              "MaxFileSizeMB": 10,
+              "MaxFiles": 10
+            },
+            "Meta": null,
+            "Name": "db",
+            "Resources": {
+              "CPU": 250,
+              "Cores": 0,
+              "Devices": null,
+              "DiskMB": 0,
+              "IOPS": 0,
+              "MemoryMB": 512,
+              "MemoryMaxMB": 0,
+              "NUMA": null,
+              "Networks": null,
+              "SecretsMB": 0
+            },
+            "RestartPolicy": {
+              "Attempts": 3,
+              "Delay": 15000000000,
+              "Interval": 300000000000,
+              "Mode": "delay",
+              "RenderTemplates": false
+            },
+            "ScalingPolicies": null,
+            "Schedule": null,
+            "Secrets": null,
+            "Services": null,
+            "ShutdownDelay": 0,
+            "Templates": [
+              {
+                "ChangeMode": "restart",
+                "ChangeScript": null,
+                "ChangeSignal": "",
+                "DestPath": "secrets/orca.env",
+                "EmbeddedTmpl": "{{ $s1 := \"\" }}{{ with nomadVar \"orca/shop/db_password\" }}{{ $s1 = printf \"%s\" .value }}{{ end }}POSTGRES_PASSWORD={{ print $s1 | toJSON }}\n",
+                "Envvars": true,
+                "ErrMissingKey": false,
+                "Gid": null,
+                "LeftDelim": "{{",
+                "Once": false,
+                "Perms": "0644",
+                "RightDelim": "}}",
+                "SourcePath": "",
+                "Splay": 5000000000,
+                "Uid": null,
+                "VaultGrace": 0,
+                "Wait": null
+              }
+            ],
+            "User": "",
+            "Vault": null,
+            "VolumeMounts": null
+          }
+        ],
+        "Update": {
+          "AutoPromote": false,
+          "AutoRevert": true,
+          "Canary": 0,
+          "HealthCheck": "checks",
+          "HealthyDeadline": 300000000000,
+          "MaxParallel": 1,
+          "MinHealthyTime": 10000000000,
+          "ProgressDeadline": 600000000000,
+          "Stagger": 30000000000
+        },
+        "Volumes": null
+      }
+    ],
+    "Type": "service",
+    "UI": null,
+    "Update": {
+      "AutoPromote": false,
+      "AutoRevert": false,
+      "Canary": 0,
+      "HealthCheck": "",
+      "HealthyDeadline": 0,
+      "MaxParallel": 1,
+      "MinHealthyTime": 0,
+      "ProgressDeadline": 0,
+      "Stagger": 30000000000
+    },
+    "VaultNamespace": "",
+    "Version": 1,
+    "VersionTag": null
+  },
+  {
+    "Affinities": null,
+    "AllAtOnce": false,
+    "Constraints": null,
+    "ConsulNamespace": "",
+    "CreateIndex": 1147,
+    "Datacenters": [
+      "orca"
+    ],
+    "DispatchIdempotencyToken": "",
+    "Dispatched": false,
+    "ID": "shop-db-backup",
+    "JobModifyIndex": 4420,
+    "Meta": {
+      "orca.app": "shop",
+      "orca.hash": "5a69beae3d15de6b1b4f7c1b899f2dc9335bfd77ac46452b091d1519aac2f565",
+      "orca.image": "index.docker.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "orca.managed": "true",
+      "orca.service": "db-backup"
+    },
+    "ModifyIndex": 4420,
+    "Multiregion": null,
+    "Name": "shop-db-backup",
+    "Namespace": "default",
+    "NodePool": "default",
+    "NomadTokenID": "",
+    "ParameterizedJob": null,
+    "ParentID": "",
+    "Payload": null,
+    "Periodic": {
+      "Enabled": true,
+      "ProhibitOverlap": true,
+      "Spec": "0 3 * * *",
+      "SpecType": "cron",
+      "Specs": [],
+      "TimeZone": "UTC"
+    },
+    "Priority": 50,
+    "Region": "global",
+    "Spreads": null,
+    "Stable": false,
+    "Status": "running",
+    "StatusDescription": "",
+    "Stop": false,
+    "SubmitTime": 1790421299002679486,
+    "TaskGroups": [
+      {
+        "Affinities": null,
+        "Constraints": [
+          {
+            "LTarget": "${node.unique.name}",
+            "Operand": "=",
+            "RTarget": "box0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.bridge}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.firewall}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.host-local}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.loopback}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.portmap}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          }
+        ],
+        "Consul": null,
+        "Count": 1,
+        "Disconnect": null,
+        "EphemeralDisk": {
+          "Migrate": false,
+          "SizeMB": 300,
+          "Sticky": false
+        },
+        "MaxClientDisconnect": null,
+        "MaxRunDuration": null,
+        "Meta": null,
+        "Migrate": null,
+        "Name": "backup",
+        "Networks": [
+          {
+            "DNS": {
+              "Options": null,
+              "Searches": [
+                "shop.orca",
+                "orca"
+              ],
+              "Servers": [
+                "172.26.64.1"
+              ]
+            },
+            "Mode": "bridge"
+          }
+        ],
+        "PreventRescheduleOnLost": false,
+        "ReschedulePolicy": {
+          "Attempts": 1,
+          "Delay": 5000000000,
+          "DelayFunction": "constant",
+          "Interval": 86400000000000,
+          "MaxDelay": 0,
+          "Unlimited": false
+        },
+        "RestartPolicy": {
+          "Attempts": 2,
+          "Delay": 30000000000,
+          "Interval": 600000000000,
+          "Mode": "fail",
+          "RenderTemplates": false
+        },
+        "Scaling": null,
+        "Services": null,
+        "ShutdownDelay": null,
+        "Spreads": null,
+        "StopAfterClientDisconnect": null,
+        "Tasks": [
+          {
+            "Actions": null,
+            "Affinities": null,
+            "Artifacts": null,
+            "CSIPluginConfig": null,
+            "Config": {
+              "args": [
+                "set -eu\nSTAMP=$(date -u +%Y%m%dT%H%M%SZ)\nmkdir -p \"${NOMAD_ALLOC_DIR}/data\"\nOUT=\"${NOMAD_ALLOC_DIR}/data/shop-db-$STAMP.pgc\"\n\n# Host and port come from PGHOST/PGPORT, rendered from the service catalog.\n# Naming the service and assuming 5432 is right only while the database\n# registers its own address; once a port is published instead, the catalog\n# carries a dynamic one and the assumption connects to nothing.\n#\n# -Fc is the custom format: compressed, and restorable selectively rather than\n# as one all-or-nothing script.\npg_dump -Fc -U postgres -d postgres -f \"$OUT\"\n\necho \"$OUT\" > \"${NOMAD_ALLOC_DIR}/data/latest\"\nls -lh \"$OUT\""
+              ],
+              "entrypoint": [
+                "/bin/sh",
+                "-c"
+              ],
+              "image": "index.docker.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+            },
+            "Constraints": null,
+            "Consul": null,
+            "DispatchPayload": null,
+            "Driver": "docker",
+            "Env": null,
+            "Identities": null,
+            "Identity": {
+              "Audience": [
+                "nomadproject.io"
+              ],
+              "ChangeMode": "",
+              "ChangeSignal": "",
+              "Env": false,
+              "ExtraClaims": null,
+              "File": false,
+              "Filepath": "",
+              "Name": "default",
+              "ServiceName": "",
+              "TTL": 0
+            },
+            "KillSignal": "",
+            "KillTimeout": 5000000000,
+            "Kind": "",
+            "Leader": false,
+            "Lifecycle": {
+              "Hook": "prestart",
+              "Sidecar": false
+            },
+            "LogConfig": {
+              "Disabled": false,
+              "MaxFileSizeMB": 10,
+              "MaxFiles": 10
+            },
+            "Meta": null,
+            "Name": "dump",
+            "Resources": {
+              "CPU": 200,
+              "Cores": 0,
+              "Devices": null,
+              "DiskMB": 0,
+              "IOPS": 0,
+              "MemoryMB": 256,
+              "MemoryMaxMB": 0,
+              "NUMA": null,
+              "Networks": null,
+              "SecretsMB": 0
+            },
+            "RestartPolicy": {
+              "Attempts": 2,
+              "Delay": 30000000000,
+              "Interval": 600000000000,
+              "Mode": "fail",
+              "RenderTemplates": false
+            },
+            "ScalingPolicies": null,
+            "Schedule": null,
+            "Secrets": null,
+            "Services": null,
+            "ShutdownDelay": 0,
+            "Templates": [
+              {
+                "ChangeMode": "noop",
+                "ChangeScript": null,
+                "ChangeSignal": "",
+                "DestPath": "secrets/orca.env",
+                "EmbeddedTmpl": "{{ $s1 := \"\" }}{{ with nomadVar \"orca/shop/db_password\" }}{{ $s1 = printf \"%s\" .value }}{{ end }}PGPASSWORD={{ print $s1 | toJSON }}\n{{ range nomadService \"shop-db\" }}PGHOST=\"{{ .Address }}\"\nPGPORT=\"{{ .Port }}\"\n{{ end }}",
+                "Envvars": true,
+                "ErrMissingKey": false,
+                "Gid": null,
+                "LeftDelim": "{{",
+                "Once": false,
+                "Perms": "0644",
+                "RightDelim": "}}",
+                "SourcePath": "",
+                "Splay": 5000000000,
+                "Uid": null,
+                "VaultGrace": 0,
+                "Wait": null
+              }
+            ],
+            "User": "",
+            "Vault": null,
+            "VolumeMounts": null
+          },
+          {
+            "Actions": null,
+            "Affinities": null,
+            "Artifacts": null,
+            "CSIPluginConfig": null,
+            "Config": {
+              "args": [
+                "set -eu\nFILE=$(cat \"${NOMAD_ALLOC_DIR}/data/latest\")\nNAME=$(basename \"$FILE\")\n\nrclone copyto \"$FILE\" \"store:orca-backups/shop/db/$NAME\"\necho \"uploaded shop/db/$NAME\"\n\n# Keep the newest 3. Names are timestamps, so sorting them sorts by age.\nrclone lsf \"store:orca-backups/shop/db/\" 2>/dev/null | sort | head -n -3 | while read -r old; do\n  [ -n \"$old\" ] || continue\n  echo \"pruning $old\"\n  rclone delete \"store:orca-backups/shop/db/$old\"\ndone\n\necho \"backups now held:\"\nrclone lsf \"store:orca-backups/shop/db/\" | sort"
+              ],
+              "entrypoint": [
+                "/bin/sh",
+                "-c"
+              ],
+              "image": "index.docker.io/rclone/rclone@sha256:fd635aecd9667ee3c3bf920d14118090d4f2a83a080c1fa77e0bafbd4587ca87"
+            },
+            "Constraints": null,
+            "Consul": null,
+            "DispatchPayload": null,
+            "Driver": "docker",
+            "Env": null,
+            "Identities": null,
+            "Identity": {
+              "Audience": [
+                "nomadproject.io"
+              ],
+              "ChangeMode": "",
+              "ChangeSignal": "",
+              "Env": false,
+              "ExtraClaims": null,
+              "File": false,
+              "Filepath": "",
+              "Name": "default",
+              "ServiceName": "",
+              "TTL": 0
+            },
+            "KillSignal": "",
+            "KillTimeout": 5000000000,
+            "Kind": "",
+            "Leader": false,
+            "Lifecycle": null,
+            "LogConfig": {
+              "Disabled": false,
+              "MaxFileSizeMB": 10,
+              "MaxFiles": 10
+            },
+            "Meta": null,
+            "Name": "upload",
+            "Resources": {
+              "CPU": 200,
+              "Cores": 0,
+              "Devices": null,
+              "DiskMB": 0,
+              "IOPS": 0,
+              "MemoryMB": 256,
+              "MemoryMaxMB": 0,
+              "NUMA": null,
+              "Networks": null,
+              "SecretsMB": 0
+            },
+            "RestartPolicy": {
+              "Attempts": 2,
+              "Delay": 30000000000,
+              "Interval": 600000000000,
+              "Mode": "fail",
+              "RenderTemplates": false
+            },
+            "ScalingPolicies": null,
+            "Schedule": null,
+            "Secrets": null,
+            "Services": null,
+            "ShutdownDelay": 0,
+            "Templates": [
+              {
+                "ChangeMode": "noop",
+                "ChangeScript": null,
+                "ChangeSignal": "",
+                "DestPath": "secrets/orca.env",
+                "EmbeddedTmpl": "RCLONE_CONFIG_STORE_TYPE={{ print \"s3\" | toJSON }}\nRCLONE_CONFIG_STORE_PROVIDER={{ print \"Other\" | toJSON }}\nRCLONE_CONFIG_STORE_ENDPOINT={{ print \"http://172.26.64.1:9000\" | toJSON }}\nRCLONE_CONFIG_STORE_REGION={{ print \"auto\" | toJSON }}\n{{ $s1 := \"\" }}{{ with nomadVar \"orca/storage/offsite_key_id\" }}{{ $s1 = printf \"%s\" .value }}{{ end }}RCLONE_CONFIG_STORE_ACCESS_KEY_ID={{ print $s1 | toJSON }}\n{{ $s2 := \"\" }}{{ with nomadVar \"orca/storage/offsite_secret_key\" }}{{ $s2 = printf \"%s\" .value }}{{ end }}RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY={{ print $s2 | toJSON }}\n",
+                "Envvars": true,
+                "ErrMissingKey": false,
+                "Gid": null,
+                "LeftDelim": "{{",
+                "Once": false,
+                "Perms": "0644",
+                "RightDelim": "}}",
+                "SourcePath": "",
+                "Splay": 5000000000,
+                "Uid": null,
+                "VaultGrace": 0,
+                "Wait": null
+              }
+            ],
+            "User": "",
+            "Vault": null,
+            "VolumeMounts": null
+          }
+        ],
+        "Update": null,
+        "Volumes": null
+      }
+    ],
+    "Type": "batch",
+    "UI": null,
+    "Update": {
+      "AutoPromote": false,
+      "AutoRevert": false,
+      "Canary": 0,
+      "HealthCheck": "",
+      "HealthyDeadline": 0,
+      "MaxParallel": 0,
+      "MinHealthyTime": 0,
+      "ProgressDeadline": 0,
+      "Stagger": 0
+    },
+    "VaultNamespace": "",
+    "Version": 5,
+    "VersionTag": null
+  },
+  {
+    "Affinities": null,
+    "AllAtOnce": false,
+    "Constraints": null,
+    "ConsulNamespace": "",
+    "CreateIndex": 27,
+    "Datacenters": [
+      "orca"
+    ],
+    "DispatchIdempotencyToken": "",
+    "Dispatched": false,
+    "ID": "demo-whoami",
+    "JobModifyIndex": 4355,
+    "Meta": {
+      "orca.app": "demo",
+      "orca.hash": "e9467c183f5235db5844040993ca125b9896a2a8ed86ba09c707b225d707cd65",
+      "orca.image": "index.docker.io/traefik/whoami@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44",
+      "orca.managed": "true",
+      "orca.service": "whoami"
+    },
+    "ModifyIndex": 4432,
+    "Multiregion": null,
+    "Name": "demo-whoami",
+    "Namespace": "default",
+    "NodePool": "default",
+    "NomadTokenID": "",
+    "ParameterizedJob": null,
+    "ParentID": "",
+    "Payload": null,
+    "Periodic": null,
+    "Priority": 50,
+    "Region": "global",
+    "Spreads": null,
+    "Stable": true,
+    "Status": "running",
+    "StatusDescription": "",
+    "Stop": false,
+    "SubmitTime": 1790421285318080093,
+    "TaskGroups": [
+      {
+        "Affinities": null,
+        "Constraints": [
+          {
+            "LTarget": "${attr.nomad.service_discovery}",
+            "Operand": "=",
+            "RTarget": "true"
+          },
+          {
+            "LTarget": "${attr.nomad.version}",
+            "Operand": "semver",
+            "RTarget": ">= 1.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.bridge}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.firewall}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.host-local}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.loopback}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          },
+          {
+            "LTarget": "${attr.plugins.cni.version.portmap}",
+            "Operand": "semver",
+            "RTarget": ">= 0.4.0"
+          }
+        ],
+        "Consul": null,
+        "Count": 1,
+        "Disconnect": null,
+        "EphemeralDisk": {
+          "Migrate": false,
+          "SizeMB": 300,
+          "Sticky": false
+        },
+        "MaxClientDisconnect": null,
+        "MaxRunDuration": null,
+        "Meta": null,
+        "Migrate": {
+          "HealthCheck": "checks",
+          "HealthyDeadline": 300000000000,
+          "MaxParallel": 1,
+          "MinHealthyTime": 10000000000
+        },
+        "Name": "whoami",
+        "Networks": [
+          {
+            "DNS": {
+              "Options": null,
+              "Searches": [
+                "demo.orca",
+                "orca"
+              ],
+              "Servers": [
+                "172.26.64.1"
+              ]
+            },
+            "Mode": "bridge",
+            "ReservedPorts": [
+              {
+                "HostNetwork": "public",
+                "Label": "p80",
+                "To": 80,
+                "Value": 8080
+              }
+            ]
+          }
+        ],
+        "PreventRescheduleOnLost": false,
+        "ReschedulePolicy": {
+          "Attempts": 0,
+          "Delay": 30000000000,
+          "DelayFunction": "exponential",
+          "Interval": 0,
+          "MaxDelay": 3600000000000,
+          "Unlimited": true
+        },
+        "RestartPolicy": {
+          "Attempts": 3,
+          "Delay": 15000000000,
+          "Interval": 300000000000,
+          "Mode": "delay",
+          "RenderTemplates": false
+        },
+        "Scaling": null,
+        "Services": [
+          {
+            "Address": "",
+            "AddressMode": "auto",
+            "CanaryMeta": null,
+            "CanaryTags": null,
+            "Checks": [
+              {
+                "AddressMode": "",
+                "Args": null,
+                "Body": "",
+                "CheckRestart": null,
+                "Command": "",
+                "Expose": false,
+                "FailuresBeforeCritical": 0,
+                "FailuresBeforeWarning": 0,
+                "GRPCService": "",
+                "GRPCUseTLS": false,
+                "Header": null,
+                "InitialStatus": "",
+                "Interval": 10000000000,
+                "Method": "",
+                "Name": "service: \"demo-whoami\" check",
+                "Notes": "",
+                "OnUpdate": "require_healthy",
+                "Path": "",
+                "PortLabel": "",
+                "Protocol": "",
+                "SuccessBeforePassing": 0,
+                "TLSServerName": "",
+                "TLSSkipVerify": false,
+                "TaskName": "",
+                "Timeout": 2000000000,
+                "Type": "tcp"
+              }
+            ],
+            "Cluster": "default",
+            "Connect": null,
+            "EnableTagOverride": false,
+            "Identity": null,
+            "Kind": "",
+            "Meta": null,
+            "Name": "demo-whoami",
+            "Namespace": "default",
+            "OnUpdate": "require_healthy",
+            "PortLabel": "p80",
+            "Provider": "nomad",
+            "TaggedAddresses": null,
+            "Tags": [
+              "orca-dns=whoami.demo"
+            ],
+            "TaskName": "",
+            "Weights": null
+          }
+        ],
+        "ShutdownDelay": null,
+        "Spreads": null,
+        "StopAfterClientDisconnect": null,
+        "Tasks": [
+          {
+            "Actions": null,
+            "Affinities": null,
+            "Artifacts": null,
+            "CSIPluginConfig": null,
+            "Config": {
+              "image": "index.docker.io/traefik/whoami@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44",
+              "ports": [
+                "p80"
+              ]
+            },
+            "Constraints": null,
+            "Consul": null,
+            "DispatchPayload": null,
+            "Driver": "docker",
+            "Env": null,
+            "Identities": null,
+            "Identity": {
+              "Audience": [
+                "nomadproject.io"
+              ],
+              "ChangeMode": "",
+              "ChangeSignal": "",
+              "Env": false,
+              "ExtraClaims": null,
+              "File": false,
+              "Filepath": "",
+              "Name": "default",
+              "ServiceName": "",
+              "TTL": 0
+            },
+            "KillSignal": "",
+            "KillTimeout": 5000000000,
+            "Kind": "",
+            "Leader": false,
+            "Lifecycle": null,
+            "LogConfig": {
+              "Disabled": false,
+              "MaxFileSizeMB": 10,
+              "MaxFiles": 10
+            },
+            "Meta": null,
+            "Name": "whoami",
+            "Resources": {
+              "CPU": 250,
+              "Cores": 0,
+              "Devices": null,
+              "DiskMB": 0,
+              "IOPS": 0,
+              "MemoryMB": 128,
+              "MemoryMaxMB": 0,
+              "NUMA": null,
+              "Networks": null,
+              "SecretsMB": 0
+            },
+            "RestartPolicy": {
+              "Attempts": 3,
+              "Delay": 15000000000,
+              "Interval": 300000000000,
+              "Mode": "delay",
+              "RenderTemplates": false
+            },
+            "ScalingPolicies": null,
+            "Schedule": null,
+            "Secrets": null,
+            "Services": null,
+            "ShutdownDelay": 0,
+            "Templates": null,
+            "User": "",
+            "Vault": null,
+            "VolumeMounts": null
+          }
+        ],
+        "Update": {
+          "AutoPromote": false,
+          "AutoRevert": true,
+          "Canary": 0,
+          "HealthCheck": "checks",
+          "HealthyDeadline": 300000000000,
+          "MaxParallel": 1,
+          "MinHealthyTime": 10000000000,
+          "ProgressDeadline": 600000000000,
+          "Stagger": 30000000000
+        },
+        "Volumes": null
+      }
+    ],
+    "Type": "service",
+    "UI": null,
+    "Update": {
+      "AutoPromote": false,
+      "AutoRevert": false,
+      "Canary": 0,
+      "HealthCheck": "",
+      "HealthyDeadline": 0,
+      "MaxParallel": 1,
+      "MinHealthyTime": 0,
+      "ProgressDeadline": 0,
+      "Stagger": 30000000000
+    },
+    "VaultNamespace": "",
+    "Version": 8,
+    "VersionTag": null
+  },
+  {
+    "Affinities": null,
+    "AllAtOnce": false,
+    "Constraints": null,
+    "ConsulNamespace": "",
+    "CreateIndex": 3231,
+    "Datacenters": [
+      "orca"
+    ],
+    "DispatchIdempotencyToken": "",
+    "Dispatched": false,
+    "ID": "orca-dns",
+    "JobModifyIndex": 4373,
+    "Meta": {
+      "orca.app": "orca",
+      "orca.hash": "350923558eac711ff011e41b7a522c2b494cef509a8fbf55da8c599b7000258c",
+      "orca.image": "index.docker.io/coredns/coredns@sha256:986f04c2e15e147d00bdd51e8c51bcef3644b13ff806be7d2ff1b261d6dfbae1",
+      "orca.managed": "true",
+      "orca.service": "dns"
+    },
+    "ModifyIndex": 4424,
+    "Multiregion": null,
+    "Name": "orca-dns",
+    "Namespace": "default",
+    "NodePool": "default",
+    "NomadTokenID": "",
+    "ParameterizedJob": null,
+    "ParentID": "",
+    "Payload": null,
+    "Periodic": null,
+    "Priority": 60,
+    "Region": "global",
+    "Spreads": null,
+    "Stable": true,
+    "Status": "running",
+    "StatusDescription": "",
+    "Stop": false,
+    "SubmitTime": 1790421289484032851,
+    "TaskGroups": [
+      {
+        "Affinities": null,
+        "Constraints": [
+          {
+            "LTarget": "${attr.nomad.service_discovery}",
+            "Operand": "=",
+            "RTarget": "true"
+          }
+        ],
+        "Consul": null,
+        "Count": 1,
+        "Disconnect": null,
+        "EphemeralDisk": {
+          "Migrate": false,
+          "SizeMB": 300,
+          "Sticky": false
+        },
+        "MaxClientDisconnect": null,
+        "MaxRunDuration": null,
+        "Meta": null,
+        "Migrate": null,
+        "Name": "dns",
+        "Networks": null,
+        "PreventRescheduleOnLost": false,
+        "ReschedulePolicy": null,
+        "RestartPolicy": {
+          "Attempts": 3,
+          "Delay": 15000000000,
+          "Interval": 300000000000,
+          "Mode": "delay",
+          "RenderTemplates": false
+        },
+        "Scaling": null,
+        "Services": [
+          {
+            "Address": "",
+            "AddressMode": "auto",
+            "CanaryMeta": null,
+            "CanaryTags": null,
+            "Checks": null,
+            "Cluster": "default",
+            "Connect": null,
+            "EnableTagOverride": false,
+            "Identity": null,
+            "Kind": "",
+            "Meta": null,
+            "Name": "orca-dns",
+            "Namespace": "default",
+            "OnUpdate": "require_healthy",
+            "PortLabel": "",
+            "Provider": "nomad",
+            "TaggedAddresses": null,
+            "Tags": [
+              "orca-dns=dns.orca"
+            ],
+            "TaskName": "",
+            "Weights": null
+          }
+        ],
+        "ShutdownDelay": null,
+        "Spreads": null,
+        "StopAfterClientDisconnect": null,
+        "Tasks": [
+          {
+            "Actions": null,
+            "Affinities": null,
+            "Artifacts": null,
+            "CSIPluginConfig": null,
+            "Config": {
+              "args": [
+                "-conf",
+                "/local/Corefile"
+              ],
+              "image": "index.docker.io/coredns/coredns@sha256:986f04c2e15e147d00bdd51e8c51bcef3644b13ff806be7d2ff1b261d6dfbae1",
+              "network_mode": "host"
+            },
+            "Constraints": null,
+            "Consul": null,
+            "DispatchPayload": null,
+            "Driver": "docker",
+            "Env": null,
+            "Identities": null,
+            "Identity": {
+              "Audience": [
+                "nomadproject.io"
+              ],
+              "ChangeMode": "",
+              "ChangeSignal": "",
+              "Env": false,
+              "ExtraClaims": null,
+              "File": false,
+              "Filepath": "",
+              "Name": "default",
+              "ServiceName": "",
+              "TTL": 0
+            },
+            "KillSignal": "",
+            "KillTimeout": 5000000000,
+            "Kind": "",
+            "Leader": false,
+            "Lifecycle": null,
+            "LogConfig": {
+              "Disabled": false,
+              "MaxFileSizeMB": 10,
+              "MaxFiles": 10
+            },
+            "Meta": null,
+            "Name": "dns",
+            "Resources": {
+              "CPU": 100,
+              "Cores": 0,
+              "Devices": null,
+              "DiskMB": 0,
+              "IOPS": 0,
+              "MemoryMB": 128,
+              "MemoryMaxMB": 0,
+              "NUMA": null,
+              "Networks": null,
+              "SecretsMB": 0
+            },
+            "RestartPolicy": {
+              "Attempts": 3,
+              "Delay": 15000000000,
+              "Interval": 300000000000,
+              "Mode": "delay",
+              "RenderTemplates": false
+            },
+            "ScalingPolicies": null,
+            "Schedule": null,
+            "Secrets": null,
+            "Services": null,
+            "ShutdownDelay": 0,
+            "Templates": [
+              {
+                "ChangeMode": "restart",
+                "ChangeScript": null,
+                "ChangeSignal": "",
+                "DestPath": "local/Corefile",
+                "EmbeddedTmpl": ".:53 {\n    bind 172.26.64.1\n    hosts /local/hosts {\n        reload 5s\n        fallthrough\n    }\n    forward . /etc/resolv.conf\n    cache 30\n}\n",
+                "Envvars": false,
+                "ErrMissingKey": false,
+                "Gid": null,
+                "LeftDelim": "{{",
+                "Once": false,
+                "Perms": "0644",
+                "RightDelim": "}}",
+                "SourcePath": "",
+                "Splay": 5000000000,
+                "Uid": null,
+                "VaultGrace": 0,
+                "Wait": null
+              },
+              {
+                "ChangeMode": "noop",
+                "ChangeScript": null,
+                "ChangeSignal": "",
+                "DestPath": "local/hosts",
+                "EmbeddedTmpl": "# generated by orca from the service catalog\n{{- range nomadServices }}{{ $name := .Name }}{{ range .Tags }}{{ if . | regexMatch \"^orca-dns=\" }}{{ $short := . | replaceAll \"orca-dns=\" \"\" }}{{ range nomadService $name }}\n{{ .Address }} {{ $short }}.orca {{ $short }}{{ end }}{{ end }}{{ end }}{{ end }}\n",
+                "Envvars": false,
+                "ErrMissingKey": false,
+                "Gid": null,
+                "LeftDelim": "{{",
+                "Once": false,
+                "Perms": "0644",
+                "RightDelim": "}}",
+                "SourcePath": "",
+                "Splay": 5000000000,
+                "Uid": null,
+                "VaultGrace": 0,
+                "Wait": null
+              }
+            ],
+            "User": "",
+            "Vault": null,
+            "VolumeMounts": null
+          }
+        ],
+        "Update": {
+          "AutoPromote": false,
+          "AutoRevert": true,
+          "Canary": 0,
+          "HealthCheck": "task_states",
+          "HealthyDeadline": 300000000000,
+          "MaxParallel": 1,
+          "MinHealthyTime": 10000000000,
+          "ProgressDeadline": 600000000000,
+          "Stagger": 30000000000
+        },
+        "Volumes": null
+      }
+    ],
+    "Type": "system",
+    "UI": null,
+    "Update": {
+      "AutoPromote": false,
+      "AutoRevert": false,
+      "Canary": 0,
+      "HealthCheck": "",
+      "HealthyDeadline": 0,
+      "MaxParallel": 1,
+      "MinHealthyTime": 0,
+      "ProgressDeadline": 0,
+      "Stagger": 30000000000
+    },
+    "VaultNamespace": "",
+    "Version": 1,
+    "VersionTag": null
+  }
+]
