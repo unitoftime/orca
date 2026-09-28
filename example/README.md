@@ -51,7 +51,7 @@ orca password                              # for the dashboards, user admin
 ```
 
 Then open `https://status.198-51-100-7.sslip.io` for the status page, with
-logs, metrics and the Nomad UI beside it.
+logs and metrics beside it.
 
 Try a change: set `replicas: 3` in `hello/web.yaml`, run `orca plan` to see
 what would change, then `orca apply`.

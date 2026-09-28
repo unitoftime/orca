@@ -167,7 +167,7 @@ func TestScopeGroupsKeepsLiveGroupsBesideDeletedOnes(t *testing.T) {
 	}
 
 	desired := []*nomad.Job{{ID: ptrTo("shop-app"), Meta: map[string]string{deploy.MetaApp: "shop", deploy.MetaService: "app"}}}
-	plan := deploy.BuildPlan(desired, current, map[string]bool{"shop": true, "old": true})
+	plan := deploy.BuildPlan(desired, current, nil, map[string]bool{"shop": true, "old": true})
 	for _, c := range plan.Stops() {
 		if c.App == "shop" {
 			t.Errorf("shop must not be stopped: %+v", c)

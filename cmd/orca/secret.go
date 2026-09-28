@@ -416,6 +416,9 @@ func generateSecret(spec manifest.GeneratedSecretSpec) (string, error) {
 type generatedSecret struct {
 	secretRef
 	spec manifest.GeneratedSecretSpec
+
+	// service is the one it is generated for.
+	service string
 }
 
 // generatedSecrets is every secret orca creates for these groups' templates.
@@ -431,6 +434,7 @@ func generatedSecrets(groups []*manifest.Manifest) []generatedSecret {
 				out = append(out, generatedSecret{
 					secretRef: secretRef{m.App, manifest.GeneratedSecret(s.Name, sec.Suffix)},
 					spec:      sec,
+					service:   s.Name,
 				})
 			}
 		}

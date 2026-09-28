@@ -32,8 +32,8 @@ func JobStateFromNomad(j *nomad.Job) (JobState, bool) {
 		ID:       *j.ID,
 		App:      j.Meta[MetaApp],
 		Service:  j.Meta[MetaService],
-		Hash:     j.Meta[MetaHash],
 		Image:    j.Meta[MetaImage],
+		Version:  deref(j.Version),
 		Stopped:  j.Stop != nil && *j.Stop,
 		Count:    count,
 		System:   j.Type != nil && *j.Type == "system",
@@ -47,10 +47,19 @@ func AllocStateFromNomad(a *nomad.AllocationListStub) AllocState {
 	out := AllocState{
 		ID:            a.ID,
 		JobID:         a.JobID,
+		JobVersion:    a.JobVersion,
 		CreateTime:    a.CreateTime,
 		ClientStatus:  a.ClientStatus,
 		DesiredStatus: a.DesiredStatus,
 		NodeName:      a.NodeName,
+	}
+	if r := a.AllocatedResources; r != nil {
+		for _, t := range r.Tasks {
+			if t != nil {
+				out.CPUMHz += t.Cpu.CpuShares
+				out.MemoryMB += t.Memory.MemoryMB
+			}
+		}
 	}
 	names := make([]string, 0, len(a.TaskStates))
 	for name := range a.TaskStates {
@@ -97,6 +106,7 @@ func terminalEvent(typ string) bool {
 func DeploymentStateFromNomad(d *nomad.Deployment) DeploymentState {
 	out := DeploymentState{
 		JobID:       d.JobID,
+		JobVersion:  d.JobVersion,
 		Status:      d.Status,
 		Description: d.StatusDescription,
 		ModifyIndex: d.ModifyIndex,
@@ -126,7 +136,12 @@ func PlacementFailureFromNomad(evals []*nomad.Evaluation) string {
 	if latest == nil {
 		return ""
 	}
-	m := latest.FailedTGAllocs[firstKey(latest.FailedTGAllocs)]
+	return describePlacement(latest.FailedTGAllocs[firstKey(latest.FailedTGAllocs)])
+}
+
+// describePlacement says what ruled every machine out for one task group, or
+// "" when nothing did.
+func describePlacement(m *nomad.AllocationMetric) string {
 	if m == nil {
 		return ""
 	}
@@ -141,6 +156,14 @@ func PlacementFailureFromNomad(evals []*nomad.Evaluation) string {
 		parts = append(parts, "class filtered: "+k)
 	}
 	return strings.Join(parts, "; ")
+}
+
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }
 
 // firstKey is jq's `to_entries | first` over a map Nomad serialised: Go writes

@@ -24,6 +24,12 @@ var (
 	secretName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
+// IsDNSLabel reports whether name can be one label of a DNS name, which is
+// the strictest of the places orca's names end up.
+func IsDNSLabel(name string) bool {
+	return len(name) <= 63 && dnsLabel.MatchString(name)
+}
+
 // errList accumulates problems so one run reports every *semantic* error in a
 // manifest, rather than making the author fix one per invocation.
 //
@@ -55,7 +61,7 @@ func (m *Manifest) Validate() error {
 
 	// The group name comes from the directory, so a name that cannot be used
 	// is a directory that needs renaming.
-	if !dnsLabel.MatchString(m.App) || len(m.App) > 63 {
+	if !IsDNSLabel(m.App) {
 		e.addf("group name %q must be lowercase letters, digits and dashes (a DNS label); rename the directory", m.App)
 	}
 	// Reserved rather than merged: orca files its own jobs under this name, so
@@ -120,7 +126,7 @@ func validateName(e *errList, s *Service, seen map[string]bool) {
 	switch {
 	case s.Name == "":
 		e.addf("name is required")
-	case !dnsLabel.MatchString(s.Name) || len(s.Name) > 63:
+	case !IsDNSLabel(s.Name):
 		e.addf("name %q must be lowercase letters, digits and dashes (a DNS label)", s.Name)
 	case seen[s.Name]:
 		e.addf("duplicate service name %q", s.Name)
@@ -367,7 +373,7 @@ func validateNode(e *errList, s *Service) {
 	if s.Node == "" {
 		return
 	}
-	if !dnsLabel.MatchString(s.Node) || len(s.Node) > 63 {
+	if !IsDNSLabel(s.Node) {
 		e.addf("node %q must be lowercase letters, digits and dashes", s.Node)
 	}
 }

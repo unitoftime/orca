@@ -154,9 +154,6 @@ secrets: [gamma, beta, alpha]
 				i, *a[i].DestPath, *b[i].DestPath)
 		}
 	}
-	if forward.Meta[MetaHash] != reversed.Meta[MetaHash] {
-		t.Error("reordering a secrets list must not change the deploy hash")
-	}
 }
 
 // A templated service still gets its generated secrets the way its template

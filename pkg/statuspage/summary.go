@@ -87,6 +87,33 @@ type Machine struct {
 	// The last hour, one point a minute, for a sparkline.
 	CPUHistory    []Point `json:"cpuHistory,omitempty"`
 	MemoryHistory []Point `json:"memoryHistory,omitempty"`
+
+	// ClaimedCPU (in MHz) and ClaimedMemory (in bytes) are what the services
+	// placed on it have claimed, against what Nomad has to hand out. Nomad
+	// places by these, not by what is in use, so a machine whose memory is
+	// all claimed takes nothing new however idle it is, and a blue/green
+	// deploy there has no room for its second copy.
+	ClaimedCPU    *Usage `json:"claimedCpu,omitempty"`
+	ClaimedMemory *Usage `json:"claimedMemory,omitempty"`
+
+	// Placed is every service running on it, most memory claimed first.
+	Placed []Placed `json:"placed,omitempty"`
+}
+
+// Placed is one service's copies on one machine.
+type Placed struct {
+	Group    string `json:"group"`
+	Name     string `json:"name"`
+	Platform bool   `json:"platform,omitempty"`
+	Copies   int    `json:"copies"`
+
+	// What its copies here claimed: CPU in vCPU, as a manifest declares it,
+	// and memory in bytes.
+	CPU    float64 `json:"cpu"`
+	Memory int64   `json:"memory"`
+
+	// MemoryUsed is what they use now, when the metric store knows.
+	MemoryUsed *int64 `json:"memoryUsed,omitempty"`
 }
 
 // Gauge is a percentage and what it means.
@@ -250,6 +277,10 @@ type nodeInfo struct {
 	Status   string
 	Eligible bool
 	Draining bool
+
+	// What it has to hand out to allocations, zero when Nomad did not say.
+	CPUMHz   int64
+	MemoryMB int64
 }
 
 // metricsView is what the metric store said.
@@ -347,6 +378,7 @@ func buildMachines(nv *nomadView, mv *metricsView) []Machine {
 			m := get(n.Name)
 			m.Status, m.Eligible, m.Draining = n.Status, n.Eligible, n.Draining
 		}
+		place(byName, nv, mv)
 	}
 	if mv != nil {
 		for name, mm := range mv.Machines {
@@ -361,6 +393,77 @@ func buildMachines(nv *nomadView, mv *metricsView) []Machine {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// place fills in what runs on each machine and how much of it is claimed.
+//
+// Allocations are counted while Nomad wants them running, starting ones
+// included, since they hold their claim from the moment they are placed.
+func place(byName map[string]*Machine, nv *nomadView, mv *metricsView) {
+	type key struct{ node, job string }
+	placed := map[key]*Placed{}
+	type claim struct{ mhz, mb int64 }
+	claimed := map[string]claim{}
+
+	for _, a := range nv.Allocs {
+		if a.DesiredStatus != "run" || (a.ClientStatus != "running" && a.ClientStatus != "pending") {
+			continue
+		}
+		m, ok := byName[a.NodeName]
+		if !ok {
+			continue
+		}
+		c := claimed[a.NodeName]
+		claimed[a.NodeName] = claim{c.mhz + a.CPUMHz, c.mb + a.MemoryMB}
+
+		// A backup run belongs to its periodic job, which is the one that
+		// carries the group and service.
+		jobID, _, _ := strings.Cut(a.JobID, "/periodic-")
+		k := key{m.Name, jobID}
+		p := placed[k]
+		if p == nil {
+			job := nv.Jobs[jobID]
+			p = &Placed{Group: job.App, Name: job.Service, Platform: job.App == deploy.OrcaApp}
+			if p.Name == "" {
+				p.Name = jobID
+			}
+			placed[k] = p
+		}
+		p.Copies++
+		p.CPU += float64(a.CPUMHz) / deploy.MHzPerVCPU
+		p.Memory += a.MemoryMB << 20
+		if mv != nil {
+			if used, ok := mv.AllocMemUsed[a.ID]; ok {
+				u := int64(used)
+				if p.MemoryUsed != nil {
+					u += *p.MemoryUsed
+				}
+				p.MemoryUsed = &u
+			}
+		}
+	}
+
+	for k, p := range placed {
+		byName[k.node].Placed = append(byName[k.node].Placed, *p)
+	}
+	for _, m := range byName {
+		sort.Slice(m.Placed, func(i, j int) bool {
+			if m.Placed[i].Memory != m.Placed[j].Memory {
+				return m.Placed[i].Memory > m.Placed[j].Memory
+			}
+			return m.Placed[i].Group+"/"+m.Placed[i].Name < m.Placed[j].Group+"/"+m.Placed[j].Name
+		})
+	}
+
+	for _, n := range nv.Nodes {
+		m, c := byName[n.Name], claimed[n.Name]
+		if n.CPUMHz > 0 {
+			m.ClaimedCPU = usage(float64(c.mhz), float64(n.CPUMHz))
+		}
+		if n.MemoryMB > 0 {
+			m.ClaimedMemory = usage(float64(c.mb<<20), float64(n.MemoryMB<<20))
+		}
+	}
 }
 
 func fillMachine(m *Machine, mm *machineMetrics) {

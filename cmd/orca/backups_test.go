@@ -128,7 +128,7 @@ func TestBackupReferenceErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			groups := groupsFrom(t, tt.files)
-			_, err := collectBackups(groups, groups)
+			_, err := collectBackups("", groups, groups)
 			if err == nil {
 				t.Fatalf("expected an error containing %q", tt.wantErr)
 			}

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,7 +64,7 @@ done | jq -s '` + jobsJQ + `'`
 // jobsJQ projects a stream of full jobs (read with jq -s).
 const jobsJQ = `[ .[]
   | select(.Meta != null and .Meta["orca.managed"] == "true")
-  | {ID, Stop, Meta, Count: (.TaskGroups[0].Count // 1),
+  | {ID, Stop, Meta, Version, Count: (.TaskGroups[0].Count // 1),
      System: (.Type == "system"),
      Periodic: (.Periodic != null and (.Periodic.Enabled // false))} ]`
 
@@ -71,6 +72,7 @@ type jobStateWire struct {
 	ID       string            `json:"ID"`
 	Stop     bool              `json:"Stop"`
 	Meta     map[string]string `json:"Meta"`
+	Version  uint64            `json:"Version"`
 	Count    int               `json:"Count"`
 	System   bool              `json:"System"`
 	Periodic bool              `json:"Periodic"`
@@ -109,8 +111,8 @@ func parseJobs(out string) (map[string]deploy.JobState, error) {
 			ID:       w.ID,
 			App:      w.Meta[deploy.MetaApp],
 			Service:  w.Meta[deploy.MetaService],
-			Hash:     w.Meta[deploy.MetaHash],
 			Image:    w.Meta[deploy.MetaImage],
+			Version:  w.Version,
 			Stopped:  w.Stop,
 			Count:    w.Count,
 			System:   w.System,
@@ -128,31 +130,69 @@ func (c *Cluster) Alive(ctx context.Context) bool {
 	return err == nil && strings.Contains(out, ":")
 }
 
-// Submit registers a job. The spec is written to a file on the machine and run
-// from there rather than piped straight in, so a failure leaves the exact JSON
-// behind to look at.
-func (c *Cluster) Submit(ctx context.Context, job *nomad.Job) error {
-	// nomad job run -json accepts either a bare job object or one wrapped in a
-	// Job field. The wrapper is used because it is also what `nomad job
-	// inspect` emits, so a spec orca wrote can be fed straight back in.
-	body, err := json.MarshalIndent(map[string]any{"Job": job}, "", "  ")
+// planJobsScript asks Nomad to plan each job on its stdin, one per line as
+// "<id> <request>", and prints each answer on a line of its own in the same
+// order. One round trip for every job, however many there are.
+const planJobsScript = `set -eo pipefail
+while read -r id body; do
+  if ! out=$(printf '%s' "$body" | curl -sS --fail-with-body --max-time 30 -X POST --data-binary @- "` + NomadAddr + `/v1/job/$id/plan"); then
+    echo "plan $id: $out" >&2
+    exit 1
+  fi
+  printf '%s\n' "$out"
+done`
+
+// PlanJobs asks Nomad what submitting each job would do, without submitting
+// anything. A job Nomad rejects outright fails here, before anything has
+// changed, rather than halfway through an apply.
+func (c *Cluster) PlanJobs(ctx context.Context, jobs []*nomad.Job) (map[string]deploy.JobPlan, error) {
+	var in bytes.Buffer
+	for _, j := range jobs {
+		body, err := json.Marshal(nomad.JobPlanRequest{Job: j, Diff: true})
+		if err != nil {
+			return nil, fmt.Errorf("marshal job %s: %w", *j.ID, err)
+		}
+		fmt.Fprintf(&in, "%s %s\n", *j.ID, body)
+	}
+
+	out, err := c.node.RunStdin(ctx, planJobsScript, in.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("plan: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != len(jobs) {
+		return nil, fmt.Errorf("plan: asked about %d jobs and got %d answers", len(jobs), len(lines))
+	}
+	plans := make(map[string]deploy.JobPlan, len(jobs))
+	for i, j := range jobs {
+		var r nomad.JobPlanResponse
+		if err := json.Unmarshal([]byte(lines[i]), &r); err != nil {
+			return nil, fmt.Errorf("plan %s: %w", *j.ID, err)
+		}
+		plans[*j.ID] = deploy.JobPlanFromNomad(&r)
+	}
+	return plans, nil
+}
+
+// Submit registers a job, provided it is still at modifyIndex, the version its
+// plan was made against (zero: provided it does not exist). Anything else
+// having changed it since, another apply included, refuses the submit rather
+// than overwriting a deploy nobody here has seen.
+func (c *Cluster) Submit(ctx context.Context, job *nomad.Job, modifyIndex uint64) error {
+	body, err := json.Marshal(nomad.JobRegisterRequest{Job: job, EnforceIndex: true, JobModifyIndex: modifyIndex})
 	if err != nil {
 		return fmt.Errorf("marshal job %s: %w", *job.ID, err)
 	}
 
-	path := "/tmp/orca-job-" + *job.ID + ".json"
-	// -detach: without it `nomad job run` monitors the deployment until it
-	// converges, which for a job that cannot be placed is forever. Waiting for
-	// health is orca's job, with a bound on it.
-	script := fmt.Sprintf("cat > %s && nomad job run -detach -json %s", path, path)
-
-	if _, err := c.node.RunStdin(ctx, script, body); err != nil {
-		return fmt.Errorf("submit %s (spec left at %s:%s): %w", *job.ID, c.node.Host, path, err)
+	script := fmt.Sprintf(`curl -sS --fail-with-body --max-time 30 -X PUT --data-binary @- %s/v1/job/%s`, NomadAddr, *job.ID)
+	out, err := c.node.RunStdin(ctx, script, body)
+	if err != nil {
+		if strings.Contains(out, "Enforcing job modify index") {
+			return fmt.Errorf("submit %s: it changed after it was planned; run apply again", *job.ID)
+		}
+		return fmt.Errorf("submit %s: %w: %s", *job.ID, err, strings.TrimSpace(out))
 	}
-
-	// Only remove the spec once it has been accepted, so a failed submit is
-	// still inspectable on the machine.
-	_ = c.node.RunQuiet(ctx, "rm -f "+path)
 	return nil
 }
 
@@ -177,6 +217,80 @@ type VolumeDir struct {
 	// Node is the machine the volume lives on, empty when placement is left
 	// to Nomad.
 	Node string
+
+	// VersionFile is a file in it naming the version its data was written
+	// by, empty when it has none. See manifest.TemplateSpec.VersionFile.
+	VersionFile string
+}
+
+// VolumeFacts is what a volume directory holds, as far as deploying over it
+// is concerned.
+type VolumeFacts struct {
+	// HasData is a directory that exists and is not empty.
+	HasData bool
+
+	// Version is its VersionFile's contents, empty without one.
+	Version string
+
+	// Used is how much it holds, in bytes; -1 when it was not measured or
+	// the measuring took too long.
+	Used int64
+}
+
+// InspectVolumes reports what each volume directory on this machine holds,
+// keyed by path. It only reads. measure adds how much each one holds, which
+// walks every file in it, so it is asked for only where it is shown.
+func (c *Cluster) InspectVolumes(ctx context.Context, dirs []VolumeDir, measure bool) (map[string]VolumeFacts, error) {
+	if len(dirs) == 0 {
+		return map[string]VolumeFacts{}, nil
+	}
+	out, err := c.node.RunOutput(ctx, inspectVolumesScript(dirs, measure))
+	if err != nil {
+		return nil, fmt.Errorf("inspect volumes: %w", err)
+	}
+	return parseVolumeFacts(out), nil
+}
+
+// inspectVolumesScript prints one line per directory:
+// <path> TAB <has data 0|1> TAB <used KiB, or -1> TAB <version>.
+func inspectVolumesScript(dirs []VolumeDir, measure bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `inspect() {
+  data=0; used=-1; ver=
+  if [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; then
+    data=1
+    [ -n "$2" ] && ver=$(head -c 64 "$1/$2" 2>/dev/null | tr -d '\t\n' || true)
+    if [ %t = true ]; then used=$(timeout 10 du -sk "$1" 2>/dev/null | cut -f1) || used=-1; fi
+  fi
+  printf '%%s\t%%s\t%%s\t%%s\n' "$1" "$data" "${used:--1}" "$ver"
+}
+`, measure)
+	for _, d := range dirs {
+		fmt.Fprintf(&b, "inspect %s %s\n", shQuote(d.Path), shQuote(d.VersionFile))
+	}
+	return b.String()
+}
+
+func parseVolumeFacts(out string) map[string]VolumeFacts {
+	facts := map[string]VolumeFacts{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.SplitN(line, "\t", 4)
+		if len(f) < 3 {
+			continue
+		}
+		used, err := strconv.ParseInt(f[2], 10, 64)
+		if err != nil || used < 0 {
+			used = -1
+		} else {
+			used *= 1024
+		}
+		v := VolumeFacts{HasData: f[1] == "1", Used: used}
+		if len(f) == 4 {
+			v.Version = strings.TrimSpace(f[3])
+		}
+		facts[f[0]] = v
+	}
+	return facts
 }
 
 // EnsureDirs creates host directories for volumes before the jobs that bind
@@ -262,7 +376,7 @@ printf '}'`
 
 // allocsJQ projects Nomad's allocation list.
 const allocsJQ = `[ .[] | {
-  ID, JobID, ClientStatus, DesiredStatus, NodeName, CreateTime,
+  ID, JobID, JobVersion, ClientStatus, DesiredStatus, NodeName, CreateTime,
   Tasks: ((.TaskStates // {}) | to_entries | map({
     Name: .key,
     State: .value.State,
@@ -276,7 +390,7 @@ const allocsJQ = `[ .[] | {
 
 // deploymentsJQ projects Nomad's deployment list.
 const deploymentsJQ = `[ .[] | . as $d | (.TaskGroups // {} | to_entries | first | .value) as $g | {
-  JobID, Status, StatusDescription, ModifyIndex,
+  JobID, JobVersion, Status, StatusDescription, ModifyIndex,
   Desired: ($g.DesiredTotal // 0),
   Healthy: ($g.HealthyAllocs // 0),
   Unhealthy: ($g.UnhealthyAllocs // 0),
@@ -287,6 +401,7 @@ type runtimeWire struct {
 	Allocs []struct {
 		ID            string `json:"ID"`
 		JobID         string `json:"JobID"`
+		JobVersion    uint64 `json:"JobVersion"`
 		CreateTime    int64  `json:"CreateTime"`
 		ClientStatus  string `json:"ClientStatus"`
 		DesiredStatus string `json:"DesiredStatus"`
@@ -303,6 +418,7 @@ type runtimeWire struct {
 	} `json:"allocs"`
 	Deployments []struct {
 		JobID             string `json:"JobID"`
+		JobVersion        uint64 `json:"JobVersion"`
 		Status            string `json:"Status"`
 		StatusDescription string `json:"StatusDescription"`
 		ModifyIndex       uint64 `json:"ModifyIndex"`
@@ -332,7 +448,7 @@ func parseRuntime(out string) ([]deploy.AllocState, []deploy.DeploymentState, er
 	allocs := make([]deploy.AllocState, 0, len(wire.Allocs))
 	for _, a := range wire.Allocs {
 		as := deploy.AllocState{
-			ID: a.ID, JobID: a.JobID, CreateTime: a.CreateTime, ClientStatus: a.ClientStatus,
+			ID: a.ID, JobID: a.JobID, JobVersion: a.JobVersion, CreateTime: a.CreateTime, ClientStatus: a.ClientStatus,
 			DesiredStatus: a.DesiredStatus, NodeName: a.NodeName,
 		}
 		for _, t := range a.Tasks {
@@ -347,7 +463,7 @@ func parseRuntime(out string) ([]deploy.AllocState, []deploy.DeploymentState, er
 	deps := make([]deploy.DeploymentState, 0, len(wire.Deployments))
 	for _, d := range wire.Deployments {
 		deps = append(deps, deploy.DeploymentState{
-			JobID: d.JobID, Status: d.Status, Description: d.StatusDescription,
+			JobID: d.JobID, JobVersion: d.JobVersion, Status: d.Status, Description: d.StatusDescription,
 			ModifyIndex: d.ModifyIndex, Desired: d.Desired,
 			Healthy: d.Healthy, Unhealthy: d.Unhealthy, Placed: d.Placed,
 		})
@@ -919,7 +1035,7 @@ func shQuote(s string) string {
 }
 
 // ListBackups returns the backups held for one database, oldest first.
-func (c *Cluster) ListBackups(ctx context.Context, spec deploy.BackupSpec, prefix string) ([]string, error) {
+func (c *Cluster) ListBackups(ctx context.Context, spec deploy.BackupSpec) ([]string, error) {
 	// Every non-zero exit is an error, including 3.
 	//
 	// Checked against rclone rather than assumed: listing an empty prefix in a
@@ -942,11 +1058,11 @@ if [ $CODE -ne 0 ]; then
   exit $CODE
 fi
 printf '%%s\n' "$OUT"`,
-		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(prefix))
+		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(spec.Prefix))
 
 	out, err := c.node.RunOutput(ctx, script)
 	if err != nil {
-		return nil, fmt.Errorf("list backups in %s/%s: %w", spec.Bucket, prefix, err)
+		return nil, fmt.Errorf("list backups in %s/%s: %w", spec.Bucket, spec.Prefix, err)
 	}
 
 	var names []string
@@ -964,8 +1080,8 @@ printf '%%s\n' "$OUT"`,
 // It runs where the database is and reaches it the same way anything else
 // does, so a restore exercises the same path a normal connection takes rather
 // than a special one that only works when someone is watching.
-func (c *Cluster) RestoreBackup(ctx context.Context, spec deploy.BackupSpec, group, service, prefix, name, pgImage string) error {
-	script := restoreScript(spec, group, service, prefix, name, pgImage)
+func (c *Cluster) RestoreBackup(ctx context.Context, spec deploy.BackupSpec, group, service, name, pgImage string) error {
+	script := restoreScript(spec, group, service, name, pgImage)
 
 	// Streamed, not buffered: a multi-gigabyte download followed by a restore
 	// prints nothing for minutes otherwise, and a working restore is
@@ -982,7 +1098,7 @@ func (c *Cluster) RestoreBackup(ctx context.Context, spec deploy.BackupSpec, gro
 // Split out so the most dangerous string orca produces can be asserted on
 // without a machine: it interpolates a filename that came from listing a
 // bucket, which is the one input here that someone else can choose.
-func restoreScript(spec deploy.BackupSpec, group, service, prefix, name, pgImage string) string {
+func restoreScript(spec deploy.BackupSpec, group, service, name, pgImage string) string {
 	return fmt.Sprintf(`set -eu
 %[1]s
 BUCKET=%[3]s
@@ -1011,22 +1127,132 @@ if [ -z "$DBHOST" ] || [ -z "$DBPORT" ]; then
   exit 1
 fi
 
-# The password goes in a file, not the argument list, which is visible in the
+# The connection goes in a file, not the argument list, which is visible in the
 # host's process table for as long as the restore runs.
-printf 'PGPASSWORD=%%s\n' "$(curl -sf "%[7]s/v1/var/%[8]s" | jq -r '.Items.value')" > "$PGENV"
+{
+  printf 'PGPASSWORD=%%s\n' "$(curl -sf "%[7]s/v1/var/%[8]s" | jq -r '.Items.value')"
+  printf 'PGHOST=%%s\nPGPORT=%%s\nPGUSER=postgres\n' "$DBHOST" "$DBPORT"
+} > "$PGENV"
+
+cat > "$WORK/restore.sh" <<'RESTORE'
+%[10]s
+RESTORE
 
 echo "restoring into $DBHOST:$DBPORT"
-docker run --rm --network host -v "$WORK:/work" --env-file "$PGENV" %[5]s \
-  pg_restore --clean --if-exists --no-owner --no-privileges \
-    -h "$DBHOST" -p "$DBPORT" -U postgres -d postgres "/work/$NAME"
-
-echo "restored $NAME"`,
-		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(prefix),
+docker run --rm --network host -v "$WORK:/work" --env-file "$PGENV" \
+  -e NAME="$NAME" -e STAMP="$(date -u +%%Y%%m%%dT%%H%%M%%SZ)" %[5]s sh /work/restore.sh`,
+		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(spec.Prefix),
 		shQuote(pgImage), shQuote(name),
 		NomadAddr,
 		deploy.SecretPath(group, manifest.GeneratedSecret(service, manifest.PasswordSuffix)),
-		deploy.CatalogName(group, service))
+		deploy.CatalogName(group, service),
+		pgRestoreScript)
 }
+
+// pgRestoreScript runs inside the database's own image, next to the
+// downloaded backup in /work, and loads it one database at a time.
+//
+// Each is restored into a new database first, and only once that has
+// succeeded does it take the real one's name, the real one being renamed to
+// <name>_before_restore_<time> and kept on the server. So a restore that fails
+// part way leaves every database as it was, one that succeeds leaves each
+// exactly as the backup had it (not the backup laid over whatever was there),
+// and what it replaced is one rename away.
+//
+// Database names come from the files in the backup, so they are only ever
+// handed to psql as variables, which quotes them, never pasted into SQL.
+const pgRestoreScript = `set -eu
+cd /work
+SUFFIX=` + deploy.PreRestoreSuffix + `
+# Postgres narrates every IF EXISTS that did not; only warnings are news here.
+export PGOPTIONS='-c client_min_messages=warning'
+
+sql() { psql -X -q -v ON_ERROR_STOP=1 -d template1 "$@"; }
+
+case "$NAME" in
+  *.tar)
+    mkdir x
+    tar -xf "$NAME" -C x
+    # Roles first, so owners and grants have someone to belong to. One that
+    # exists already is only reported, and keeps what it has.
+    if [ -f x/globals.sql ]; then
+      psql -X -q -d template1 -f x/globals.sql 2>&1 | grep -v 'already exists' || true
+    fi
+    OPTS=""
+    ;;
+  *)
+    # A single dump of the postgres database, from before backups carried
+    # roles: restored without owners and grants, which may name roles this
+    # server does not have.
+    mkdir x
+    mv "$NAME" x/postgres.pgc
+    OPTS="--no-owner --no-privileges"
+    ;;
+esac
+
+# Every database is loaded before any is swapped in, so a backup that fails
+# to load leaves the server as it was rather than half restored. Each loads
+# into a new database created from template0, as pg_restore expects, which
+# also works while this script is connected to template1.
+scratch() { echo "orca_restore_$1_$STAMP"; }
+N=0
+discard() {
+  i=1
+  while [ "$i" -le "$N" ]; do
+    printf 'DROP DATABASE IF EXISTS :"new";\n' | sql -v new="$(scratch "$i")" || true
+    i=$((i + 1))
+  done
+}
+
+for f in x/*.pgc; do
+  [ -f "$f" ] || { echo "$NAME holds no databases" >&2; exit 1; }
+  N=$((N + 1))
+  NEW=$(scratch "$N")
+  echo "loading $(basename "$f" .pgc)"
+  printf 'DROP DATABASE IF EXISTS :"new";\nCREATE DATABASE :"new" TEMPLATE template0;\n' | sql -v new="$NEW"
+  if ! pg_restore --single-transaction $OPTS -d "$NEW" "$f"; then
+    discard
+    echo "loading $(basename "$f" .pgc) failed; nothing was changed" >&2
+    exit 1
+  fi
+done
+
+N=0
+for f in x/*.pgc; do
+  N=$((N + 1))
+  NEW=$(scratch "$N")
+  DB=$(basename "$f" .pgc)
+  # Postgres cuts a name at 63 bytes, so the database's own name is what gives
+  # way: cutting the suffix could make two databases' copies one name.
+  OLD="$(printf '%.30s' "$DB")$SUFFIX$STAMP"
+
+  # The swap. New connections are refused and open ones ended first, or the
+  # rename is refused; the applications reconnect to the restored database.
+  # Both renames are one transaction, so the name never points at nothing.
+  if ! sql -v db="$DB" -v old="$OLD" -v new="$NEW" <<'SQL'
+SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db') AS exists \gset
+\if :exists
+  ALTER DATABASE :"db" WITH ALLOW_CONNECTIONS false;
+  SELECT count(pg_terminate_backend(pid, 10000)) FROM pg_stat_activity WHERE datname = :'db' \g /dev/null
+\endif
+BEGIN;
+\if :exists
+  ALTER DATABASE :"db" RENAME TO :"old";
+\endif
+ALTER DATABASE :"new" RENAME TO :"db";
+COMMIT;
+\if :exists
+  \echo '  the database it replaced is kept, closed to connections, as' :old
+\endif
+SQL
+  then
+    printf 'ALTER DATABASE :"db" WITH ALLOW_CONNECTIONS true;\n' | sql -v db="$DB" >/dev/null 2>&1 || true
+    discard
+    echo "swapping in the restored $DB failed; it is as it was, and so is every database after it" >&2
+    exit 1
+  fi
+  echo "restored $DB"
+done`
 
 // RestoreRedis replaces a Redis service's data with a backup.
 //
@@ -1034,8 +1260,8 @@ echo "restored $NAME"`,
 // is the one restore with downtime: the service is stopped, its data swapped,
 // and started again. It runs on the machine that holds the volume, which is
 // the one place the data can be swapped.
-func (c *Cluster) RestoreRedis(ctx context.Context, spec deploy.BackupSpec, group, service, prefix, name, image string) error {
-	if err := c.node.Run(ctx, redisRestoreScript(spec, group, service, prefix, name, image)); err != nil {
+func (c *Cluster) RestoreRedis(ctx context.Context, spec deploy.BackupSpec, group, service, name, image string) error {
+	if err := c.node.Run(ctx, redisRestoreScript(spec, group, service, name, image)); err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
 	fmt.Printf("restored %s into %s/%s\n", name, group, service)
@@ -1063,7 +1289,7 @@ func PreRestorePrefix(group, service string) string {
 // If anything fails once the service is down, the previous data is put back
 // and the service started again, so a failed restore costs a restart rather
 // than the database.
-func redisRestoreScript(spec deploy.BackupSpec, group, service, prefix, name, image string) string {
+func redisRestoreScript(spec deploy.BackupSpec, group, service, name, image string) string {
 	return fmt.Sprintf(`set -eu
 %[1]s
 BUCKET=%[3]s
@@ -1151,7 +1377,7 @@ echo "starting $JOB"
 nomad job run -detach -json "$SPEC" >/dev/null
 DONE=1
 echo "restored $NAME ($KEYS keys); the data it replaced is at $KEEP"`,
-		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(prefix),
+		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(spec.Prefix),
 		shQuote(image), shQuote(name),
 		shQuote(deploy.JobID(group, service)),
 		shQuote(deploy.VolumePath(DataDir, group, service)),

@@ -15,9 +15,13 @@ type JobState struct {
 	ID      string
 	App     string
 	Service string
-	Hash    string
 	Image   string
 	Stopped bool
+
+	// Version is the job's current version in Nomad, which every allocation
+	// and deployment records. Waiting for a deploy means waiting for this
+	// version, not for whatever happens to be running.
+	Version uint64
 
 	// Count is the desired replica count, so status can report 1/1 rather than
 	// just "something is running".
@@ -61,6 +65,9 @@ type Change struct {
 
 	// Job is the spec to submit. Nil for ChangeStop.
 	Job *nomad.Job
+
+	// Plan is Nomad's dry run of submitting Job. Zero for ChangeStop.
+	Plan JobPlan
 }
 
 // Plan is everything apply intends to do, in a stable order.
@@ -82,6 +89,19 @@ func (p Plan) Work() []Change {
 
 func (p Plan) HasWork() bool { return len(p.Work()) > 0 }
 
+// Unplaceable is every change Nomad could not find room for. Submitting one
+// would stop what runs now and then wait for capacity that is not coming, so
+// apply refuses the whole plan instead.
+func (p Plan) Unplaceable() []Change {
+	var out []Change
+	for _, c := range p.Work() {
+		if c.Plan.Unplaceable != "" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // String renders the plan for a human. Unchanged services are summarised rather
 // than listed: most applies change one thing, and a wall of "unchanged" buries
 // the line that matters.
@@ -102,8 +122,11 @@ func (p Plan) String() string {
 			if c.OldImage != c.NewImage {
 				fmt.Fprintf(&b, "  update  %s/%s  %s -> %s\n", c.App, c.Service, shortImage(c.OldImage), shortImage(c.NewImage))
 			} else {
-				fmt.Fprintf(&b, "  update  %s/%s  (spec changed)\n", c.App, c.Service)
+				fmt.Fprintf(&b, "  update  %s/%s  %s\n", c.App, c.Service, c.Plan.describe())
 			}
+		}
+		if c.Plan.Unplaceable != "" {
+			fmt.Fprintf(&b, "          cannot be placed: %s\n", c.Plan.Unplaceable)
 		}
 	}
 	fmt.Fprintf(&b, "\n%d change(s), %d unchanged", len(work), len(p.Changes)-len(work))
@@ -171,6 +194,12 @@ func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, node
 
 // BuildPlan diffs the desired jobs against what the cluster is running.
 //
+// Whether a job changed is Nomad's answer, from plans: a dry run of
+// submitting each one. Nomad compares the job with the version it holds after
+// normalizing both, so it is right where a comparison made here would not be,
+// such as a new field in a newer client library, and it knows which changes
+// replace allocations and which it applies in place.
+//
 // scope names the apps this apply covers, and a nil scope covers everything.
 // A job outside the scope is left alone entirely. That is what makes
 // `orca apply blog` safe to run when other apps exist, and it is the reason
@@ -183,7 +212,7 @@ func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, node
 // group whose directory is *gone*, so they would never be in the derived set
 // and apply could not see them. Renaming a group or deleting any directory
 // must still stop what it left behind, the platform's jobs included.
-func BuildPlan(desired []*nomad.Job, current map[string]JobState, scope map[string]bool) Plan {
+func BuildPlan(desired []*nomad.Job, current map[string]JobState, plans map[string]JobPlan, scope map[string]bool) Plan {
 	var plan Plan
 	seen := map[string]bool{}
 
@@ -197,12 +226,17 @@ func BuildPlan(desired []*nomad.Job, current map[string]JobState, scope map[stri
 			Service:  job.Meta[MetaService],
 			NewImage: job.Meta[MetaImage],
 			Job:      job,
+			Plan:     plans[id],
 		}
 
+		// A job with no plan is submitted: Nomad treats an identical job as a
+		// no-op, so the cost of being wrong is a round trip, where skipping it
+		// could leave a change undeployed.
+		p, planned := plans[id]
 		switch cur, running := current[id]; {
 		case !running || cur.Stopped:
 			c.Kind = ChangeCreate
-		case cur.Hash == job.Meta[MetaHash]:
+		case planned && !p.Changed:
 			c.Kind = ChangeNone
 			c.OldImage = cur.Image
 		default:

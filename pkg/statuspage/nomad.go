@@ -32,7 +32,11 @@ func fetchNomad(ctx context.Context, c *nomad.Client) (*nomadView, error) {
 		}
 	}
 
-	allocs, _, err := c.Allocations().List(q)
+	// With what each allocation and machine has to hand out, which is how
+	// Nomad decides whether anything more fits.
+	withResources := (&nomad.QueryOptions{Params: map[string]string{"resources": "true"}}).WithContext(ctx)
+
+	allocs, _, err := c.Allocations().List(withResources)
 	if err != nil {
 		return nil, fmt.Errorf("list allocations: %w", err)
 	}
@@ -48,17 +52,27 @@ func fetchNomad(ctx context.Context, c *nomad.Client) (*nomadView, error) {
 		nv.Deployments = append(nv.Deployments, deploy.DeploymentStateFromNomad(d))
 	}
 
-	nodes, _, err := c.Nodes().List(q)
+	nodes, _, err := c.Nodes().List(withResources)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
 	for _, n := range nodes {
-		nv.Nodes = append(nv.Nodes, nodeInfo{
+		info := nodeInfo{
 			Name:     n.Name,
 			Status:   n.Status,
 			Eligible: n.SchedulingEligibility == nomad.NodeSchedulingEligible,
 			Draining: n.Drain,
-		})
+		}
+		// What is left for allocations once the machine's own reservation
+		// is taken out.
+		if r := n.NodeResources; r != nil {
+			info.CPUMHz, info.MemoryMB = r.Cpu.CpuShares, r.Memory.MemoryMB
+			if rr := n.ReservedResources; rr != nil {
+				info.CPUMHz -= int64(rr.Cpu.CpuShares)
+				info.MemoryMB -= int64(rr.Memory.MemoryMB)
+			}
+		}
+		nv.Nodes = append(nv.Nodes, info)
 	}
 
 	// Why an unplaced service has nowhere to run is in its evaluations, and

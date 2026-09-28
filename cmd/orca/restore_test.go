@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/pkg/manifest"
 )
 
 func hostileSpec() deploy.BackupSpec {
@@ -16,6 +17,7 @@ func hostileSpec() deploy.BackupSpec {
 		SecretGroup:     "storage",
 		KeyIDSecret:     "offsite_key_id",
 		SecretKeySecret: "offsite_secret_key",
+		Prefix:          "shop/db",
 	}
 }
 
@@ -26,7 +28,7 @@ func hostileSpec() deploy.BackupSpec {
 // a restore, when things are already going badly.
 func TestRestoreScriptQuotesRemoteInput(t *testing.T) {
 	evil := `x$(touch /tmp/pwned).pgc`
-	script := restoreScript(hostileSpec(), "shop", "db", "shop/db", evil, "postgres:17-alpine")
+	script := restoreScript(hostileSpec(), "shop", "db", evil, "postgres:17-alpine")
 
 	// Inside single quotes the shell expands nothing at all, so the payload
 	// may appear only there.
@@ -83,7 +85,7 @@ func TestCredentialErrorNamesTheRealSecretPath(t *testing.T) {
 }
 
 func TestCheckBackupName(t *testing.T) {
-	if err := checkBackupName("shop-db-20260925T120000Z.pgc", "pgc"); err != nil {
+	if err := checkBackupName("shop-db-20260925T120000Z.pgc", manifest.BackupPostgres.Exts()); err != nil {
 		t.Errorf("a name orca wrote should be accepted: %v", err)
 	}
 	for _, bad := range []string{
@@ -93,17 +95,17 @@ func TestCheckBackupName(t *testing.T) {
 		`shop-db.pgc`,
 		``,
 	} {
-		if err := checkBackupName(bad, "pgc"); err == nil {
+		if err := checkBackupName(bad, manifest.BackupPostgres.Exts()); err == nil {
 			t.Errorf("checkBackupName(%q) should have been refused", bad)
 		}
 	}
 
 	// The right shape and the wrong kind: a Postgres dump handed to a Redis
 	// restore would stop the service to load something it cannot.
-	if err := checkBackupName("shop-db-20260925T120000Z.pgc", "rdb"); err == nil {
+	if err := checkBackupName("shop-db-20260925T120000Z.pgc", manifest.BackupRedis.Exts()); err == nil {
 		t.Error("a pgc dump should be refused where an rdb is expected")
 	}
-	if err := checkBackupName("blog-redis-20260925T120000Z.rdb", "rdb"); err != nil {
+	if err := checkBackupName("blog-redis-20260925T120000Z.rdb", manifest.BackupRedis.Exts()); err != nil {
 		t.Errorf("an rdb snapshot orca wrote should be accepted: %v", err)
 	}
 }
@@ -112,7 +114,7 @@ func TestCheckBackupName(t *testing.T) {
 // check: the payload may appear only inside single quotes.
 func TestRedisRestoreScriptQuotesRemoteInput(t *testing.T) {
 	evil := `x$(touch /tmp/pwned).rdb`
-	script := redisRestoreScript(hostileSpec(), "blog", "redis", "blog/redis", evil, "redis:8.10-alpine")
+	script := redisRestoreScript(hostileSpec(), "blog", "redis", evil, "redis:8.10-alpine")
 
 	if !strings.Contains(script, `NAME='x$(touch /tmp/pwned).rdb'`) {
 		t.Errorf("the name should be a single-quoted assignment, got:\n%s", script)
@@ -127,7 +129,7 @@ func TestRedisRestoreScriptQuotesRemoteInput(t *testing.T) {
 // restore has to load the snapshot with the AOF off and switch it on, and the
 // order of those steps is the restore.
 func TestRedisRestoreLoadsWithoutAOFThenWritesIt(t *testing.T) {
-	script := redisRestoreScript(hostileSpec(), "blog", "redis", "blog/redis", "blog-redis-20260925T120000Z.rdb", "redis:8.10-alpine")
+	script := redisRestoreScript(hostileSpec(), "blog", "redis", "blog-redis-20260925T120000Z.rdb", "redis:8.10-alpine")
 
 	steps := []string{
 		"nomad job inspect",

@@ -17,6 +17,10 @@ type BackupSpec struct {
 	Schedule string
 	Keep     int
 
+	// Prefix is where in the bucket this database's backups live; see
+	// BackupPrefix.
+	Prefix string
+
 	// Image is the client used to talk to the store.
 	Image string
 
@@ -43,7 +47,6 @@ func IsPeriodicChild(jobID string) bool { return strings.Contains(jobID, "/perio
 // hand.
 func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec BackupSpec, opts Options) (*nomad.Job, error) {
 	id := BackupJobID(m.App, s.Name)
-	prefix := BackupPrefix(m.App, s.Name)
 
 	// The dump is the one part that knows what kind of data this is. Stated
 	// as a switch on the template's backup kind, so a template that declares
@@ -90,7 +93,7 @@ func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec B
 		Config: map[string]any{
 			"image":      spec.Image,
 			"entrypoint": []string{"/bin/sh", "-c"},
-			"args":       []string{uploadScript(spec, prefix)},
+			"args":       []string{uploadScript(spec)},
 		},
 		Resources: &nomad.Resources{CPU: ptr(200), MemoryMB: ptr(256)},
 		Templates: []*nomad.Template{{
@@ -151,12 +154,17 @@ func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec B
 			MetaImage:   image,
 		},
 	}
-	job.Meta[MetaHash] = Hash(job)
 	return job, nil
 }
 
-// postgresDumpScript writes a custom-format dump into the allocation
-// directory, where the upload task picks it up.
+// postgresDumpScript writes every database, and the roles, into one tar in
+// the allocation directory, where the upload task picks it up.
+//
+// Every database rather than only postgres: the databases an application
+// creates for itself are the ones worth keeping. And the roles, which no
+// database's dump carries, so that owners and grants restore onto a server
+// that has never seen them. The superuser is left out of those: its password
+// is this cluster's own secret, and restoring another's would lock orca out.
 func postgresDumpScript(group, service string) string {
 	// Shell variables are written unbraced on purpose. Nomad interpolates
 	// ${...} in a task's config before the shell ever sees it, so ${STAMP}
@@ -164,21 +172,32 @@ func postgresDumpScript(group, service string) string {
 	// ${NOMAD_ALLOC_DIR} is left braced because it really is Nomad's to
 	// substitute.
 	return fmt.Sprintf(`set -eu
+set -o pipefail
 STAMP=$(date -u +%%Y%%m%%dT%%H%%M%%SZ)
-mkdir -p "${NOMAD_ALLOC_DIR}/data"
-OUT="${NOMAD_ALLOC_DIR}/data/%s-%s-$STAMP.%s"
+DATA="${NOMAD_ALLOC_DIR}/data"
+WORK="$DATA/work"
+OUT="$DATA/%s-%s-$STAMP.%s"
+rm -rf "$WORK"
+mkdir -p "$WORK"
 
 # Host and port come from PGHOST/PGPORT, rendered from the service catalog.
 # Naming the service and assuming 5432 is right only while the database
 # registers its own address; once a port is published instead, the catalog
 # carries a dynamic one and the assumption connects to nothing.
-#
-# -Fc is the custom format: compressed, and restorable selectively rather than
-# as one all-or-nothing script.
-pg_dump -Fc -U postgres -d postgres -f "$OUT"
+pg_dumpall -U postgres --globals-only | grep -vE '^(CREATE|ALTER) ROLE postgres( |;)' > "$WORK/globals.sql"
 
-echo "$OUT" > "${NOMAD_ALLOC_DIR}/data/latest"
-ls -lh "$OUT"`, group, service, manifest.BackupPostgres.Ext())
+# -Fc is the custom format: compressed, and restorable selectively rather than
+# as one all-or-nothing script. What a restore keeps of a database it
+# replaced (<name>%s<time>) is a copy, not something to back up again.
+psql -U postgres -AtX -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate AND strpos(datname, '%s') = 0" |
+while IFS= read -r DB; do
+  pg_dump -Fc -U postgres -d "$DB" -f "$WORK/$DB.pgc"
+done
+
+tar -cf "$OUT" -C "$WORK" .
+rm -rf "$WORK"
+echo "$OUT" > "$DATA/latest"
+ls -lh "$OUT"`, group, service, manifest.BackupPostgres.Ext(), PreRestoreSuffix, PreRestoreSuffix)
 }
 
 func dumpEnv(group, service string) string {
@@ -234,14 +253,18 @@ func uploadEnv(spec BackupSpec) string {
 // Object names are timestamps, so lexicographic order is chronological and
 // keeping the newest N is a sort and a count rather than anything that has to
 // parse a date.
-func uploadScript(spec BackupSpec, prefix string) string {
-	remote := fmt.Sprintf("store:%s/%s", spec.Bucket, prefix)
+func uploadScript(spec BackupSpec) string {
+	remote := fmt.Sprintf("store:%s/%s", spec.Bucket, spec.Prefix)
 	return fmt.Sprintf(`set -eu
 FILE=$(cat "${NOMAD_ALLOC_DIR}/data/latest")
 NAME=$(basename "$FILE")
 
 rclone copyto "$FILE" "%[1]s/$NAME"
 echo "uploaded %[2]s/$NAME"
+
+# Uploaded, so the copy on this machine's disk is only a plaintext duplicate
+# of the whole database, kept until Nomad gets round to collecting the run.
+rm -f "$FILE"
 
 # Keep the newest %[3]d. Names are timestamps, so sorting them sorts by age.
 rclone lsf "%[1]s/" 2>/dev/null | sort | head -n -%[3]d | while read -r old; do
@@ -251,5 +274,5 @@ rclone lsf "%[1]s/" 2>/dev/null | sort | head -n -%[3]d | while read -r old; do
 done
 
 echo "backups now held:"
-rclone lsf "%[1]s/" | sort`, remote, prefix, spec.Keep)
+rclone lsf "%[1]s/" | sort`, remote, spec.Prefix, spec.Keep)
 }

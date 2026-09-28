@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/pkg/images"
 	"github.com/unitoftime/orca/pkg/manifest"
 )
 
@@ -50,7 +51,7 @@ func resolveBackup(groups []*manifest.Manifest, s *manifest.Service) (deploy.Bac
 		Region:          target.Region,
 		Schedule:        s.Backup.Schedule,
 		Keep:            s.Backup.Keep,
-		Image:           "rclone/rclone:" + Versions.Rclone,
+		Image:           images.Rclone,
 		SecretGroup:     group,
 		KeyIDSecret:     manifest.TargetKeyID(name),
 		SecretKeySecret: manifest.TargetSecretKey(name),
@@ -83,7 +84,8 @@ type backedUp struct {
 	Spec     deploy.BackupSpec
 }
 
-func collectBackups(all []*manifest.Manifest, scope []*manifest.Manifest) ([]backedUp, error) {
+// cluster is the cluster's name, which places the backups in the bucket.
+func collectBackups(cluster string, all []*manifest.Manifest, scope []*manifest.Manifest) ([]backedUp, error) {
 	var out []backedUp
 	var errs []string
 	for _, m := range scope {
@@ -96,6 +98,7 @@ func collectBackups(all []*manifest.Manifest, scope []*manifest.Manifest) ([]bac
 				errs = append(errs, fmt.Sprintf("%s/%s: %v", m.App, s.Name, err))
 				continue
 			}
+			spec.Prefix = deploy.BackupPrefix(cluster, m.App, s.Name)
 			out = append(out, backedUp{Manifest: m, Service: s, Spec: spec})
 		}
 	}

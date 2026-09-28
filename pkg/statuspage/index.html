@@ -142,6 +142,19 @@ tbody tr:first-child td { border-top: 0; }
 .stats .x { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stats .wide { grid-column: 2 / -1; font-variant-numeric: tabular-nums; }
 
+/* What is placed on a node: its claimed memory as one bar split by service,
+   then each service's claim. Nomad places by claims, not by use. */
+.placed { display: flex; flex-direction: column; gap: 6px; }
+.placed .stack { display: flex; gap: 1px; height: 8px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--fill) 20%, var(--surface)); }
+.placed .stack span { background: var(--series-1); }
+.placed .stack span:nth-child(even) { background: color-mix(in srgb, var(--series-1) 60%, var(--surface)); }
+.placed .stack span.platform { background: var(--idle); }
+.placed table { font-size: 12px; table-layout: fixed; }
+.placed td { padding: 2px 0; border: 0; overflow: hidden; text-overflow: ellipsis; }
+.placed td.num { width: 5.5em; }
+.placed th { padding: 0 0 2px; border: 0; }
+.placed th.num { text-align: right; }
+
 /* The hour chart, one per node: CPU and memory on one 0–100% axis. */
 .chart { margin-top: auto; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 120px auto; column-gap: 6px; }
 .chart .legend { grid-column: 1 / -1; color: var(--muted); font-size: 11px; margin-bottom: 10px; }
@@ -345,6 +358,10 @@ function nodeCard(m) {
     rows.push(statRow("CPU", m.cpu, "CPU", extra));
   }
   if (m.memory) rows.push(statRow("Memory", m.memory, "Memory", bytes(m.memory.used) + " / " + bytes(m.memory.total)));
+  const claimed = "What the services placed here have claimed. Nomad places by this, not by what is in use.";
+  if (m.claimedCpu) rows.push(statRow("CPU claimed", m.claimedCpu, "CPU claimed by services", "", claimed));
+  if (m.claimedMemory) rows.push(statRow("Mem claimed", m.claimedMemory, "Memory claimed by services",
+    bytes(m.claimedMemory.used) + " / " + bytes(m.claimedMemory.total), claimed));
   for (const d of m.disks || []) {
     const level = d.inodes && d.inodes.level !== "ok" && d.level === "ok" ? d.inodes.level : d.level;
     const free = bytes(d.total - d.used) + " free" + (d.inodes && d.inodes.level !== "ok" ? " · inodes " + pct(d.inodes.percent) : "");
@@ -365,7 +382,32 @@ function nodeCard(m) {
       nodeState(m),
       m.uptimeSeconds ? h("span", { class: "up" }, "up " + dur(m.uptimeSeconds)) : null),
     rows.length ? h("div", { class: "stats" }, rows.flat()) : null,
+    placed(m),
     chart(m.name, series));
+}
+
+// Every service on the node, by what it claimed. The bar is the node's
+// claimable memory, one segment per service, orca's own in grey.
+function placed(m) {
+  if (!m.placed || !m.placed.length) return null;
+  const total = m.claimedMemory ? m.claimedMemory.total : 0;
+  const name = (p) => (p.group ? p.group + "/" : "") + p.name + (p.copies > 1 ? " ×" + p.copies : "");
+  return h("div", { class: "placed" },
+    total ? h("div", { class: "stack", role: "img", "aria-label": "Memory claimed on " + m.name + ", by service" },
+      m.placed.map((p) => h("span", {
+        class: p.platform ? "platform" : "",
+        style: "width:" + (100 * p.memory / total) + "%",
+        title: name(p) + ": " + bytes(p.memory),
+      }))) : null,
+    h("table", {},
+      h("thead", {}, h("tr", {},
+        h("th", {}, "Placed here"), h("th", { class: "num" }, "vCPU"),
+        h("th", { class: "num" }, "Claimed"), h("th", { class: "num" }, "In use"))),
+      h("tbody", {}, m.placed.map((p) => h("tr", {},
+        h("td", { title: name(p), class: p.platform ? "dim" : "" }, name(p)),
+        h("td", { class: "num" }, p.cpu.toFixed(1)),
+        h("td", { class: "num" }, bytes(p.memory)),
+        h("td", { class: "num dim" }, p.memoryUsed != null ? bytes(p.memoryUsed) : "–"))))));
 }
 
 // The last hour. CPU and memory are both shares of the same machine, so they

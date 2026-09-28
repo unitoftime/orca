@@ -50,25 +50,44 @@ running and changes only the difference.
 2. **Pins every image to a digest.** `image: ghcr.io/you/shop:latest` is
    looked up and deployed as the exact image the tag points at right now. So
    pushing a new `latest` and running apply redeploys it, and `orca status`
-   shows what is really running. This includes the images orca adds itself.
+   shows what is really running. The images orca chooses itself (templates,
+   its own services) are pinned in orca's code instead, so a database is
+   never restarted because an upstream tag moved; upgrading one is upgrading
+   orca.
 3. **Checks what the server will need.** Every secret a service uses must be
    set, and every private image must come from a registry the cluster has a
-   login for. If not, apply stops and names what is missing, before changing
-   anything.
-4. **Builds a job for each service and compares it with what is running.**
-   Anything that would change what runs (an image digest, a setting, a
-   variable's value) counts as a change. Everything else is left alone.
-   `orca plan` stops here and prints the changes.
+   login for. A volume must hold data its service can start on: Postgres
+   refuses another major version's data, and a database password generated
+   over existing data would lock everything out. If not, apply stops and
+   names what is wrong, before changing anything.
+4. **Builds a job for each service and asks Nomad what submitting it would
+   do**, without submitting anything. Nomad compares it with what it runs and
+   says whether it changed, whether that restarts anything or applies in
+   place (a replica count, say), and whether there is room to place it.
+   Unchanged services are left alone, and a change with no room refuses the
+   whole apply. `orca plan` stops here and prints the changes.
 5. **Asks before stopping anything.** A running service that no longer appears
    in the files will be stopped, but apply asks first, because a missing file
    can also mean you ran orca from the wrong directory. With no terminal to
    ask at (in CI, say), it refuses unless you pass `--yes`.
 6. **Updates the firewall** and creates any secrets a template needs.
 7. **Stops removed services, then deploys new and changed ones.**
-8. **Waits for every service in scope to be healthy**, for up to two minutes,
-   including ones it did not change. If anything is unhealthy, apply exits
-   non-zero. A green apply in CI means everything is actually running, not
-   just that something was submitted.
+8. **Waits for every service in scope to be healthy**, including ones it did
+   not change. What it deployed is judged by Nomad's verdict on the new
+   version: healthy once its new copies pass their checks, failed (and rolled
+   back by Nomad) if they do not within a few minutes. If anything is
+   unhealthy, apply exits non-zero. A green apply in CI means everything is
+   actually running, not just that something was submitted.
+
+Only one apply runs at a time. A second one, from CI or another machine,
+stops at once and says who holds the cluster; one that dies without
+finishing gives way within a minute.
+
+A service with `replicas: 2` or more, no volume and no raw port is deployed
+blue/green: a full new set of copies starts beside the old one and is sent
+traffic only once all of them pass their checks, then the old set drains and
+stops. It briefly needs room for both. Anything else is replaced one copy at
+a time.
 
 When nothing changed and nothing is wrong, apply says so and exits quickly,
 so it is safe to run on every commit.
@@ -113,7 +132,9 @@ names what it cannot read.
 **Disks are capped from day one**, because a full disk is the most common way
 a server like this dies. Docker's log files and the log store have hard size
 limits. The metric store is limited by its retention time and stops storing
-new data when free disk falls below a floor (`min_free`).
+new data when free disk falls below a floor (`min_free`). Volumes are not
+capped: a volume's size is what it is expected to hold, and `orca status`
+shows each one's use against it.
 
 ## Networking
 
@@ -191,12 +212,16 @@ latest 14 are kept. The target's credentials are secrets you set, and apply
 refuses to deploy a backup that has none, rather than letting it fail quietly
 every night. A failed backup shows as `failed` in `orca status`.
 
-A Postgres backup is a dump of the `postgres` database. Databases you create
-yourself with `CREATE DATABASE` are not in it.
+A Postgres backup holds every database, and the roles that own them and are
+granted on them, so it restores onto a server that has never seen them. The
+`postgres` superuser is left out: its password is the cluster's own secret.
 
-`orca db restore` puts a backup back. Postgres is restored into the running
-server. Redis is stopped while its data is replaced, and the data it replaced
-is kept under `/var/orca/pre-restore/` on the machine.
+`orca db restore` puts a backup back. Postgres loads each database beside the
+one it replaces and swaps it in only once it has loaded, so a restore that
+fails changes nothing, and one that succeeds leaves each database exactly as
+the backup had it. The database it replaced is kept on the server, renamed.
+Redis is stopped while its data is replaced, and the data it replaced is kept
+under `/var/orca/pre-restore/` on the machine.
 
 ## Secrets
 

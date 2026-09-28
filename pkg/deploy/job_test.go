@@ -62,9 +62,6 @@ ports:
 	if job.Meta[MetaManaged] != "true" || job.Meta[MetaApp] != "blog" || job.Meta[MetaService] != "api" {
 		t.Errorf("meta = %v", job.Meta)
 	}
-	if job.Meta[MetaHash] == "" {
-		t.Error("job should carry its content hash")
-	}
 
 	task := job.TaskGroups[0].Tasks[0]
 	// 2 vCPU at 500MHz each.
@@ -520,5 +517,36 @@ func TestShutdownDelayOnlyWithAnotherCopy(t *testing.T) {
 				t.Errorf("shutdown_delay = %v, want %v", got, *tt.want)
 			}
 		})
+	}
+}
+
+// Blue/green runs two full sets at once, so it is only for a service that
+// already runs several and has nothing two copies could not share.
+func TestBlueGreenOnlyWhereTwoCopiesCanRun(t *testing.T) {
+	bg := func(body string, opts Options) bool {
+		job := buildOne(t, body, "web", opts)
+		return job.Update.Canary != nil && *job.Update.Canary > 0
+	}
+
+	job := buildOne(t, "{name: web, image: i:1, replicas: 2, ports: {8080: web.example.com}}", "web", defaultOpts())
+	if job.Update.Canary == nil || *job.Update.Canary != 2 || job.Update.AutoPromote == nil || !*job.Update.AutoPromote {
+		t.Fatalf("a replicated web service should start a full new set and promote it: %+v", job.Update)
+	}
+	if tags := job.TaskGroups[0].Services[0].CanaryTags; len(tags) != 1 || tags[0] != CanaryTag {
+		t.Errorf("new copies must register without routing tags until promoted, got %v", tags)
+	}
+
+	if bg("{name: web, image: i:1, ports: {8080: web.example.com}}", defaultOpts()) {
+		t.Error("one copy: must not be deployed blue/green")
+	}
+	if bg("{name: web, image: i:1, replicas: 2}", defaultOpts()) {
+		t.Error("no port, so nothing to swap: must not be deployed blue/green")
+	}
+	// Above one machine the port is reserved on the machine, which the new
+	// copy could not bind beside the old one.
+	multi := defaultOpts()
+	multi.InternalNetwork = "internal"
+	if bg("{name: web, image: i:1, replicas: 2, ports: {8080: web.example.com}}", multi) {
+		t.Error("a reserved host port: must not be deployed blue/green")
 	}
 }

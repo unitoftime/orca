@@ -34,6 +34,12 @@ const (
 // file, one group per directory, so the cluster is a thing you can see whole
 // rather than a config file pointing at a list of other files.
 type Config struct {
+	// Name tells this cluster apart from others where they share something:
+	// its backups are kept under <name>/ in their bucket, so two clusters
+	// backing up to one bucket never prune or restore each other's. Optional;
+	// without it backups sit at the top of the bucket.
+	Name string `yaml:"name"`
+
 	Nodes []NodeConfig `yaml:"nodes"`
 
 	// The capabilities orca runs for you. Each is absent for "on with
@@ -148,6 +154,9 @@ func (c *Config) applyDefaults() {
 func (c Config) validate() error {
 	if len(c.Nodes) == 0 {
 		return fmt.Errorf("no nodes defined")
+	}
+	if c.Name != "" && !manifest.IsDNSLabel(c.Name) {
+		return fmt.Errorf("name %q must be lowercase letters, digits and dashes", c.Name)
 	}
 	if err := c.Monitoring.validate(); err != nil {
 		return err

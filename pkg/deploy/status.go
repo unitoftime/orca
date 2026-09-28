@@ -14,11 +14,18 @@ type AllocState struct {
 	// replaced.
 	ID            string
 	JobID         string
+	JobVersion    uint64
 	CreateTime    int64
 	ClientStatus  string // pending | running | complete | failed | lost
 	DesiredStatus string // run | stop | evict
 	NodeName      string
 	Tasks         []TaskState
+
+	// CPUMHz and MemoryMB are what its tasks claimed from the machine: what
+	// Nomad placed it by, as opposed to what it uses. Only the status page
+	// reads them, to show what fills each machine.
+	CPUMHz   int64
+	MemoryMB int64
 }
 
 // TaskState is one task inside an allocation.
@@ -38,6 +45,7 @@ type TaskState struct {
 // DeploymentState is a job's rollout.
 type DeploymentState struct {
 	JobID       string
+	JobVersion  uint64
 	Status      string // running | successful | failed | cancelled | paused
 	Description string
 	ModifyIndex uint64
@@ -284,6 +292,63 @@ func classify(s *ServiceStatus, job JobState, allocs []AllocState, dep *Deployme
 	if s.Health == HealthOK {
 		s.Message = ""
 	}
+}
+
+// Rollout judges a job that was just submitted by what Nomad concluded about
+// the version submitted, rather than by whatever happens to be running.
+//
+// Until the scheduler has acted on the new version, the allocations running
+// are the previous version's and the latest deployment is the previous one,
+// which succeeded, so judged the ordinary way a deploy that has not started
+// yet reads as healthy. And while it is under way, a new copy that restarts
+// once reads as failed, although Nomad may well bring it up in time. Nomad's
+// deployment is the verdict that counts: it waits for the new copies to pass
+// their checks, and fails and rolls back when they do not.
+func Rollout(s ServiceStatus, version uint64, allocs []AllocState, deployments []DeploymentState) ServiceStatus {
+	var dep *DeploymentState
+	for i := range deployments {
+		d := &deployments[i]
+		if d.JobID == s.JobID && d.JobVersion == version && (dep == nil || d.ModifyIndex > dep.ModifyIndex) {
+			dep = d
+		}
+	}
+
+	if dep != nil {
+		switch dep.Status {
+		case "successful":
+			if s.Health != HealthFailed {
+				s.Health, s.Message = HealthOK, ""
+			}
+		case "failed", "cancelled":
+			// Nomad's own words, which say when it has rolled back and to
+			// which version.
+			s.Health, s.Message = HealthFailed, dep.Description
+		default:
+			s.Health = HealthPending
+			s.Message = fmt.Sprintf("deploying: %d of %d healthy", dep.Healthy, dep.Desired)
+		}
+		return s
+	}
+
+	// No deployment for this version: a change Nomad applied in place without
+	// one, or a job that never has one. The ordinary judgement holds once
+	// every allocation it wants running is on the new version.
+	current := 0
+	for _, a := range allocs {
+		if a.JobID != s.JobID || (a.DesiredStatus != "" && a.DesiredStatus != "run") ||
+			a.ClientStatus == "complete" || a.ClientStatus == "lost" {
+			continue
+		}
+		if a.JobVersion != version {
+			s.Health, s.Message = HealthPending, "starting the new version"
+			return s
+		}
+		current++
+	}
+	if current == 0 {
+		s.Health, s.Message = HealthPending, "starting the new version"
+	}
+	return s
 }
 
 // Since is when this allocation's tasks started, or the zero time.

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/unitoftime/orca/pkg/images"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,7 +48,7 @@ func TestParseFullExample(t *testing.T) {
 	if !db.IsTemplated() {
 		t.Error("db should be templated")
 	}
-	if got := db.ResolvedImage(); got != "postgres:17-alpine" {
+	if got := db.ResolvedImage(); got != images.Postgres17 {
 		t.Errorf("db image = %q", got)
 	}
 	// The template supplies the port and the mount so the author does not have

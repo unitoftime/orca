@@ -152,6 +152,10 @@ volume:
 A volume is a directory on the server that survives deploys and restarts. A
 service with a volume stays on the machine that holds it, and has one replica.
 
+The size is what you expect it to hold, not a quota: the volume shares the
+server's disk and can grow past it. `orca status` shows each volume's use
+against its size.
+
 ### Commands
 
 `cmd:` replaces the image's command and its entrypoint. It runs with
@@ -194,8 +198,12 @@ orca apply shop           # only the shop group; nothing else is touched
 - Each image is pinned to its current digest. If you use `image: foo:latest`,
   pushing a new `latest` and running `orca apply` deploys it, with no file
   changes. That makes CI simple: push the image, run `orca apply`.
-- Apply waits up to two minutes for services to become healthy, and exits with
-  an error if any don't.
+- `orca plan` says whether each change restarts the service or applies in
+  place, such as a new replica count.
+- Apply waits for Nomad to report the new version healthy, and exits with an
+  error if it doesn't; Nomad then rolls it back.
+- Only one apply runs at a time. A second one stops and says who holds the
+  cluster.
 - Services you delete from your files are stopped, after asking. In CI, where
   nobody can answer, pass `--yes`. Stopping never deletes data.
 
@@ -305,8 +313,17 @@ orca db restore shop/db <backup-name>   # or a specific one
 A failed backup shows as `failed` in `orca status`, with its output in
 `orca logs shop/db`.
 
-A Postgres backup covers the default `postgres` database only. Databases you
-add yourself with `CREATE DATABASE` are not backed up.
+A Postgres backup holds every database and every role, with its password
+and grants, apart from the `postgres` superuser, whose password is the
+cluster's own.
+
+A Postgres restore loads each database beside the one it replaces, and swaps
+it in only once it has loaded, ending connections to the old one. A restore
+that fails leaves everything as it was. What each database held before is kept
+on the server as `<name>_before_restore_<time>`; drop it when you are sure.
+
+Backups go to the top of the bucket. To share one bucket between clusters, give
+each a `name:` in `cluster.yaml`, and its backups go under `<name>/` instead.
 
 ### Redis
 
@@ -386,7 +403,14 @@ with the password from `orca password`:
   and each service's logs
 - `logs.<domain>`: search logs
 - `metrics.<domain>`: query metrics
-- `nomad.<domain>`: the Nomad UI
+
+The status page also shows what is placed on each machine, and how much of
+its CPU and memory those services have claimed. Nomad places by claims, not
+by use, so that is what decides whether the next service fits.
+
+Nomad's own UI is not published: without ACLs, its API can run anything on
+every machine. Reach it over an SSH tunnel instead:
+`ssh -L 4646:127.0.0.1:4646 root@<server>`, then open http://localhost:4646.
 
 `orca password set` changes the password at the next apply.
 
@@ -406,6 +430,8 @@ directory is gone, and asks you to type the group's name.
 Everything is on by default. Turn a piece off with `false`, or adjust it:
 
 ```yaml
+name: prod                    # optional; keeps backups apart in a shared bucket
+
 nodes:
   - host: root@203.0.113.10
 
@@ -466,11 +492,12 @@ orca apply         # services move onto the private network
 
 - **More than one machine has not been tested on real hardware yet.**
 - **A service with one replica restarts on deploy**, so it is briefly down.
-  With `replicas: 2` or more, copies are replaced one at a time with no
-  downtime.
+  With `replicas: 2` or more, a new set of copies starts beside the old one and
+  takes the traffic once healthy, with no downtime. A service with a volume or
+  a raw port is still replaced one copy at a time.
 - **Backups are scheduled dumps**, not continuous: if the server dies, you lose
-  what changed since the last one. Only Postgres (its `postgres` database) and
-  Redis are backed up; a plain service's `volume:` is not.
+  what changed since the last one. Only Postgres and Redis are backed up; a
+  plain service's `volume:` is not.
 - **Garage runs on one machine**, with no replication.
 - **HTTPS needs names Let's Encrypt can reach** over port 80. For names only in
   your own `/etc/hosts`, set `https: false`.

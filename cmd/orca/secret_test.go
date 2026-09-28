@@ -93,7 +93,7 @@ func TestPreflightCoversBackupTargetsInOtherGroups(t *testing.T) {
 	shop := groupWith(t, "shop", "{name: db, template: postgres:17, volume: 1G, backup: {to: storage/offsite}}")
 	storage := groupWith(t, "storage", "{name: offsite, target: s3, endpoint: https://x, bucket: b}")
 
-	backups, err := collectBackups([]*manifest.Manifest{shop, storage}, []*manifest.Manifest{shop})
+	backups, err := collectBackups("", []*manifest.Manifest{shop, storage}, []*manifest.Manifest{shop})
 	if err != nil {
 		t.Fatal(err)
 	}

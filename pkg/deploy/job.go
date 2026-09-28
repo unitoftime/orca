@@ -35,13 +35,34 @@ const MHzPerVCPU = 500
 // gap it exists to close.
 const DrainDelay = 15 * time.Second
 
+// HealthyDeadline is how long a new allocation has to pass its checks before
+// Nomad calls it unhealthy, and ProgressDeadline how long a whole rollout may
+// go without an allocation becoming healthy before Nomad fails it and rolls
+// back. Apply waits for Nomad's verdict, so these bound how long it waits.
+const (
+	HealthyDeadline  = 4 * time.Minute
+	ProgressDeadline = 5 * time.Minute
+)
+
+// StopTimeout is how long a service holding data is given to shut down
+// before it is killed. Nomad's default is five seconds, which a database
+// flushing to disk overruns and is then killed mid-write, to spend its next
+// start recovering. Thirty is the most a Nomad client allows without raising
+// its own max_kill_timeout.
+const StopTimeout = 30 * time.Second
+
+// CanaryTag is what a replicated service's new copies register with while they
+// start, in place of the tags that route to them. Neither ingress nor the
+// resolver looks for it, so a copy is sent nothing until it has passed its
+// checks and Nomad promotes it to the real tags.
+const CanaryTag = "orca-canary"
+
 // Meta keys orca stamps on every job it owns. ManagedKey is what makes "which
 // jobs are mine" answerable, so orca never touches a job someone else created.
 const (
 	MetaManaged = "orca.managed"
 	MetaApp     = "orca.app"
 	MetaService = "orca.service"
-	MetaHash    = "orca.hash"
 	MetaImage   = "orca.image"
 	MetaAuth    = "orca.authhash"
 
@@ -159,6 +180,10 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 			task.Config["entrypoint"] = spec.Entrypoint
 		}
 
+		if spec.SharedMemory != nil {
+			task.Config["shm_size"] = int64(spec.SharedMemory(s.Memory))
+		}
+
 		if spec.Config != nil {
 			task.Templates = append(task.Templates, &nomad.Template{
 				EmbeddedTmpl: ptr(fmt.Sprintf(spec.Config.Body, prefix)),
@@ -225,6 +250,7 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		// Nomad's dynamic host volumes are the eventual upgrade; this keeps the
 		// same node-pinning property in the meantime.
 		task.Config["volumes"] = []string{hostPath + ":" + s.Volume.Mount}
+		task.KillTimeout = ptr(StopTimeout)
 	}
 
 	if opts.Node != "" {
@@ -267,11 +293,23 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 			MetaImage:   image,
 		},
 		Update: &nomad.UpdateStrategy{
-			MaxParallel:     ptr(1),
-			MinHealthyTime:  durPtr("10s"),
-			HealthyDeadline: durPtr("5m"),
-			AutoRevert:      ptr(true),
+			MaxParallel:      ptr(1),
+			MinHealthyTime:   durPtr("10s"),
+			HealthyDeadline:  ptr(HealthyDeadline),
+			ProgressDeadline: ptr(ProgressDeadline),
+			AutoRevert:       ptr(true),
 		},
+	}
+
+	if blueGreen(s, ports, group) {
+		// A new copy of every replica starts alongside the old ones and is
+		// sent traffic only once all of them are healthy; the old copies then
+		// leave the catalog, drain, and stop. A rolling update replaces one at
+		// a time instead, and routes to each new copy the moment it is
+		// registered, which is before its image has even been pulled.
+		job.Update.Canary = ptr(s.Replicas)
+		job.Update.AutoPromote = ptr(true)
+		group.Services[0].CanaryTags = []string{CanaryTag}
 	}
 
 	// A service with no health check has nothing to gate a rollout on, so
@@ -282,8 +320,19 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		job.Update.HealthCheck = ptr("task_states")
 	}
 
-	job.Meta[MetaHash] = Hash(job)
 	return job, nil
+}
+
+// blueGreen reports whether a service is deployed by starting a full new set
+// of copies before stopping the old one.
+//
+// Only a service that already runs several copies, since that is its
+// author saying two can run at once; and only one that takes traffic, since
+// that is what the swap protects. Never one with a volume, where two copies
+// would share one data directory, or with a port reserved on the machine,
+// where the new copy could not bind it while the old one holds it.
+func blueGreen(s *manifest.Service, ports []portSpec, group *nomad.TaskGroup) bool {
+	return s.Replicas > 1 && s.Volume == nil && len(ports) == 0 && len(group.Services) > 0
 }
 
 // initTask finishes setting up a template that is not usable the moment its

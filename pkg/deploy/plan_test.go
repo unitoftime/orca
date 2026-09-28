@@ -37,7 +37,6 @@ func state(jobs []*nomad.Job) map[string]JobState {
 			ID:      *j.ID,
 			App:     j.Meta[MetaApp],
 			Service: j.Meta[MetaService],
-			Hash:    j.Meta[MetaHash],
 			Image:   j.Meta[MetaImage],
 		}
 	}
@@ -47,7 +46,7 @@ func state(jobs []*nomad.Job) map[string]JobState {
 func TestPlanCreatesWhenNothingIsRunning(t *testing.T) {
 	jobs := jobsFor(t, twoServices, map[string]string{"api": "a@sha256:1", "web": "b@sha256:2"})
 
-	plan := BuildPlan(jobs, map[string]JobState{}, map[string]bool{"blog": true})
+	plan := BuildPlan(jobs, map[string]JobState{}, nil, map[string]bool{"blog": true})
 
 	if len(plan.Work()) != 2 {
 		t.Fatalf("want 2 creates, got: %s", plan)
@@ -59,13 +58,22 @@ func TestPlanCreatesWhenNothingIsRunning(t *testing.T) {
 	}
 }
 
+// unchanged is Nomad's plan for jobs identical to what it holds.
+func unchanged(jobs []*nomad.Job) map[string]JobPlan {
+	out := map[string]JobPlan{}
+	for _, j := range jobs {
+		out[*j.ID] = JobPlan{}
+	}
+	return out
+}
+
 // The property that lets apply run from CI on every commit: applying the same
 // manifests twice must do nothing at all the second time.
 func TestPlanIsANoOpWhenNothingChanged(t *testing.T) {
 	images := map[string]string{"api": "a@sha256:1", "web": "b@sha256:2"}
 	jobs := jobsFor(t, twoServices, images)
 
-	plan := BuildPlan(jobsFor(t, twoServices, images), state(jobs), map[string]bool{"blog": true})
+	plan := BuildPlan(jobs, state(jobs), unchanged(jobs), map[string]bool{"blog": true})
 
 	if plan.HasWork() {
 		t.Errorf("re-applying unchanged manifests should do nothing, got:\n%s", plan)
@@ -77,11 +85,14 @@ func TestPlanIsANoOpWhenNothingChanged(t *testing.T) {
 
 // A moved tag is the case mutable-tag deploys get wrong: the manifest is
 // byte-identical, and only the resolved digest reveals that anything changed.
-func TestPlanDetectsAMovedTag(t *testing.T) {
+// Nomad sees the new digest; only that service is updated.
+func TestPlanUpdatesWhatNomadSaysChanged(t *testing.T) {
 	before := jobsFor(t, twoServices, map[string]string{"api": "a@sha256:1", "web": "b@sha256:2"})
 	after := jobsFor(t, twoServices, map[string]string{"api": "a@sha256:99", "web": "b@sha256:2"})
 
-	plan := BuildPlan(after, state(before), map[string]bool{"blog": true})
+	plans := unchanged(after)
+	plans["blog-api"] = JobPlan{Changed: true, Restart: true}
+	plan := BuildPlan(after, state(before), plans, map[string]bool{"blog": true})
 
 	work := plan.Work()
 	if len(work) != 1 {
@@ -95,6 +106,45 @@ func TestPlanDetectsAMovedTag(t *testing.T) {
 	}
 }
 
+// Reading Nomad's plan: what changed, whether it restarts anything, and what
+// it could not place. orca's own meta is bookkeeping, not news.
+func TestJobPlanFromNomad(t *testing.T) {
+	p := JobPlanFromNomad(&nomad.JobPlanResponse{
+		JobModifyIndex: 42,
+		Diff: &nomad.JobDiff{
+			Type:   "Edited",
+			Fields: []*nomad.FieldDiff{{Type: "Edited", Name: "Meta[orca.image]"}},
+			TaskGroups: []*nomad.TaskGroupDiff{{
+				Type:   "Edited",
+				Fields: []*nomad.FieldDiff{{Type: "Edited", Name: "Count"}},
+				Tasks: []*nomad.TaskDiff{
+					{Type: "Edited", Objects: []*nomad.ObjectDiff{{Type: "Edited", Name: "Resources",
+						Fields: []*nomad.FieldDiff{{Type: "Edited", Name: "MemoryMB"}, {Type: "None", Name: "CPU"}}}}},
+					{Type: "Added", Name: "web-init"},
+				},
+			}},
+		},
+		Annotations: &nomad.PlanAnnotations{DesiredTGUpdates: map[string]*nomad.DesiredUpdates{
+			"web": {InPlaceUpdate: 1, DestructiveUpdate: 1},
+		}},
+		FailedTGAllocs: map[string]*nomad.AllocationMetric{
+			"web": {DimensionExhausted: map[string]int{"memory": 1}},
+		},
+	})
+
+	want := []string{"Count", "Resources.MemoryMB", "added task web-init"}
+	if !p.Changed || !p.Restart || strings.Join(p.Fields, "|") != strings.Join(want, "|") {
+		t.Errorf("got changed=%v restart=%v fields=%v, want a restart of %v", p.Changed, p.Restart, p.Fields, want)
+	}
+	if p.Unplaceable != "no capacity: memory" || p.JobModifyIndex != 42 {
+		t.Errorf("got unplaceable=%q index=%d", p.Unplaceable, p.JobModifyIndex)
+	}
+
+	if same := JobPlanFromNomad(&nomad.JobPlanResponse{Diff: &nomad.JobDiff{Type: "None"}}); same.Changed {
+		t.Error("a diff of None is no change")
+	}
+}
+
 // The file is desired state, so a service deleted from it stops.
 func TestPlanStopsUndeclaredServices(t *testing.T) {
 	before := jobsFor(t, twoServices, map[string]string{"api": "a@sha256:1", "web": "b@sha256:2"})
@@ -103,7 +153,7 @@ name: api
 image: ghcr.io/x/blog:1.4
 `, map[string]string{"api": "a@sha256:1"})
 
-	plan := BuildPlan(after, state(before), map[string]bool{"blog": true})
+	plan := BuildPlan(after, state(before), unchanged(after), map[string]bool{"blog": true})
 
 	work := plan.Work()
 	if len(work) != 1 || work[0].Kind != ChangeStop || work[0].Service != "web" {
@@ -123,7 +173,7 @@ func TestPlanLeavesOtherAppsAlone(t *testing.T) {
 	current := state(append(append([]*nomad.Job{}, blog...), other...))
 
 	// Applying only blog, and blog declares nothing any more.
-	plan := BuildPlan(nil, current, map[string]bool{"blog": true})
+	plan := BuildPlan(nil, current, nil, map[string]bool{"blog": true})
 
 	for _, c := range plan.Work() {
 		if c.App != "blog" {
@@ -145,7 +195,7 @@ func TestPlanRecreatesAStoppedJob(t *testing.T) {
 		current[id] = s
 	}
 
-	plan := BuildPlan(jobs, current, map[string]bool{"blog": true})
+	plan := BuildPlan(jobs, current, nil, map[string]bool{"blog": true})
 
 	for _, c := range plan.Work() {
 		if c.Kind != ChangeCreate {
@@ -161,15 +211,15 @@ func TestPlanRecreatesAStoppedJob(t *testing.T) {
 func TestNilScopeStopsGroupsThatNoLongerExist(t *testing.T) {
 	current := map[string]JobState{
 		"gone-web":  {ID: "gone-web", App: "gone", Service: "web"},
-		"shop-app":  {ID: "shop-app", App: "shop", Service: "app", Hash: "h"},
+		"shop-app":  {ID: "shop-app", App: "shop", Service: "app"},
 		"old-store": {ID: "old-store", App: "old", Service: "store"},
 	}
 	desired := []*nomad.Job{{
 		ID:   ptr("shop-app"),
-		Meta: map[string]string{MetaApp: "shop", MetaService: "app", MetaHash: "h"},
+		Meta: map[string]string{MetaApp: "shop", MetaService: "app"},
 	}}
 
-	plan := BuildPlan(desired, current, nil)
+	plan := BuildPlan(desired, current, unchanged(desired), nil)
 
 	stopped := map[string]bool{}
 	for _, c := range plan.Changes {
@@ -195,7 +245,7 @@ func TestNamedScopeLeavesOtherGroupsAlone(t *testing.T) {
 		"shop-app": {ID: "shop-app", App: "shop", Service: "app"},
 	}
 
-	plan := BuildPlan(nil, current, map[string]bool{"shop": true})
+	plan := BuildPlan(nil, current, nil, map[string]bool{"shop": true})
 
 	for _, c := range plan.Changes {
 		if c.Kind == ChangeStop && c.JobID != "shop-app" {
@@ -221,7 +271,7 @@ func TestNamedScopeCanStopADeletedGroup(t *testing.T) {
 		"shop-app": {ID: "shop-app", App: "shop", Service: "app"},
 	}
 
-	plan := BuildPlan(nil, current, map[string]bool{"gone": true})
+	plan := BuildPlan(nil, current, nil, map[string]bool{"gone": true})
 
 	stopped := map[string]bool{}
 	for _, c := range plan.Changes {

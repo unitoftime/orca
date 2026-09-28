@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -65,6 +66,7 @@ func findDatabase(cfg Config, ref string) (*manifest.Manifest, *manifest.Service
 			known = append(known, m.App+"/"+s.Name)
 			if m.App == group && s.Name == name {
 				spec, err := resolveBackup(groups, s)
+				spec.Prefix = deploy.BackupPrefix(cfg.Name, m.App, s.Name)
 				return m, s, spec, err
 			}
 		}
@@ -79,12 +81,12 @@ func findDatabase(cfg Config, ref string) (*manifest.Manifest, *manifest.Service
 }
 
 func dbList(ctx context.Context, cfg Config, cluster *Cluster, ref string) error {
-	m, s, spec, err := findDatabase(cfg, ref)
+	_, _, spec, err := findDatabase(cfg, ref)
 	if err != nil {
 		return err
 	}
 
-	names, err := cluster.ListBackups(ctx, spec, deploy.BackupPrefix(m.App, s.Name))
+	names, err := cluster.ListBackups(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -96,7 +98,7 @@ func dbList(ctx context.Context, cfg Config, cluster *Cluster, ref string) error
 	for _, n := range names {
 		fmt.Println(" ", n)
 	}
-	fmt.Printf("\n%d backup(s) in %s/%s\n", len(names), spec.Bucket, deploy.BackupPrefix(m.App, s.Name))
+	fmt.Printf("\n%d backup(s) in %s/%s\n", len(names), spec.Bucket, spec.Prefix)
 	return nil
 }
 
@@ -118,9 +120,7 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, args []string)
 	if err != nil {
 		return err
 	}
-	prefix := deploy.BackupPrefix(m.App, s.Name)
-
-	names, err := cluster.ListBackups(ctx, spec, prefix)
+	names, err := cluster.ListBackups(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,8 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, args []string)
 		fmt.Printf("%s is stopped while its data is replaced by the backup's, then started again.\n", rest[0])
 		fmt.Printf("The data it holds now is kept under %s-<time>.\n", PreRestorePrefix(m.App, s.Name))
 	default:
-		fmt.Printf("Objects that exist in both are replaced by the backup's version.\n")
+		fmt.Printf("Each database in it is restored beside the one it replaces, then swapped in, ending connections to it.\n")
+		fmt.Printf("What each held before is kept on the server as <name>%s<time>.\n", deploy.PreRestoreSuffix)
 	}
 	if !yes && !confirm(fmt.Sprintf("type %q to confirm: ", s.Name), s.Name) {
 		return fmt.Errorf("cancelled")
@@ -161,7 +162,7 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, args []string)
 	// Checked whichever way the name arrived: typed, or read back from the
 	// bucket listing. A name orca did not write is either a stranger's file in
 	// your bucket or a typo, and both are worth stopping for.
-	if err := checkBackupName(name, kind.Ext()); err != nil {
+	if err := checkBackupName(name, kind.Exts()); err != nil {
 		return err
 	}
 
@@ -175,9 +176,9 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, args []string)
 			return err
 		}
 		node, _ := cfg.FindNode(nodeName)
-		return NewCluster(Node{Host: node.Host}).RestoreRedis(ctx, spec, m.App, s.Name, prefix, name, s.ResolvedImage())
+		return NewCluster(Node{Host: node.Host}).RestoreRedis(ctx, spec, m.App, s.Name, name, s.ResolvedImage())
 	}
-	return cluster.RestoreBackup(ctx, spec, m.App, s.Name, prefix, name, s.ResolvedImage())
+	return cluster.RestoreBackup(ctx, spec, m.App, s.Name, name, s.ResolvedImage())
 }
 
 // backupName is the shape a backup file has: <group>-<service>-<stamp>.<ext>,
@@ -193,12 +194,13 @@ var backupName = regexp.MustCompile(`^[a-z0-9-]+-[0-9]{8}T[0-9]{6}Z\.([a-z]+)$`)
 
 // checkBackupName also refuses the wrong kind of file: a Postgres dump handed
 // to a Redis restore would stop the service to load something it cannot.
-func checkBackupName(name, ext string) error {
+// exts is every extension the database's kind of backup can have.
+func checkBackupName(name string, exts []string) error {
 	m := backupName.FindStringSubmatch(name)
-	if m == nil || m[1] != ext {
+	if m == nil || !slices.Contains(exts, m[1]) {
 		return fmt.Errorf(
 			"backup %q is not a name orca wrote (expected <group>-<service>-20060102T150405Z.%s); refusing to use it",
-			name, ext)
+			name, exts[0])
 	}
 	return nil
 }

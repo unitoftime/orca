@@ -5,7 +5,7 @@ BINARY := build/orca
 BUILD := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 LDFLAGS := -ldflags "-X main.build=$(BUILD)"
 
-.PHONY: build test fmt vet clean install
+.PHONY: build test fmt vet clean install pin-images
 
 # Static, so the same binary runs on the machines: apply ships it there for the
 # status page, into an image whose C library is not this machine's.
@@ -21,6 +21,11 @@ fmt:
 
 vet:
 	go vet ./...
+
+# Re-resolves every image orca chooses itself to the digest its tag points at
+# now. See pkg/images.
+pin-images:
+	go run ./internal/pinimages
 
 install: build
 	install -m 0755 $(BINARY) $(HOME)/.local/bin/orca

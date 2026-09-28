@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 	"testing"
@@ -158,7 +159,7 @@ func TestStatusJob(t *testing.T) {
 	}
 	args := strings.Join(task.Config["args"].([]string), " ")
 	for _, want := range []string{"serve-status", "--listen=${NOMAD_ADDR_http}", "--nomad=http://127.0.0.1:4646",
-		"--link=nomad=https://nomad.example.com", "--link=logs=https://logs.example.com", "--link=metrics=https://metrics.example.com"} {
+		"--link=logs=https://logs.example.com", "--link=metrics=https://metrics.example.com"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("args missing %q: %s", want, args)
 		}
@@ -354,9 +355,16 @@ func TestDashboardBackendsResolveFromTheCatalog(t *testing.T) {
 			t.Errorf("dynamic config should resolve %s:\n%s", want, cfg)
 		}
 	}
-	// Nomad is the exception: it binds loopback on every machine by design.
-	if !strings.Contains(cfg, "http://127.0.0.1:4646") {
-		t.Errorf("the nomad dashboard should use loopback:\n%s", cfg)
+}
+
+// Nomad's UI is its API, and without ACLs that API runs anything, privileged,
+// on every machine. It must never be routed from the internet.
+func TestNomadIsNeverPublished(t *testing.T) {
+	cfg := traefikDynamicConfig(platformOpts())
+	for _, never := range []string{"nomad.example.com", ":4646"} {
+		if strings.Contains(cfg, never) {
+			t.Errorf("dynamic config routes to Nomad (%q):\n%s", never, cfg)
+		}
 	}
 }
 
@@ -410,7 +418,7 @@ func TestStatusLinksOnlyPublishedUIs(t *testing.T) {
 
 	opts := platformOpts()
 	opts.Logs = nil
-	if got := links(opts); strings.Contains(got, "logs") || !strings.Contains(got, "--link=nomad=") {
+	if got := links(opts); strings.Contains(got, "logs") || !strings.Contains(got, "--link=metrics=") {
 		t.Errorf("logs off: links = %q", got)
 	}
 
@@ -433,8 +441,7 @@ func TestDashboardRoutes(t *testing.T) {
 	cfg := traefikDynamicConfig(platformOpts())
 
 	for _, want := range []string{
-		"logs.example.com", "metrics.example.com", "nomad.example.com",
-		"127.0.0.1:4646",
+		"logs.example.com", "metrics.example.com",
 		"basicAuth", "admin:$2a$10$hash", "certResolver: orca",
 	} {
 		if !strings.Contains(cfg, want) {
@@ -645,16 +652,25 @@ func TestPlatformJobsChangeWhenTheClusterGrows(t *testing.T) {
 		if _, ok := j.Meta[MetaNetwork]; ok {
 			t.Errorf("%s: one machine must render exactly as before, got %s=%q", *j.ID, MetaNetwork, j.Meta[MetaNetwork])
 		}
-		one[*j.ID] = j.Meta[MetaHash]
+		one[*j.ID] = specOf(t, j)
 	}
 
 	opts := platformOpts()
 	opts.MultiNode = true
 	for _, j := range BuildPlatform(opts) {
-		if j.Meta[MetaHash] == one[*j.ID] {
+		if specOf(t, j) == one[*j.ID] {
 			t.Errorf("%s: same spec on one machine and on several, so apply would never re-place it", *j.ID)
 		}
 	}
+}
+
+func specOf(t *testing.T, j *nomad.Job) string {
+	t.Helper()
+	b, err := json.Marshal(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 // The stores and the status page go where monitoring is, ingress where DNS

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/unitoftime/orca/pkg/images"
 )
 
 // Template is a known-good piece of infrastructure orca operates for you,
@@ -23,13 +25,10 @@ type Template struct {
 // TemplateSpec is what a template fixes. Fields an author sets that appear here
 // are rejected rather than silently overridden.
 type TemplateSpec struct {
-	// Image is the container image, with %s replaced by the version.
-	Image string
-
-	// Versions are the versions orca will run, newest first. Pinned rather than
-	// open-ended because "we run this and have tested the restore path" is the
-	// entire promise of a template.
-	Versions []string
+	// Versions are the versions orca will run, newest first, each with the
+	// exact image it runs. Pinned rather than open-ended because "we run this
+	// and have tested the restore path" is the entire promise of a template.
+	Versions []TemplateVersion
 
 	// Port is the service's primary port: its discovery registration and the
 	// health-check target.
@@ -46,6 +45,16 @@ type TemplateSpec struct {
 	// considerably more than an average service, so the generic default would
 	// be actively harmful here.
 	DefaultMemory Size
+
+	// VersionFile is a file in the volume naming the version its data was
+	// written by, empty when the data has none. Apply compares it with the
+	// template's version before deploying, for a template that cannot start
+	// on another version's data.
+	VersionFile string
+
+	// SharedMemory sizes /dev/shm from the memory asked for, nil to leave
+	// Docker's 64MB.
+	SharedMemory func(memory Size) Size
 
 	// VolumeUID is the user the image runs as, and therefore who must own the
 	// volume directory. A bind mount keeps the host's ownership, so a
@@ -87,11 +96,21 @@ type TemplateSpec struct {
 	Tune func(memory Size) []string
 }
 
+// TemplateVersion is one version a template offers: the name an author
+// writes after the colon, and the image that runs. Images come from
+// pkg/images, pinned to a digest, so a database is never restarted because a
+// tag moved upstream.
+type TemplateVersion struct {
+	Name  string
+	Image string
+}
+
 // BackupKind is how a template's data is dumped for a backup.
 type BackupKind string
 
 const (
-	// BackupPostgres dumps with pg_dump and restores with pg_restore.
+	// BackupPostgres dumps every database with pg_dump, and the roles with
+	// pg_dumpall, into one tar, and restores with pg_restore.
 	BackupPostgres BackupKind = "postgres"
 
 	// BackupRedis copies a snapshot over the replication protocol with
@@ -103,13 +122,21 @@ const (
 // the name so a bucket listing says what each file is, and so a restore can
 // refuse a file of the wrong kind before it touches anything.
 func (k BackupKind) Ext() string {
+	return k.Exts()[0]
+}
+
+// Exts is every extension a restore of this kind reads: what it writes now,
+// then what earlier versions of orca wrote, so a backup taken before an
+// upgrade still restores after it.
+func (k BackupKind) Exts() []string {
 	switch k {
 	case BackupPostgres:
-		return "pgc"
+		// .pgc is a single custom-format dump of the postgres database.
+		return []string{"tar", "pgc"}
 	case BackupRedis:
-		return "rdb"
+		return []string{"rdb"}
 	}
-	return ""
+	return []string{""}
 }
 
 // PasswordSuffix names the password a database template generates:
@@ -121,8 +148,7 @@ const PasswordSuffix = "password"
 // something concrete needed it, and the rest can wait until something does.
 var Templates = map[string]TemplateSpec{
 	"postgres": {
-		Image:          "postgres:%s-alpine",
-		Versions:       []string{"17", "16"},
+		Versions:       []TemplateVersion{{"17", images.Postgres17}, {"16", images.Postgres16}},
 		Port:           5432,
 		VolumeMount:    "/var/lib/postgresql/data",
 		VolumeRequired: true,
@@ -130,9 +156,18 @@ var Templates = map[string]TemplateSpec{
 		VolumeUID:      70, // the alpine image's postgres user
 		Backup:         BackupPostgres,
 		Secrets: []GeneratedSecretSpec{
-			{Suffix: PasswordSuffix, Env: "POSTGRES_PASSWORD"},
+			// The image sets it when it creates the database and never again.
+			{Suffix: PasswordSuffix, Env: "POSTGRES_PASSWORD", SetAtInit: true},
 		},
-		Tune: postgresTune,
+		// Postgres refuses to start on a data directory written by another
+		// major version.
+		VersionFile: "PG_VERSION",
+		// Parallel queries share their working memory through /dev/shm, and
+		// Docker's 64MB fails them with "could not resize shared memory
+		// segment" on anything sizable. It counts against the memory limit
+		// only as it is used.
+		SharedMemory: func(memory Size) Size { return max(memory/4, 64*Megabyte) },
+		Tune:         postgresTune,
 	},
 
 	// Redis, for a service whose state lives in it, and so run as a database
@@ -143,8 +178,7 @@ var Templates = map[string]TemplateSpec{
 	// and probabilistic types itself; Redis Stack, which used to be how you got
 	// them, is discontinued.
 	"redis": {
-		Image:          "redis:%s-alpine",
-		Versions:       []string{"8.10"},
+		Versions:       []TemplateVersion{{"8.10", images.Redis810}},
 		Args:           []string{"redis-server", "/local/redis.conf"},
 		Port:           6379,
 		VolumeMount:    "/data",
@@ -174,8 +208,7 @@ var Templates = map[string]TemplateSpec{
 	// endpoint nobody can use. The template does both, and hands back a key
 	// the way postgres hands back a password.
 	"garage": {
-		Image:          "dxflrs/garage:v%s",
-		Versions:       []string{"2.3.0"},
+		Versions:       []TemplateVersion{{"2.3.0", images.Garage230}},
 		Entrypoint:     []string{"/garage"},
 		Args:           []string{"-c", "/local/garage.toml", "server"},
 		Port:           3900, // the S3 API
@@ -201,7 +234,7 @@ var Templates = map[string]TemplateSpec{
 			// coreutils), so the setup it still needs cannot run inside it.
 			// This drives the admin API instead, reached on loopback because
 			// the task shares the allocation's network namespace.
-			Image: "alpine:3.20",
+			Image: images.Alpine,
 		},
 	},
 }
@@ -364,6 +397,11 @@ type GeneratedSecretSpec struct {
 	// Hex encodes the value as hex rather than alphanumerics, for a format
 	// that requires it.
 	Hex bool
+
+	// SetAtInit marks a value the image uses only when it initializes an
+	// empty volume. The data keeps the value it was created with, so a new
+	// one generated over existing data locks everything out of it.
+	SetAtInit bool
 }
 
 // TemplateFile is a file a template needs on the machine: the config the image
@@ -427,20 +465,29 @@ func ParseTemplate(s string) (Template, error) {
 		return Template{}, fmt.Errorf("unknown template %q; known templates: %s", name, strings.Join(templateNames(), ", "))
 	}
 
+	var names []string
 	for _, v := range spec.Versions {
-		if v == version {
+		if v.Name == version {
 			return Template{Name: name, Version: version}, nil
 		}
+		names = append(names, v.Name)
 	}
 	return Template{}, fmt.Errorf("template %s has no version %q; available: %s",
-		name, version, strings.Join(spec.Versions, ", "))
+		name, version, strings.Join(names, ", "))
 }
 
 // Spec returns what this template fixes.
 func (t Template) Spec() TemplateSpec { return Templates[t.Name] }
 
 // Image is the concrete image this template runs.
-func (t Template) Image() string { return fmt.Sprintf(t.Spec().Image, t.Version) }
+func (t Template) Image() string {
+	for _, v := range t.Spec().Versions {
+		if v.Name == t.Version {
+			return v.Image
+		}
+	}
+	return ""
+}
 
 func (t Template) String() string { return t.Name + ":" + t.Version }
 

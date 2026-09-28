@@ -37,10 +37,15 @@ APT::Periodic::Unattended-Upgrade "1";
 EOF
 
 echo "=== 4. Kernel parameters ==="
-# IPv4 forwarding is required for container egress masquerading. The rest is
-# ordinary network hardening; nothing here is load-bearing for orca itself.
+# IPv4 forwarding is required for container egress masquerading.
+# vm.overcommit_memory=1 lets a process fork a copy of itself without the
+# kernel first checking that a full second copy would fit: Redis snapshots and
+# rewrites its log that way, and under memory pressure the check fails those
+# saves although the copy shares almost every page. The rest is ordinary
+# network hardening; nothing here is load-bearing for orca itself.
 cat > /etc/sysctl.d/99-orca.conf <<'EOF'
 net.ipv4.ip_forward=1
+vm.overcommit_memory=1
 net.ipv4.tcp_syncookies=1
 net.ipv4.conf.all.accept_redirects=0
 net.ipv4.conf.default.accept_redirects=0

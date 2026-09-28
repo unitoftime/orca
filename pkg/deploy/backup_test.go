@@ -159,9 +159,14 @@ func TestPeriodicChildrenAreRecognised(t *testing.T) {
 	}
 }
 
+// Two clusters sharing a bucket keep apart by their names; one without a
+// name keeps its backups where they always were.
 func TestBackupPrefixIsPerDatabase(t *testing.T) {
-	if got := BackupPrefix("shop", "db"); got != "shop/db" {
+	if got := BackupPrefix("", "shop", "db"); got != "shop/db" {
 		t.Errorf("BackupPrefix = %q, want shop/db", got)
+	}
+	if got := BackupPrefix("prod", "shop", "db"); got != "prod/shop/db" {
+		t.Errorf("BackupPrefix = %q, want prod/shop/db", got)
 	}
 }
 
@@ -169,7 +174,8 @@ func TestBackupPrefixIsPerDatabase(t *testing.T) {
 func TestPruneKeepsTheNewest(t *testing.T) {
 	spec := backupSpecFixture()
 	spec.Keep = 3
-	script := uploadScript(spec, "shop/db")
+	spec.Prefix = "shop/db"
+	script := uploadScript(spec)
 
 	if !strings.Contains(script, "head -n -3") {
 		t.Errorf("prune should keep the newest 3:\n%s", script)

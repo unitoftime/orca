@@ -387,3 +387,32 @@ func TestSummarizeSystemJobCountsMachines(t *testing.T) {
 		t.Errorf("one starting: %d/%d %s, want 2/3 and not %s", s.Running, s.Desired, s.Health, HealthOK)
 	}
 }
+
+// Right after a submit, the old version is what runs and its deployment is
+// the one that succeeded. Judged the ordinary way, a deploy that has not
+// started reads as healthy; judged by the submitted version it is pending
+// until Nomad says otherwise, and then it is whatever Nomad said.
+func TestRolloutWaitsForTheSubmittedVersion(t *testing.T) {
+	jobs := map[string]JobState{"a-web": job("a-web", "a", "web", 1)}
+	allocs := []AllocState{{
+		JobID: "a-web", JobVersion: 3, ClientStatus: "running", DesiredStatus: "run",
+		Tasks: []TaskState{{Name: "web", State: "running", StartedAt: time.Now().Add(-time.Hour)}},
+	}}
+	deps := []DeploymentState{{JobID: "a-web", JobVersion: 3, Status: "successful", ModifyIndex: 10, Desired: 1, Healthy: 1, Placed: 1}}
+	s := only(t, Summarize(jobs, allocs, deps))
+
+	if got := Rollout(s, 4, allocs, deps); got.Health != HealthPending {
+		t.Errorf("before Nomad acts on version 4: %s, want pending", got.Health)
+	}
+
+	failed := append(deps, DeploymentState{JobID: "a-web", JobVersion: 4, Status: "failed", ModifyIndex: 11,
+		Description: "Failed due to unhealthy allocations - rolling back to job version 3"})
+	if got := Rollout(s, 4, allocs, failed); got.Health != HealthFailed || got.Message != failed[1].Description {
+		t.Errorf("a failed rollout: %s %q, want failed with Nomad's reason", got.Health, got.Message)
+	}
+
+	done := append(deps, DeploymentState{JobID: "a-web", JobVersion: 4, Status: "successful", ModifyIndex: 11})
+	if got := Rollout(s, 4, allocs, done); got.Health != HealthOK {
+		t.Errorf("a finished rollout: %s, want running", got.Health)
+	}
+}

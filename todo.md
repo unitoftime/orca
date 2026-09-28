@@ -3,9 +3,6 @@
       shape yet.
 - [ ] Stages: one set of service files deployed as prod and test, each with
       its own vars. Held back until prod/test duplication actually bites.
-- [ ] Redis logs "vm.overcommit_memory must be enabled": without it the fork
-      for a snapshot or AOF rewrite can fail under memory pressure. Decide
-      whether bootstrap should set it.
 
 Possible later:
 

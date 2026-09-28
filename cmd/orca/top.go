@@ -228,6 +228,12 @@ func renderMachine(w io.Writer, p palette, m statuspage.Machine) {
 	if m.Memory != nil {
 		t.row("mem", "", bar(p, m.Memory.Percent, m.Memory.Level), p.level(m.Memory.Level, pct(m.Memory.Percent)), ofTotal(m.Memory))
 	}
+	if m.ClaimedCPU != nil {
+		t.row("cpu", "claimed", bar(p, m.ClaimedCPU.Percent, m.ClaimedCPU.Level), p.level(m.ClaimedCPU.Level, pct(m.ClaimedCPU.Percent)), "")
+	}
+	if m.ClaimedMemory != nil {
+		t.row("mem", "claimed", bar(p, m.ClaimedMemory.Percent, m.ClaimedMemory.Level), p.level(m.ClaimedMemory.Level, pct(m.ClaimedMemory.Percent)), ofTotal(m.ClaimedMemory))
+	}
 	if m.Swap != nil && m.Swap.Used > 0 {
 		t.row("swap", "", bar(p, m.Swap.Percent, statuspage.LevelOK), pct(m.Swap.Percent), ofTotal(m.Swap))
 	}
@@ -247,6 +253,30 @@ func renderMachine(w io.Writer, p palette, m statuspage.Machine) {
 			statuspage.BytesHuman(int64(m.Net.RxBytesPerSec)), statuspage.BytesHuman(int64(m.Net.TxBytesPerSec))))
 	}
 	t.write(w, "    ")
+
+	// What fills it, by claim: Nomad places by claims, so this is what
+	// decides whether the next service fits.
+	if len(m.Placed) > 0 {
+		var pt table
+		for _, pl := range m.Placed {
+			name := pl.Name
+			if pl.Group != "" {
+				name = pl.Group + "/" + name
+			}
+			if pl.Copies > 1 {
+				name += fmt.Sprintf(" ×%d", pl.Copies)
+			}
+			if pl.Platform {
+				name = p.dim(name)
+			}
+			used := "-"
+			if pl.MemoryUsed != nil {
+				used = statuspage.BytesHuman(*pl.MemoryUsed) + " in use"
+			}
+			pt.row(name, fmt.Sprintf("%.1f vCPU", pl.CPU), statuspage.BytesHuman(pl.Memory)+" claimed", p.dim(used))
+		}
+		pt.write(w, "    ")
+	}
 }
 
 func renderServices(w io.Writer, p palette, services []statuspage.Service, now time.Time) {

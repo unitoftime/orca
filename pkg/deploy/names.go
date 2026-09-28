@@ -35,10 +35,18 @@ func BackupJobID(group, service string) string {
 	return JobID(group, service) + "-backup"
 }
 
-// BackupPrefix is where one database's backups live in the bucket.
-func BackupPrefix(group, service string) string {
-	return group + "/" + service
+// BackupPrefix is where one database's backups live in the bucket: under the
+// cluster's name when it has one, so clusters sharing a bucket keep apart.
+func BackupPrefix(cluster, group, service string) string {
+	if cluster == "" {
+		return group + "/" + service
+	}
+	return cluster + "/" + group + "/" + service
 }
+
+// PreRestoreSuffix marks the copy a Postgres restore keeps of a database it
+// replaced: <name>_before_restore_<time>, on the same server.
+const PreRestoreSuffix = "_before_restore_"
 
 // SecretPrefix is the root of orca's namespace in Nomad's variable store.
 const SecretPrefix = "orca"
@@ -64,6 +72,10 @@ const (
 	AdminPasswordPath = "orca-admin/password"
 	AdminPasswordKey  = "password"
 )
+
+// ApplyLockPath is the variable an apply holds a lock on for as long as it
+// runs, so two cannot interleave. A sibling of SecretPrefix, like the others.
+const ApplyLockPath = "orca-lock/apply"
 
 // RegistryPrefix is where registry credentials live in Nomad's variable
 // store. A sibling of SecretPrefix rather than a directory under it: under it,

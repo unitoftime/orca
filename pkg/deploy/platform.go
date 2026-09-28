@@ -186,10 +186,6 @@ func BuildPlatform(opts PlatformOptions) []*nomad.Job {
 	if opts.Ingress != nil {
 		jobs = append(jobs, ingressJob(opts))
 	}
-
-	for _, j := range jobs {
-		j.Meta[MetaHash] = Hash(j)
-	}
 	return jobs
 }
 
@@ -843,11 +839,10 @@ func dashboardsEnabled(opts PlatformOptions) bool {
 type dashboard struct {
 	name string
 
-	// service is the catalog name to resolve the backend from, empty when the
-	// backend is not a Nomad service.
+	// service is the catalog name its backend is resolved from.
 	service string
 
-	// fallback is used when service is empty, or before it has registered.
+	// fallback is used until the service has registered.
 	fallback string
 }
 
@@ -855,12 +850,13 @@ type dashboard struct {
 // basic auth.
 //
 // vmui, the query UI built into both Victoria binaries, is what makes logs
-// and metrics explorable in a browser without running Grafana. The Nomad UI is
-// included because "what is actually running" is the other question you have at
-// the same moment.
+// and metrics explorable in a browser without running Grafana. The status
+// page shows what Nomad has placed where.
 //
-// These services listen on loopback, so Traefik reaching them at 127.0.0.1 is
-// exactly why it runs with host networking.
+// Nomad's own UI is deliberately not among them. Its UI is its API, and
+// Nomad runs without ACLs, so publishing it would put "run any container,
+// privileged, on every machine" behind one shared password. It stays
+// reachable over an SSH tunnel.
 func traefikDynamicConfig(opts PlatformOptions) string {
 	if !dashboardsEnabled(opts) {
 		return ""
@@ -870,10 +866,7 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 	// loopback. Once the stores bind the private address instead, nothing is
 	// listening on 127.0.0.1 for ingress to reach: the catalog is the only
 	// thing that knows where they actually are.
-	//
-	// Nomad's own API is the exception: it binds loopback on every machine by
-	// design, precisely so anything on the box can reach it.
-	boards := []dashboard{{name: "nomad", fallback: "http://127.0.0.1:4646"}}
+	var boards []dashboard
 	if opts.Status != nil {
 		boards = append(boards, dashboard{
 			name:    "status",
@@ -898,6 +891,9 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 			fallback: fmt.Sprintf("http://127.0.0.1:%d", MetricsPort),
 		})
 	}
+	if len(boards) == 0 {
+		return ""
+	}
 
 	var b strings.Builder
 
@@ -905,9 +901,6 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 	// a store has registered, which matters because an unparseable dynamic
 	// config would take down the routes that do work alongside it.
 	for _, d := range boards {
-		if d.service == "" {
-			continue
-		}
 		fmt.Fprintf(&b, `{{ $%s := %q }}{{ range nomadService %q }}{{ $%s = printf "http://%%s:%%d" .Address .Port }}{{ end }}`+"\n",
 			d.name, d.fallback, d.service, d.name)
 	}
@@ -929,15 +922,11 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 
 	b.WriteString("  services:\n")
 	for _, d := range boards {
-		url := fmt.Sprintf("{{ $%s }}", d.name)
-		if d.service == "" {
-			url = d.fallback
-		}
 		fmt.Fprintf(&b, `    %s:
       loadBalancer:
         servers:
           - url: %q
-`, d.name, url)
+`, d.name, fmt.Sprintf("{{ $%s }}", d.name))
 	}
 
 	return b.String()
@@ -961,7 +950,7 @@ func otherDashboards(opts PlatformOptions) []string {
 	if !dashboardsEnabled(opts) {
 		return nil
 	}
-	out := []string{"nomad"}
+	var out []string
 	if opts.Logs != nil {
 		out = append(out, "logs")
 	}
