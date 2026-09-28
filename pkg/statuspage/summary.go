@@ -75,6 +75,10 @@ type Machine struct {
 
 	Level Level `json:"level"`
 
+	// RebootRequired is an installed update that does nothing until the
+	// machine restarts: a kernel's, say. Nothing restarts it on its own.
+	RebootRequired bool `json:"rebootRequired,omitempty"`
+
 	UptimeSeconds float64  `json:"uptimeSeconds,omitempty"`
 	Cores         int      `json:"cores,omitempty"`
 	Load1         *float64 `json:"load1,omitempty"`
@@ -297,6 +301,7 @@ type metricsView struct {
 
 type machineMetrics struct {
 	Up                     bool
+	RebootRequired         bool
 	Cores                  int
 	CPUPercent             *float64
 	Load1                  *float64
@@ -468,6 +473,7 @@ func place(byName map[string]*Machine, nv *nomadView, mv *metricsView) {
 
 func fillMachine(m *Machine, mm *machineMetrics) {
 	m.Reporting = mm.Up
+	m.RebootRequired = mm.RebootRequired
 	m.Cores = mm.Cores
 	m.Load1 = mm.Load1
 	if mm.Uptime != nil {
@@ -535,6 +541,9 @@ func machineProblems(m Machine, askedMetrics bool) []Problem {
 	}
 	if askedMetrics && !m.Reporting && m.Status != "down" {
 		add(LevelWarn, "not reporting metrics")
+	}
+	if m.RebootRequired {
+		add(LevelWarn, "an installed update is waiting for a reboot")
 	}
 	if m.CPU != nil && m.CPU.Level != LevelOK {
 		add(m.CPU.Level, "CPU at %.0f%%", m.CPU.Percent)

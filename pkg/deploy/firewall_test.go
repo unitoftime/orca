@@ -9,7 +9,7 @@ import (
 
 func rules(t *testing.T, ports FirewallPorts) string {
 	t.Helper()
-	return Firewall("eth0", "nomad", ports)
+	return Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad", Public: &ports})
 }
 
 // A firewall that can lock you out of the machine it protects is a worse
@@ -126,7 +126,7 @@ func TestIngressPortsOnlyWhenIngressRuns(t *testing.T) {
 // A container reaching another machine's scheduler is routed through forward,
 // never input. Guarding only input would leave every other machine's Nomad open.
 func TestSchedulerIsClosedToContainersOnBothPaths(t *testing.T) {
-	rules := Firewall("eth0", "nomad", FirewallPorts{})
+	rules := Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad", Public: &FirewallPorts{}})
 	for _, hook := range []string{"hook input", "hook forward"} {
 		i := strings.Index(rules, hook)
 		if i < 0 {
@@ -137,5 +137,25 @@ func TestSchedulerIsClosedToContainersOnBothPaths(t *testing.T) {
 		if !strings.Contains(chain, `iifname "nomad" tcp dport { 4646, 4647, 4648 } drop`) {
 			t.Errorf("%s does not close the scheduler to containers:\n%s", hook, chain)
 		}
+	}
+}
+
+// The scheduler has no ACLs, so the private network reaching it is root on
+// every machine. It answers the cluster's machines, and with the public
+// filtering switched off it still does.
+func TestSchedulerAnswersOnlyTheCluster(t *testing.T) {
+	multi := Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad", Public: &FirewallPorts{},
+		Peers: []string{"10.0.0.1", "10.0.0.2"}})
+	if !strings.Contains(multi, `iifname != "lo" ip saddr != { 10.0.0.1, 10.0.0.2 } tcp dport { 4646, 4647, 4648 } drop`) {
+		t.Errorf("the scheduler should refuse all but the cluster's machines:\n%s", multi)
+	}
+
+	off := Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad"})
+	if strings.Contains(off, "chain public") {
+		t.Errorf("firewall: false leaves the public interface alone:\n%s", off)
+	}
+	if !strings.Contains(off, `iifname "nomad" tcp dport { 4646, 4647, 4648 } drop`) ||
+		!strings.Contains(off, `iifname != "lo" tcp dport { 4646, 4647, 4648 } drop`) {
+		t.Errorf("the scheduler must stay closed with the public filtering off:\n%s", off)
 	}
 }

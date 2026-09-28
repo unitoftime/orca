@@ -36,6 +36,27 @@ APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
 
+# An update to the kernel or a core library does nothing until the machine
+# reboots, and nothing reboots it on its own. After every package change this
+# writes whether one is waiting, as a metric the node exporter serves, so the
+# status page and `orca top` can say so. Under /run, so a reboot clears it
+# along with the condition it reports.
+mkdir -p /usr/local/lib/orca
+cat > /usr/local/lib/orca/reboot-metric <<'EOF'
+#!/bin/sh
+DIR=/run/orca/textfile
+mkdir -p "$DIR"
+V=0
+[ -f /run/reboot-required ] && V=1
+printf '# HELP orca_reboot_required An installed update is waiting for a reboot.\n# TYPE orca_reboot_required gauge\norca_reboot_required %s\n' "$V" > "$DIR/reboot.prom.tmp"
+mv "$DIR/reboot.prom.tmp" "$DIR/reboot.prom"
+EOF
+chmod 0755 /usr/local/lib/orca/reboot-metric
+cat > /etc/apt/apt.conf.d/99orca-reboot-metric <<'EOF'
+DPkg::Post-Invoke { "/usr/local/lib/orca/reboot-metric || true"; };
+EOF
+/usr/local/lib/orca/reboot-metric
+
 echo "=== 4. Kernel parameters ==="
 # IPv4 forwarding is required for container egress masquerading.
 # vm.overcommit_memory=1 lets a process fork a copy of itself without the

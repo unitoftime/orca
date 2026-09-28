@@ -67,9 +67,12 @@ func (m *Manifest) Validate() error {
 	// Reserved rather than merged: orca files its own jobs under this name, so
 	// a directory of it would put your services in the same namespace, and a
 	// service called traefik or dns would collide with the real one outright.
-	if m.App == ReservedGroup {
-		e.addf("group name %q is reserved for the jobs orca runs for you (%s/traefik, %s/dns, ...); rename the directory",
-			ReservedGroup, ReservedGroup, ReservedGroup)
+	//
+	// The prefix too: jobs are named <group>-<service>, so a group orca-node
+	// with a service exporter would be orca's own node exporter.
+	if m.App == ReservedGroup || strings.HasPrefix(m.App, ReservedGroup+"-") {
+		e.addf("group name %q is reserved: %s and every name starting %s- belong to the jobs orca runs for you (%s/traefik, %s/dns, ...); rename the directory",
+			m.App, ReservedGroup, ReservedGroup, ReservedGroup, ReservedGroup)
 	}
 
 	if len(m.Services) == 0 {
@@ -100,7 +103,7 @@ func (m *Manifest) Validate() error {
 		}
 		se := &errList{prefix: fmt.Sprintf("%s: %s: ", where, what)}
 
-		validateName(se, s, seen)
+		validateName(se, m.App, s, seen)
 		validateSource(se, s)
 		validateBackup(se, s)
 
@@ -111,6 +114,7 @@ func (m *Manifest) Validate() error {
 			validateSizing(se, s)
 			validateVolume(se, s)
 			validateEnv(se, s)
+			validateCmd(se, s)
 			validateSecrets(se, s)
 			validatePorts(se, s, claimed)
 			validateNode(se, s)
@@ -122,12 +126,26 @@ func (m *Manifest) Validate() error {
 	return errors.Join(e.errs...)
 }
 
-func validateName(e *errList, s *Service, seen map[string]bool) {
+// validateCmd refuses a secret reference in cmd. Only env values have them
+// filled in, on the machine, so in cmd it would reach the shell as text; and a
+// command line is readable by anything on the machine, which is what keeping
+// secrets out of it is for.
+func validateCmd(e *errList, s *Service) {
+	if _, err := ShellValue(s.Cmd); err != nil {
+		e.addf("cmd: %v", err)
+	}
+}
+
+func validateName(e *errList, group string, s *Service, seen map[string]bool) {
 	switch {
 	case s.Name == "":
 		e.addf("name is required")
 	case !IsDNSLabel(s.Name):
 		e.addf("name %q must be lowercase letters, digits and dashes (a DNS label)", s.Name)
+	// The service is registered, and a storage template's bucket created, as
+	// <group>-<service>, and both are refused past one DNS label's length.
+	case len(group)+1+len(s.Name) > 63:
+		e.addf("%s-%s is longer than 63 characters, which its name in the cluster cannot be; shorten the service or the group", group, s.Name)
 	case seen[s.Name]:
 		e.addf("duplicate service name %q", s.Name)
 	default:

@@ -37,7 +37,8 @@ func discoverGroups(cfg Config) ([]*manifest.Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := errors.Join(checkJobIDs(groups), checkHostPorts(groups, machinePorts(cfg))); err != nil {
+	if err := errors.Join(checkJobIDs(groups), checkHostPorts(groups, machinePorts(cfg)),
+		checkHostnames(groups, platformHostnames(cfg))); err != nil {
 		return nil, err
 	}
 	return groups, nil
@@ -68,6 +69,48 @@ func checkJobIDs(groups []*manifest.Manifest) error {
 					continue
 				}
 				taken[id] = owner{group: m.App, service: s.Name, path: s.SourceFile()}
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// platformHostnames are the names orca's own dashboards are served at, which
+// no service may claim, whether or not the dashboards are published now.
+func platformHostnames(cfg Config) map[string]string {
+	out := map[string]string{}
+	if d := cfg.Monitoring.Domain; d != "" {
+		for _, name := range []string{"status", "logs", "metrics"} {
+			out[name+"."+d] = "orca's dashboards"
+		}
+	}
+	return out
+}
+
+// checkHostnames refuses two services claiming one hostname. Ingress would
+// take both routes, and which one a request reaches would be up to its rule
+// priorities rather than anything written here; a service claiming a
+// dashboard's name could sit in front of its password.
+func checkHostnames(groups []*manifest.Manifest, reserved map[string]string) error {
+	taken := map[string]string{}
+	for host, owner := range reserved {
+		taken[strings.ToLower(host)] = owner
+	}
+	var errs []error
+	for _, m := range groups {
+		for _, s := range m.Services {
+			for _, cport := range s.PortNumbers() {
+				p := s.Ports[cport]
+				if p.Kind != manifest.PortDomain {
+					continue
+				}
+				host := strings.ToLower(p.Domain)
+				who := fmt.Sprintf("%s/%s (%s)", m.App, s.Name, s.SourceFile())
+				if prev, ok := taken[host]; ok {
+					errs = append(errs, fmt.Errorf("hostname %s is claimed by %s and %s", host, prev, who))
+					continue
+				}
+				taken[host] = who
 			}
 		}
 	}

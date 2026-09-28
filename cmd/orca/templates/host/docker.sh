@@ -52,6 +52,9 @@ if docker --version 2>/dev/null | grep -qF "Docker version ${DOCKER_VERSION}"; t
 else
   DOCKER_TMP=$(mktemp -d)
   curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" -o "${DOCKER_TMP}/docker.tgz"
+  # The file is checked against the sum pinned beside its version, so what is
+  # installed as root is what was reviewed, not whatever the URL serves today.
+  echo "{{DOCKER_SHA256}}  ${DOCKER_TMP}/docker.tgz" | sha256sum -c --quiet
   tar -xzf "${DOCKER_TMP}/docker.tgz" -C "${DOCKER_TMP}"
   install -m 0755 "${DOCKER_TMP}"/docker/* /usr/local/bin/
   rm -rf "${DOCKER_TMP}"

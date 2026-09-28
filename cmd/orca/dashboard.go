@@ -94,6 +94,9 @@ func cmdPassword(ctx context.Context, cfg Config, args []string) error {
 	return nil
 }
 
+// minPasswordLength is the shortest dashboard password passwordSet accepts.
+const minPasswordLength = 16
+
 // passwordSet replaces the password with one you give it, read the way a
 // secret is: prompted, or piped, never an argument.
 func passwordSet(ctx context.Context, cluster *Cluster) error {
@@ -101,8 +104,10 @@ func passwordSet(ctx context.Context, cluster *Cluster) error {
 	if err != nil {
 		return err
 	}
-	if value == "" {
-		return fmt.Errorf("the password is empty; nothing changed")
+	// One shared password stands between the internet and every log line
+	// and metric, and nothing limits how fast it can be guessed.
+	if len(value) < minPasswordLength {
+		return fmt.Errorf("the password must be at least %d characters; nothing changed", minPasswordLength)
 	}
 	if err := cluster.PutAdminPassword(ctx, value); err != nil {
 		return err
@@ -122,22 +127,19 @@ func passwordSet(ctx context.Context, cluster *Cluster) error {
 // generated only when the password actually changed.
 //
 // The hash is carried in the job's own metadata rather than kept anywhere else,
-// which means the cluster remembers it and orca stays stateless.
-func resolveAuthHash(ctx context.Context, cluster *Cluster, password string) (string, error) {
+// which means the cluster remembers it and orca stays stateless. current is
+// the cluster's jobs as apply read them, which failed the apply if they could
+// not be read, so a cluster that did not answer never passes for one with no
+// hash yet and restarts ingress for nothing.
+func resolveAuthHash(current map[string]deploy.JobState, password string) (string, error) {
 	if password == "" {
 		return "", nil
 	}
 
-	if cluster != nil {
-		if jobs, err := cluster.Jobs(ctx); err == nil {
-			if existing := jobs[deploy.JobID(deploy.OrcaApp, "traefik")].AuthHash; existing != "" {
-				if bcrypt.CompareHashAndPassword([]byte(existing), []byte(password)) == nil {
-					return existing, nil
-				}
-			}
+	if existing := current[deploy.JobID(deploy.OrcaApp, "traefik")].AuthHash; existing != "" {
+		if bcrypt.CompareHashAndPassword([]byte(existing), []byte(password)) == nil {
+			return existing, nil
 		}
-		// A cluster that cannot be read is not a reason to fail: a fresh hash
-		// is always correct, it just redeploys ingress once.
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

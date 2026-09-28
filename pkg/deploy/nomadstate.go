@@ -33,6 +33,7 @@ func JobStateFromNomad(j *nomad.Job) (JobState, bool) {
 		App:      j.Meta[MetaApp],
 		Service:  j.Meta[MetaService],
 		Image:    j.Meta[MetaImage],
+		ImageRef: j.Meta[MetaImageRef],
 		Version:  deref(j.Version),
 		Stopped:  j.Stop != nil && *j.Stop,
 		Count:    count,
@@ -72,11 +73,12 @@ func AllocStateFromNomad(a *nomad.AllocationListStub) AllocState {
 			continue
 		}
 		t := TaskState{
-			Name:      name,
-			State:     ts.State,
-			Failed:    ts.Failed,
-			Restarts:  int(ts.Restarts),
-			StartedAt: ts.StartedAt,
+			Name:        name,
+			State:       ts.State,
+			Failed:      ts.Failed,
+			Restarts:    int(ts.Restarts),
+			StartedAt:   ts.StartedAt,
+			LastRestart: ts.LastRestart,
 		}
 		if n := len(ts.Events); n > 0 && ts.Events[n-1] != nil {
 			t.Last = ts.Events[n-1].DisplayMessage

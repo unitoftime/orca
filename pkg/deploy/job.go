@@ -64,7 +64,12 @@ const (
 	MetaApp     = "orca.app"
 	MetaService = "orca.service"
 	MetaImage   = "orca.image"
-	MetaAuth    = "orca.authhash"
+
+	// MetaImageRef is the image as the manifest names it, before pinning, so
+	// a registry that cannot be reached can fall back to what that same name
+	// resolved to last time rather than stopping every apply.
+	MetaImageRef = "orca.imageref"
+	MetaAuth     = "orca.authhash"
 
 	// MetaNetwork marks a platform job placed for a cluster of more than one
 	// machine, where "internal" is the private NIC rather than the container
@@ -211,7 +216,8 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		// image with no shell (scratch, distroless) cannot use `cmd`; such an
 		// image should be run with its own entrypoint instead.
 		task.Config["entrypoint"] = []string{"/bin/sh", "-c"}
-		task.Config["args"] = []string{s.Cmd}
+		cmd, _ := manifest.ShellValue(s.Cmd) // validated
+		task.Config["args"] = []string{cmd}
 	}
 
 	if tmpl := renderTemplate(m, s); tmpl != "" {
@@ -287,10 +293,11 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		Datacenters: []string{opts.Datacenter},
 		TaskGroups:  []*nomad.TaskGroup{group},
 		Meta: map[string]string{
-			MetaManaged: "true",
-			MetaApp:     m.App,
-			MetaService: s.Name,
-			MetaImage:   image,
+			MetaManaged:  "true",
+			MetaApp:      m.App,
+			MetaService:  s.Name,
+			MetaImage:    image,
+			MetaImageRef: s.ResolvedImage(),
 		},
 		Update: &nomad.UpdateStrategy{
 			MaxParallel:      ptr(1),

@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
+	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/pkg/registry"
 )
 
 func TestCheckRegistries(t *testing.T) {
@@ -133,5 +139,30 @@ esac
 	// docker login's verbs are not this helper's business, and must not fail.
 	for _, verb := range []string{"store", "erase", "list"} {
 		run("", verb)
+	}
+}
+
+type failingRegistry struct{ err error }
+
+func (f failingRegistry) Resolve(context.Context, string) (registry.Pinned, error) {
+	return registry.Pinned{}, f.err
+}
+
+// A registry that cannot be asked keeps what runs; one that answers "no such
+// image" is believed, and a tag nothing runs yet has nothing to fall back to.
+func TestUnreachableRegistryKeepsTheRunningDigest(t *testing.T) {
+	current := map[string]deploy.JobState{"shop-web": {ImageRef: "ghcr.io/x/web:latest", Image: "ghcr.io/x/web@sha256:aaa"}}
+
+	down := newImageResolver(context.Background(), failingRegistry{errors.New("dial tcp: i/o timeout")}, current)
+	if got, err := down.Pin("ghcr.io/x/web:latest"); err != nil || got != "ghcr.io/x/web@sha256:aaa" {
+		t.Errorf("registry down: got %q, %v; want the running digest", got, err)
+	}
+	if _, err := down.Pin("ghcr.io/x/new:1"); err == nil {
+		t.Error("an image nothing runs has nothing to fall back to")
+	}
+
+	missing := newImageResolver(context.Background(), failingRegistry{&transport.Error{StatusCode: 404}}, current)
+	if _, err := missing.Pin("ghcr.io/x/web:latest"); err == nil {
+		t.Error("a registry that answers is believed, even for a running image")
 	}
 }

@@ -226,13 +226,13 @@ func TestRedisTemplate(t *testing.T) {
 		t.Fatal("no image")
 	}
 	args := strings.Join(task.Config["args"].([]string), " ")
-	if args != "redis-server /local/redis.conf --maxmemory 768mb" {
+	if args != "redis-server /secrets/redis.conf --maxmemory 768mb" {
 		t.Errorf("args = %q", args)
 	}
 
 	var conf string
 	for _, tmpl := range task.Templates {
-		if *tmpl.DestPath == "local/redis.conf" {
+		if *tmpl.DestPath == "secrets/redis.conf" {
 			conf = *tmpl.EmbeddedTmpl
 		}
 		if tmpl.Envvars != nil && *tmpl.Envvars && strings.Contains(*tmpl.EmbeddedTmpl, "redis_password") {

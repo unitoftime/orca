@@ -26,6 +26,13 @@ func TestValidationErrors(t *testing.T) {
 			"no services defined",
 		},
 		{
+			// ${secret.x} is filled in only in env values; in cmd it would
+			// reach the shell as text.
+			"a secret in cmd",
+			"{name: x, image: i:1, cmd: 'curl -H \"auth: ${secret.token}\" x'}",
+			"a secret cannot be used here",
+		},
+		{
 			"two metrics ports",
 			"{name: x, image: i:1, ports: {2112: metrics, 2113: metrics}}",
 			"declares 2 metrics ports",
@@ -275,5 +282,22 @@ func TestSizesNomadWouldRefuse(t *testing.T) {
 	}
 	if c, _ := ParseCPU(0.29); c != 290 {
 		t.Errorf("0.29 cpu = %d milli, want 290", c)
+	}
+}
+
+// Jobs are <group>-<service>, so a group starting orca- could take the name
+// of one of orca's own.
+func TestOrcaPrefixIsReserved(t *testing.T) {
+	_, err := ParseGroup("orca-node", []byte("{name: exporter, image: i:1}"), "orca/node/x.yaml")
+	if err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("group orca-node should be refused, got %v", err)
+	}
+}
+
+// $$ is a literal $ in cmd as everywhere else, and the shell keeps its own $.
+func TestShellValue(t *testing.T) {
+	got, err := ShellValue(`echo $$HOME $HOME $${secret.x}`)
+	if err != nil || got != `echo $HOME $HOME ${secret.x}` {
+		t.Errorf("got %q, %v", got, err)
 	}
 }

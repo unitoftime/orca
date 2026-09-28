@@ -1,21 +1,20 @@
 package main
 
 import (
-	"context"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 func TestResolveAuthHashNoPassword(t *testing.T) {
-	got, err := resolveAuthHash(context.Background(), nil, "")
+	got, err := resolveAuthHash(nil, "")
 	if err != nil || got != "" {
 		t.Errorf("no password should produce no hash, got %q, %v", got, err)
 	}
 }
 
 func TestResolveAuthHashGeneratesUsableHash(t *testing.T) {
-	got, err := resolveAuthHash(context.Background(), nil, "s3cret")
+	got, err := resolveAuthHash(nil, "s3cret")
 	if err != nil {
 		t.Fatal(err)
 	}

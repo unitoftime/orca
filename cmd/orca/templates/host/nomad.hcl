@@ -27,10 +27,11 @@ addresses {
 # On a single-node cluster __BIND_IP__ is 127.0.0.1, so the HTTP API, RPC and
 # Serf are all unreachable from off the box. Above one machine it is the node's
 # private_ip, and bootstrap refuses an address on the default-route interface.
-# That is why there is no ACL stanza and no TLS stanza below: at no size is
-# there a hostile network path to protect. The one path left, a container
-# reaching a scheduler over the bridge, is closed by the firewall. orca
-# reaches Nomad by running commands over SSH on the host.
+# There is no ACL stanza and no TLS stanza below because the firewall orca
+# writes on every apply lets these ports answer only the machine itself and
+# the cluster's other machines: not a container, and not the rest of a
+# private network that may be shared with a whole tailnet. orca reaches Nomad
+# by running commands over SSH on the host.
 
 {{NOMAD_SERVER_STANZA}}
 

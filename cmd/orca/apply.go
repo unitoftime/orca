@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -100,7 +101,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		return err
 	}
 
-	pins := newImageResolver(ctx, registry.Remote{})
+	pins := newImageResolver(ctx, registry.Remote{}, current)
 
 	desired, err := buildJobs(cfg, pins, apps, backups)
 	if err != nil {
@@ -131,7 +132,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		if err != nil {
 			return err
 		}
-		authHash, err := resolveAuthHash(ctx, cluster, password)
+		authHash, err := resolveAuthHash(current, password)
 		if err != nil {
 			return err
 		}
@@ -168,6 +169,9 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		return err
 	}
 	if err := checkVolumeData(apps, facts, toGenerate); err != nil {
+		return err
+	}
+	if err := checkVolumePlacement(ctx, cfg, volumeDirs); err != nil {
 		return err
 	}
 
@@ -219,7 +223,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	// Before anything is deployed, so a port is open by the time something is
 	// listening on it rather than a moment after. Also on a no-op apply,
 	// which is what makes rules flushed by hand come back.
-	if err := applyFirewall(ctx, cfg, cluster); err != nil {
+	if err := applyFirewall(ctx, cfg, all); err != nil {
 		return err
 	}
 
@@ -502,6 +506,57 @@ func onVolumeNodes(cfg Config, fallback *Cluster, dirs []VolumeDir, fn func(*Clu
 	return nil
 }
 
+// checkVolumePlacement refuses to run a service with a volume on a machine
+// other than the one holding its data.
+//
+// Where a volume lives is worked out from the config on every apply, not
+// remembered: its `node:`, or else the first server. Reordering the machines,
+// adding one above the first or giving a database a `node:` all move it, and
+// on the new machine it starts against an empty directory, initializes itself
+// and reports healthy while holding nothing. So above one machine every
+// volume is looked for on every machine, and data found anywhere but where the
+// service is going stops the apply. A machine that cannot be reached is warned
+// about: it may hold data this cannot see.
+func checkVolumePlacement(ctx context.Context, cfg Config, dirs []VolumeDir) error {
+	if !cfg.MultiNode() || len(dirs) == 0 {
+		return nil
+	}
+
+	holders := map[string][]string{} // volume path: machines holding data there
+	for _, nc := range cfg.Nodes {
+		facts, err := NewCluster(Node{Host: nc.Host}).InspectVolumes(ctx, dirs, false)
+		if unreachable(err) {
+			fmt.Printf("warning: node %s is unreachable; volumes on it could not be checked\n", nc.Name)
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("node %s: %w", nc.Name, err)
+		}
+		for path, f := range facts {
+			if f.HasData {
+				holders[path] = append(holders[path], nc.Name)
+			}
+		}
+	}
+	return misplacedVolumes(dirs, holders)
+}
+
+// misplacedVolumes is checkVolumePlacement's judgement, without the machines.
+func misplacedVolumes(dirs []VolumeDir, holders map[string][]string) error {
+	var errs []error
+	for _, d := range dirs {
+		on := holders[d.Path]
+		if len(on) == 0 || slices.Contains(on, d.Node) {
+			continue
+		}
+		errs = append(errs, fmt.Errorf(
+			"%s holds data on %s, but would now run on %s, against an empty directory; "+
+				"pin it where its data is with `node: %s`, or move the data first",
+			d.Path, strings.Join(on, ", "), d.Node, on[0]))
+	}
+	return errors.Join(errs...)
+}
+
 // checkVolumeData refuses to deploy over data a service could not start on.
 //
 // Both cases look fine to Nomad and fail only once the container is running:
@@ -540,11 +595,13 @@ func checkVolumeData(apps []*manifest.Manifest, facts map[string]VolumeFacts, to
 }
 
 // applyFirewall locks every machine's public interface down to the ports the
-// manifests ask for.
+// manifests ask for, and every machine's scheduler down to the cluster.
 //
 // Every machine, not only the one orca is talking to: a cluster where one
 // machine is firewalled and the rest are open is not a firewalled cluster, and
 // the difference is invisible from the machine that happens to be protected.
+// A machine that cannot be reached is warned about and passed over rather than
+// failing the apply: that is exactly when you need to deploy around it.
 //
 // The rules are derived from every group, not only the ones in scope, so a
 // narrowed apply does not close a port belonging to an app it was told to
@@ -552,33 +609,41 @@ func checkVolumeData(apps []*manifest.Manifest, facts map[string]VolumeFacts, to
 // placed anywhere, so the union is the only set that is correct wherever it
 // lands. A port open on a machine running nothing behind it is reachable by
 // nothing.
-func applyFirewall(ctx context.Context, cfg Config, _ *Cluster) error {
-	if !cfg.Firewall.Enabled {
-		return nil
+//
+// With `firewall: false` the public interface is yours, but the scheduler's
+// rules are still installed: Nomad runs without ACLs because they are there.
+func applyFirewall(ctx context.Context, cfg Config, all []*manifest.Manifest) error {
+	spec := deploy.FirewallSpec{PublicIface: "__PUBLIC_IFACE__", BridgeIface: "nomad"}
+	for _, nc := range cfg.Nodes {
+		if nc.PrivateIP != "" {
+			spec.Peers = append(spec.Peers, nc.PrivateIP)
+		}
 	}
-
-	all, err := loadGroups(cfg)
-	if err != nil {
-		return err
+	var ports deploy.FirewallPorts
+	if cfg.Firewall.Enabled {
+		var hostPorts []manifest.HostPort
+		for _, m := range all {
+			hostPorts = append(hostPorts, m.HostPorts()...)
+		}
+		ports = deploy.PublicPorts(hostPorts, cfg.Ingress.Enabled)
+		spec.Public = &ports
 	}
-	var hostPorts []manifest.HostPort
-	for _, m := range all {
-		hostPorts = append(hostPorts, m.HostPorts()...)
-	}
-
-	ports := deploy.PublicPorts(hostPorts, cfg.Ingress.Enabled)
-	ruleset := deploy.Firewall("__PUBLIC_IFACE__", "nomad", ports)
+	ruleset := deploy.Firewall(spec)
 
 	anyChanged := false
 	for _, nc := range cfg.Nodes {
 		changed, err := NewCluster(Node{Host: nc.Host}).ApplyFirewall(ctx, ruleset)
+		if unreachable(err) {
+			fmt.Printf("warning: node %s is unreachable; its firewall was not updated\n", nc.Name)
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("node %s: %w", nc.Name, err)
 		}
 		anyChanged = anyChanged || changed
 	}
 
-	if anyChanged {
+	if anyChanged && spec.Public != nil {
 		open := append([]int{22}, ports.TCP...)
 		fmt.Printf("firewall updated: tcp %v", open)
 		if len(ports.UDP) > 0 {

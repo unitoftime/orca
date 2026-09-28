@@ -18,6 +18,10 @@ type JobState struct {
 	Image   string
 	Stopped bool
 
+	// ImageRef is the image as the manifest named it when it was deployed,
+	// before it was pinned to Image.
+	ImageRef string
+
 	// Version is the job's current version in Nomad, which every allocation
 	// and deployment records. Waiting for a deploy means waiting for this
 	// version, not for whatever happens to be running.

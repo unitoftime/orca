@@ -94,7 +94,8 @@ cmd: ./worker --queue default
 ```
 
 Nested directories join with dashes: `shop/prod/` is the group `shop-prod`. The
-group name `orca` is reserved for orca's own services.
+group name `orca`, and any name starting `orca-`, is reserved for orca's own
+services. A group can't be a link to a directory elsewhere; move it in.
 
 Unknown keys are errors. `orca validate` checks every file without touching the
 server.
@@ -123,7 +124,8 @@ ports:
 - Nothing is reachable from the internet unless a port says so, and the
   firewall opens only those ports.
 - A service can have one hostname port and one `metrics` port. Point the
-  hostname's DNS at your server.
+  hostname's DNS at your server. No two services can share a hostname, and
+  `status.`, `logs.` and `metrics.` under your monitoring domain are orca's.
 - Two services cannot use the same public port, and TCP ports 22, 80 and 443
   are taken by SSH and HTTPS. `orca apply` stops and tells you before
   deploying.
@@ -161,6 +163,9 @@ against its size.
 `cmd:` replaces the image's command and its entrypoint. It runs with
 `/bin/sh -c`, so it can be a small script. Images without a shell (`scratch`,
 distroless) can't use `cmd:`; configure them with `env:` instead.
+
+`$$` is a literal `$` here too; any other `$` is the shell's. A secret can't be
+used in `cmd:` directly: put it in `env:` and use the variable.
 
 ### Variables
 
@@ -396,8 +401,8 @@ also lists data left behind by services you removed.
 Logs are kept for 14 days (up to 10G) and outlive the container that wrote
 them. Metrics are kept for 30 days.
 
-With `monitoring.domain` set, there are web dashboards too. Log in as `admin`
-with the password from `orca password`:
+With `monitoring.domain` set and HTTPS on, there are web dashboards too. Log
+in as `admin` with the password from `orca password`:
 
 - `status.<domain>`: machines and services, their health and resource use,
   and each service's logs
@@ -412,7 +417,8 @@ Nomad's own UI is not published: without ACLs, its API can run anything on
 every machine. Reach it over an SSH tunnel instead:
 `ssh -L 4646:127.0.0.1:4646 root@<server>`, then open http://localhost:4646.
 
-`orca password set` changes the password at the next apply.
+`orca password set` changes the password at the next apply; it takes one of
+16 characters or more.
 
 ## Removing things
 
@@ -437,7 +443,8 @@ nodes:
 
 ingress:                      # or `ingress: false` if nothing is served over HTTP
   acme_email: you@example.com # optional contact for Let's Encrypt
-  https: false                # plain HTTP, for names Let's Encrypt can't reach
+  https: false                # plain HTTP, for names Let's Encrypt can't reach;
+                              # the dashboards are then not published
 
 monitoring:                   # or `monitoring: false`
   domain: example.com         # dashboards at status.example.com
@@ -451,7 +458,7 @@ monitoring:                   # or `monitoring: false`
   status: false               # no status page
 
 dns: false                    # services can't find each other by name
-firewall: false               # manage the firewall yourself
+firewall: false               # manage the public interface yourself
 ```
 
 Leaving a block out keeps its defaults. Only `false` turns something off.

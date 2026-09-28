@@ -206,6 +206,7 @@ button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .logline .task { color: var(--ink-2); white-space: nowrap; }
 .logline .m { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
 .logline.stderr .m::before { content: "stderr "; color: var(--muted); }
+.logline.gap .m { grid-column: 1 / -1; color: var(--muted); font-style: italic; }
 .logstatus { padding: 8px 16px; border-top: 1px solid var(--grid); color: var(--muted); font-size: 12px; min-height: 34px; }
 .loglines .empty { padding: 16px; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 
@@ -338,6 +339,7 @@ function nodeState(m) {
   else if (!m.eligible) word += ", not taking work";
   const out = [state(word, level)];
   if (!m.reporting && m.status !== "down") out.push(h("span", { class: "dim" }, " · no metrics"));
+  if (m.rebootRequired) out.push(state("reboot required", "warn"));
   return out;
 }
 
@@ -653,9 +655,16 @@ async function pollLogs(seq) {
     if (seq !== drawer.seq || !body.lines.length) return schedulePoll(seq);
     const box = document.getElementById("log-lines");
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    // A burst larger than one read comes back as its newest lines only.
+    // Said where the gap is, rather than joined up as if nothing were missing.
+    if (body.truncated) {
+      box.append(h("div", { class: "logline gap" }, h("span", { class: "m" },
+        "More lines arrived at once than following shows; some here were skipped. Search, or stop following, to see them all.")));
+    }
     box.append(...body.lines.map(logLine));
     drawer.lines.push(...body.lines);
-    while (drawer.lines.length > MAX_LINES) { drawer.lines.shift(); box.firstElementChild.remove(); }
+    while (box.children.length > MAX_LINES) { box.firstElementChild.remove(); }
+    while (drawer.lines.length > MAX_LINES) drawer.lines.shift();
     if (atBottom) box.scrollTop = box.scrollHeight;
     document.getElementById("log-status").textContent = "Following · " + drawer.lines.length + " lines";
   } catch (err) {

@@ -179,7 +179,7 @@ var Templates = map[string]TemplateSpec{
 	// them, is discontinued.
 	"redis": {
 		Versions:       []TemplateVersion{{"8.10", images.Redis810}},
-		Args:           []string{"redis-server", "/local/redis.conf"},
+		Args:           []string{"redis-server", "/secrets/redis.conf"},
 		Port:           6379,
 		VolumeMount:    "/data",
 		VolumeRequired: true,
@@ -193,7 +193,7 @@ var Templates = map[string]TemplateSpec{
 			{Suffix: PasswordSuffix},
 		},
 		Config: &TemplateFile{
-			Path: "local/redis.conf",
+			Path: "secrets/redis.conf",
 			Body: redisConfig,
 		},
 		Tune: redisTune,
@@ -210,7 +210,7 @@ var Templates = map[string]TemplateSpec{
 	"garage": {
 		Versions:       []TemplateVersion{{"2.3.0", images.Garage230}},
 		Entrypoint:     []string{"/garage"},
-		Args:           []string{"-c", "/local/garage.toml", "server"},
+		Args:           []string{"-c", "/secrets/garage.toml", "server"},
 		Port:           3900, // the S3 API
 		VolumeMount:    "/var/lib/garage",
 		VolumeRequired: true,
@@ -224,11 +224,11 @@ var Templates = map[string]TemplateSpec{
 			{Suffix: "secret_key", Bytes: 32, Hex: true},
 		},
 		Config: &TemplateFile{
-			Path: "local/garage.toml",
+			Path: "secrets/garage.toml",
 			Body: garageConfig,
 		},
 		Init: &TemplateFile{
-			Path: "local/init.sh",
+			Path: "secrets/init.sh",
 			Body: garageInit,
 			// Garage's image holds the binary and nothing else (no shell, no
 			// coreutils), so the setup it still needs cannot run inside it.
@@ -251,6 +251,13 @@ data_dir = "/var/lib/garage/data"
 db_engine = "lmdb"
 
 replication_factor = 1
+
+# Written to disk before a write is acknowledged. Garage leaves both off by
+# default, trusting a second copy on another node to survive a crash; here
+# there is no second copy, and an unsynced metadata database can be corrupt
+# after a power loss.
+metadata_fsync = true
+data_fsync = true
 
 rpc_bind_addr = "0.0.0.0:3901"
 rpc_public_addr = "127.0.0.1:3901"
@@ -407,7 +414,9 @@ type GeneratedSecretSpec struct {
 // TemplateFile is a file a template needs on the machine: the config the image
 // reads, or the script that finishes setting it up.
 type TemplateFile struct {
-	// Path is where it lands inside the container.
+	// Path is where it lands inside the container. Under secrets/, since
+	// every one of them carries a secret: that directory is a private tmpfs,
+	// where local/ is the machine's disk and outlives the task.
 	Path string
 
 	// Body is rendered by Nomad, so it may read secrets with nomadVar.

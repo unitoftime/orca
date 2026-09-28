@@ -71,6 +71,15 @@ func Discover(root string) ([]*Manifest, error) {
 		if err != nil {
 			return err
 		}
+		// Not followed, and not skipped quietly either: a group linked in
+		// from elsewhere would look undeclared, and apply would stop its
+		// services, with --yes without asking.
+		if d.Type()&fs.ModeSymlink != 0 {
+			if info, err := os.Stat(path); err == nil && info.IsDir() {
+				errs = append(errs, fmt.Errorf("%s is a link to a directory, which orca does not follow; move the group here instead", path))
+			}
+			return nil
+		}
 		if !d.IsDir() {
 			return nil
 		}

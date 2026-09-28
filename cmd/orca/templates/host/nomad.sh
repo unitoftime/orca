@@ -25,6 +25,7 @@ if nomad version 2>/dev/null | grep -qF "Nomad v${NOMAD_VERSION}"; then
 else
   NOMAD_TMP=$(mktemp -d)
   curl -fsSL "https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip" -o "${NOMAD_TMP}/nomad.zip"
+  echo "{{NOMAD_SHA256}}  ${NOMAD_TMP}/nomad.zip" | sha256sum -c --quiet
   unzip -oq "${NOMAD_TMP}/nomad.zip" -d "${NOMAD_TMP}"
   install -m 0755 "${NOMAD_TMP}/nomad" /usr/local/bin/nomad
   rm -rf "${NOMAD_TMP}"
@@ -42,6 +43,7 @@ else
   mkdir -p /opt/cni/bin
   CNI_TMP=$(mktemp -d)
   curl -fsSL "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" -o "${CNI_TMP}/cni.tgz"
+  echo "{{CNI_SHA256}}  ${CNI_TMP}/cni.tgz" | sha256sum -c --quiet
   tar -xzf "${CNI_TMP}/cni.tgz" -C /opt/cni/bin
   rm -rf "${CNI_TMP}"
 fi

@@ -118,6 +118,9 @@ func parseLogArgs(args []string) (logOptions, error) {
 			}
 			i++
 			opts.since = args[i]
+			if !logsql.ValidDuration(opts.since) {
+				return opts, fmt.Errorf("--since %q is not a duration; write e.g. 30m, 24h, 7d or 1h30m", opts.since)
+			}
 		case "-n", "--lines":
 			if i+1 >= len(args) {
 				return opts, fmt.Errorf("%s needs a number of lines", a)

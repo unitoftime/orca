@@ -99,3 +99,14 @@ func secretRefs(v string) []string {
 	}
 	return out
 }
+
+// ShellValue is a cmd as its shell receives it. $$ is a literal $, as
+// everywhere else in a manifest; every other $ is the shell's own, so
+// `$HOME` and `${1:-x}` mean what they always do. A ${secret.NAME} is refused:
+// see validateCmd.
+func ShellValue(cmd string) (string, error) {
+	if strings.Contains(strings.ReplaceAll(cmd, "$$", ""), "${secret.") {
+		return "", fmt.Errorf("a secret cannot be used here; put it in env and use the variable, e.g. env: {TOKEN: ${secret.NAME}} and $TOKEN")
+	}
+	return strings.ReplaceAll(cmd, "$$", "$"), nil
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,6 +85,14 @@ func sshArgs(host, cmd string) []string {
 // sshArgsStdin is the same without -n, for commands that are piped input.
 func sshArgsStdin(host, cmd string) []string {
 	return append(sshOptions(), host, cmd)
+}
+
+// unreachable reports an ssh that failed to reach its machine at all, as
+// opposed to a command that ran there and failed: ssh exits 255 for its own
+// errors and passes the remote command's status through otherwise.
+func unreachable(err error) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.ExitCode() == 255
 }
 
 // rsyncSSH is rsync's -e: the same ssh, so an upload rides the shared

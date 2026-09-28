@@ -112,6 +112,7 @@ func parseJobs(out string) (map[string]deploy.JobState, error) {
 			App:      w.Meta[deploy.MetaApp],
 			Service:  w.Meta[deploy.MetaService],
 			Image:    w.Meta[deploy.MetaImage],
+			ImageRef: w.Meta[deploy.MetaImageRef],
 			Version:  w.Version,
 			Stopped:  w.Stop,
 			Count:    w.Count,
@@ -383,6 +384,7 @@ const allocsJQ = `[ .[] | {
     Failed: .value.Failed,
     Restarts: .value.Restarts,
     StartedAt: .value.StartedAt,
+    LastRestart: .value.LastRestart,
     Last: ((.value.Events // []) | last | .DisplayMessage // ""),
     Fail: ((.value.Events // []) | map(select(.Type == "Terminated" or .Type == "Driver Failure" or .Type == "Killing")) | last | .DisplayMessage // "")
   }))
@@ -407,13 +409,14 @@ type runtimeWire struct {
 		DesiredStatus string `json:"DesiredStatus"`
 		NodeName      string `json:"NodeName"`
 		Tasks         []struct {
-			Name      string    `json:"Name"`
-			State     string    `json:"State"`
-			Failed    bool      `json:"Failed"`
-			Restarts  int       `json:"Restarts"`
-			StartedAt time.Time `json:"StartedAt"`
-			Last      string    `json:"Last"`
-			Fail      string    `json:"Fail"`
+			Name        string    `json:"Name"`
+			State       string    `json:"State"`
+			Failed      bool      `json:"Failed"`
+			Restarts    int       `json:"Restarts"`
+			StartedAt   time.Time `json:"StartedAt"`
+			LastRestart time.Time `json:"LastRestart"`
+			Last        string    `json:"Last"`
+			Fail        string    `json:"Fail"`
 		} `json:"Tasks"`
 	} `json:"allocs"`
 	Deployments []struct {
@@ -454,7 +457,7 @@ func parseRuntime(out string) ([]deploy.AllocState, []deploy.DeploymentState, er
 		for _, t := range a.Tasks {
 			as.Tasks = append(as.Tasks, deploy.TaskState{
 				Name: t.Name, State: t.State, Failed: t.Failed,
-				Restarts: t.Restarts, StartedAt: t.StartedAt, Last: t.Last, Fail: t.Fail,
+				Restarts: t.Restarts, StartedAt: t.StartedAt, LastRestart: t.LastRestart, Last: t.Last, Fail: t.Fail,
 			})
 		}
 		allocs = append(allocs, as)
@@ -532,9 +535,9 @@ curl -sf --max-time 10 "%s/v1/vars?prefix=%s/" | jq -r '.[].Path'`,
 
 // PutSecret writes one secret into Nomad's variable store.
 //
-// The value travels on stdin and is assembled into the request body on the
-// machine, so it never appears in an argument list: a command line is visible
-// in the process table for as long as the command runs, on both ends.
+// The whole request body travels on stdin, so the value never appears in an
+// argument list: a command line is visible in the process table for as long
+// as the command runs, on both ends.
 func (c *Cluster) PutSecret(ctx context.Context, group, name, value string) error {
 	if err := c.putVariable(ctx, deploy.SecretPath(group, name), deploy.SecretItemKey, value); err != nil {
 		return fmt.Errorf("set secret %s/%s: %w", group, name, err)
@@ -544,14 +547,12 @@ func (c *Cluster) PutSecret(ctx context.Context, group, name, value string) erro
 
 // putVariable writes a one-item variable, replacing any there.
 func (c *Cluster) putVariable(ctx context.Context, path, key, value string) error {
-	script := fmt.Sprintf(`set -e
-set -o pipefail
-VALUE=$(cat)
-jq -n --arg p %q --arg k %q --arg v "$VALUE" '{Path: $p, Items: {($k): $v}}' \
-  | curl -sf --max-time 10 -X PUT --data-binary @- "%s/v1/var/%s" > /dev/null`,
-		path, key, NomadAddr, path)
-
-	_, err := c.node.RunStdin(ctx, script, []byte(value))
+	body, err := variableBody(path, key, value)
+	if err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`curl -sf --max-time 10 -X PUT --data-binary @- "%s/v1/var/%s" > /dev/null`, NomadAddr, path)
+	_, err = c.node.RunStdin(ctx, script, body)
 	return err
 }
 
@@ -571,24 +572,29 @@ func (c *Cluster) CreateSecret(ctx context.Context, group, name, value string) (
 }
 
 // createVariable writes a one-item variable only if it does not exist yet, and
-// reports whether it did. The value travels on stdin, as in PutSecret.
+// reports whether it did. The body travels on stdin, as in PutSecret.
 func (c *Cluster) createVariable(ctx context.Context, path, key, value string) (bool, error) {
-	script := fmt.Sprintf(`set -e
-set -o pipefail
-VALUE=$(cat)
-CODE=$(jq -n --arg p %q --arg k %q --arg v "$VALUE" '{Path: $p, Items: {($k): $v}}' \
-  | curl -s --max-time 10 -o /dev/null -w '%%{http_code}' -X PUT --data-binary @- "%s/v1/var/%s?cas=0")
+	body, err := variableBody(path, key, value)
+	if err != nil {
+		return false, err
+	}
+	script := fmt.Sprintf(`CODE=$(curl -s --max-time 10 -o /dev/null -w '%%{http_code}' -X PUT --data-binary @- "%s/v1/var/%s?cas=0")
 case "$CODE" in
   200) echo created ;;
   409) echo exists ;;
   *) echo "nomad answered HTTP $CODE" >&2; exit 1 ;;
-esac`, path, key, NomadAddr, path)
+esac`, NomadAddr, path)
 
-	out, err := c.node.RunStdin(ctx, script, []byte(value))
+	out, err := c.node.RunStdin(ctx, script, body)
 	if err != nil {
 		return false, err
 	}
 	return strings.TrimSpace(out) == "created", nil
+}
+
+// variableBody is the request that writes a one-item variable.
+func variableBody(path, key, value string) ([]byte, error) {
+	return json.Marshal(map[string]any{"Path": path, "Items": map[string]string{key: value}})
 }
 
 // readVariable returns one item of a variable, and whether the variable

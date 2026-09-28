@@ -35,7 +35,9 @@ type TaskState struct {
 	Failed    bool
 	Restarts  int
 	StartedAt time.Time
-	Last      string // the most recent event's display message
+	// LastRestart is when it was last restarted, zero if never.
+	LastRestart time.Time
+	Last        string // the most recent event's display message
 	// Fail is the most recent terminal event's message. The last event on a
 	// crash-looping task is "Task restarting in 16s", which says nothing about
 	// why; this holds the "Exit Code: 3" that does.
@@ -286,12 +288,44 @@ func classify(s *ServiceStatus, job JobState, allocs []AllocState, dep *Deployme
 		s.Health = HealthPending
 	}
 
+	// A task that crashes every half minute spends half of each cycle
+	// running, and every one of those halves reads as healthy. One that came
+	// back from a restart moments ago is not yet known to have stayed up, so
+	// it is not called running until it has.
+	if s.Health == HealthOK {
+		if at := lastRestart(allocs); time.Since(at) < RestartSettle {
+			s.Health = HealthPending
+			s.Message = fmt.Sprintf("restarted %s ago", HumanDuration(time.Since(at)))
+			if worst.Fail != "" {
+				s.Message += ": " + worst.Fail
+			}
+			return
+		}
+	}
+
 	// A past failure explains a service that is not working. Next to one that
 	// is, it only misleads: the exit code that sent it into a restart loop is
 	// not news once it has come back.
 	if s.Health == HealthOK {
 		s.Message = ""
 	}
+}
+
+// RestartSettle is how long a task has to stay up after a restart before it
+// is called running again.
+const RestartSettle = time.Minute
+
+// lastRestart is the latest restart of any task in allocs, or the zero time.
+func lastRestart(allocs []AllocState) time.Time {
+	var out time.Time
+	for _, a := range allocs {
+		for _, t := range a.Tasks {
+			if t.LastRestart.After(out) {
+				out = t.LastRestart
+			}
+		}
+	}
+	return out
 }
 
 // Rollout judges a job that was just submitted by what Nomad concluded about

@@ -365,3 +365,40 @@ func TestFindRootFromSubdirectory(t *testing.T) {
 		t.Errorf("root = %q, want %q", cfg.Root, root)
 	}
 }
+
+// A volume whose machine moved in the config would start empty and look
+// healthy. Data found anywhere but where the service is going stops the apply.
+func TestMisplacedVolumesAreRefused(t *testing.T) {
+	dirs := []VolumeDir{
+		{Path: "/v/shop/db", Node: "box1"},
+		{Path: "/v/shop/cache", Node: "box0"},
+		{Path: "/v/blog/db", Node: "box1"},
+	}
+	holders := map[string][]string{
+		"/v/shop/db":    {"box0"}, // moved away from its data
+		"/v/shop/cache": {"box0"}, // where it always was
+		// blog/db is new: no data anywhere yet
+	}
+	err := misplacedVolumes(dirs, holders)
+	if err == nil || !strings.Contains(err.Error(), "/v/shop/db holds data on box0") {
+		t.Fatalf("want shop/db refused, got %v", err)
+	}
+	if strings.Contains(err.Error(), "cache") || strings.Contains(err.Error(), "blog") {
+		t.Errorf("only the moved volume should be refused: %v", err)
+	}
+}
+
+// One hostname, one service: ingress would otherwise pick between them by
+// its own rules, and a service could sit in front of a dashboard's password.
+func TestHostnameCollisionsAreCaught(t *testing.T) {
+	a := parseManifest(t, "shop", "{name: web, image: i:1, ports: {8080: Shop.example.com}}")
+	b := parseManifest(t, "blog", "{name: web, image: i:1, ports: {8080: shop.example.com}}")
+	if err := checkHostnames([]*manifest.Manifest{a, b}, nil); err == nil {
+		t.Error("two groups claiming one hostname should be refused")
+	}
+
+	c := parseManifest(t, "blog", "{name: web, image: i:1, ports: {8080: status.example.com}}")
+	if err := checkHostnames([]*manifest.Manifest{c}, map[string]string{"status.example.com": "orca's dashboards"}); err == nil {
+		t.Error("a dashboard's hostname should be refused")
+	}
+}

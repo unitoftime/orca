@@ -28,6 +28,7 @@ const (
 	qSwapTotal  = `node_memory_SwapTotal_bytes{` + hostSel + `}`
 	qSwapFree   = `node_memory_SwapFree_bytes{` + hostSel + `}`
 	qUptime     = `node_time_seconds{` + hostSel + `} - node_boot_time_seconds{` + hostSel + `}`
+	qReboot     = `orca_reboot_required{` + hostSel + `}`
 
 	// Real filesystems. Memory-backed ones are not disks, and the node
 	// exporter already leaves out Docker's layers and Nomad's allocation
@@ -183,7 +184,7 @@ func promValue(v any) (float64, bool) {
 // than shown with holes that look like zeroes.
 func fetchMetrics(ctx context.Context, c *metricsClient, now time.Time) (*metricsView, error) {
 	instant := []string{
-		qUp, qCPU, qCores, qLoad1, qMemTotal, qMemAvail, qSwapTotal, qSwapFree, qUptime,
+		qUp, qCPU, qCores, qLoad1, qMemTotal, qMemAvail, qSwapTotal, qSwapFree, qUptime, qReboot,
 		qFSSize, qFSAvail, qFSFiles, qFSFilesFree, qRx, qTx,
 		qAllocCPU, qAllocMem, qAllocMemLimit,
 		qLogsUsed, qLogsCap, qLogsFree, qLogsRO, qMetricsUsed, qMetricsFree, qMetricsFloor, qMetricsRO,
@@ -278,6 +279,7 @@ func assembleMetrics(results map[string][]sample, history map[string][]series) *
 	perNode(qUptime, func(m *machineMetrics, v float64) { m.Uptime = ptr(v) })
 	perNode(qRx, func(m *machineMetrics, v float64) { m.Rx = ptr(v) })
 	perNode(qTx, func(m *machineMetrics, v float64) { m.Tx = ptr(v) })
+	perNode(qReboot, func(m *machineMetrics, v float64) { m.RebootRequired = v == 1 })
 
 	one := func(q string) *float64 {
 		if r := results[q]; len(r) > 0 {

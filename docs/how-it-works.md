@@ -163,8 +163,11 @@ other; orca assumes you wrote all of them.
 drift. From outside, it lets in SSH (always, so it can never lock you out),
 80 and 443 while ingress runs, the `tcp` and `udp` ports your files declare,
 and the ICMP and DHCP traffic a machine needs. Everything else is dropped
-silently. Containers are also blocked from reaching Nomad's API, since
-anything that can submit jobs can run anything on the machine.
+silently. Nomad's ports answer only the machine itself and the cluster's
+other machines, never a container and never anything else on the private
+network, since anything that can submit jobs can run anything on every
+machine. With `firewall: false` the public interface is yours, and that
+second part stays.
 
 **Above one machine**, the machines need a private network (your provider's,
 or Tailscale or WireGuard; orca does not build one). Each machine lists its

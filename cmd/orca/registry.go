@@ -8,7 +8,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/unitoftime/orca/pkg/deploy"
 	"github.com/unitoftime/orca/pkg/registry"
 	"golang.org/x/term"
 )
@@ -185,6 +187,10 @@ func registryLogout(ctx context.Context, cfg Config, raw string) error {
 	return nil
 }
 
+// resolveTimeout bounds one registry lookup. A registry that stops
+// answering would otherwise hold a CI apply until the job's own timeout.
+const resolveTimeout = 30 * time.Second
+
 // imageResolver pins images to digests for one apply, and remembers which
 // registries would not serve an image without credentials.
 type imageResolver struct {
@@ -194,21 +200,56 @@ type imageResolver struct {
 	// private is every image that needed credentials to resolve, by the
 	// registry it is pulled from.
 	private map[string][]string
+
+	// pinned is every reference resolved so far, so each is looked up once
+	// and two services naming the same tag get the same digest.
+	pinned map[string]string
+
+	// running is the digest each reference resolved to when what runs now
+	// was deployed, the fallback for a registry that cannot be reached.
+	running map[string]string
 }
 
-func newImageResolver(ctx context.Context, r registry.Resolver) *imageResolver {
-	return &imageResolver{ctx: ctx, r: r, private: map[string][]string{}}
+// newImageResolver resolves against r, falling back to what the jobs in
+// current were deployed with.
+func newImageResolver(ctx context.Context, r registry.Resolver, current map[string]deploy.JobState) *imageResolver {
+	running := map[string]string{}
+	for _, j := range current {
+		if j.ImageRef != "" && j.Image != "" && !j.Stopped {
+			running[j.ImageRef] = j.Image
+		}
+	}
+	return &imageResolver{ctx: ctx, r: r, private: map[string][]string{}, pinned: map[string]string{}, running: running}
 }
 
 // Pin resolves one reference to a digest.
+//
+// A registry that cannot be asked does not stop the apply for an image that
+// is already running: the reference keeps the digest it resolved to last
+// time, and says so. Everything else about that image stays as it was, which
+// is the one outcome that is certainly safe. A registry that answers, even
+// to say no, is believed.
 func (ir *imageResolver) Pin(ref string) (string, error) {
-	p, err := ir.r.Resolve(ir.ctx, ref)
+	if p, ok := ir.pinned[ref]; ok {
+		return p, nil
+	}
+	ctx, cancel := context.WithTimeout(ir.ctx, resolveTimeout)
+	defer cancel()
+
+	p, err := ir.r.Resolve(ctx, ref)
 	if err != nil {
-		return "", err
+		last, ok := ir.running[ref]
+		if !ok || !registry.Unavailable(err) {
+			return "", err
+		}
+		fmt.Printf("warning: %v; keeping %s as it runs now\n", err, last)
+		ir.pinned[ref] = last
+		return last, nil
 	}
 	if p.Private {
 		ir.private[p.Registry] = append(ir.private[p.Registry], ref)
 	}
+	ir.pinned[ref] = p.Ref
 	return p.Ref, nil
 }
 

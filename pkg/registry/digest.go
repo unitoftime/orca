@@ -112,6 +112,18 @@ func refused(err error) bool {
 	return false
 }
 
+// Unavailable reports a lookup that failed because the registry could not be
+// asked (a timeout, a refused connection, a server error), as opposed to one
+// it answered: an image that does not exist, or credentials it refused. Only
+// the first says nothing about the image itself.
+func Unavailable(err error) bool {
+	var terr *transport.Error
+	if errors.As(err, &terr) {
+		return terr.StatusCode >= 500
+	}
+	return err != nil
+}
+
 // Fake resolves from a table, for tests and for any path that must not touch
 // the network.
 type Fake map[string]string

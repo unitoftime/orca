@@ -5,8 +5,18 @@ package logsql
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// duration is the log store's duration: whole numbers of units, run
+// together, as in 30m, 24h or 1h30m.
+var duration = regexp.MustCompile(`^([0-9]+(ms|s|m|h|d|w|y))+$`)
+
+// ValidDuration reports whether s is a duration the log store reads. Anything
+// else becomes part of the query instead, which then matches nothing, so a
+// typo would read as a quiet service.
+func ValidDuration(s string) bool { return duration.MatchString(s) }
 
 // Job is one job whose logs a target covers.
 type Job struct {

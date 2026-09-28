@@ -475,6 +475,9 @@ func nodeExporterJob(opts PlatformOptions) *nomad.Job {
 		// does not.
 		"--collector.netdev.device-exclude=^(veth.*|lo)$",
 		"--collector.netclass.ignored-devices=^veth.*$",
+		// What bootstrap's package hook writes: whether an installed update
+		// is waiting for a reboot.
+		"--collector.textfile.directory=/host/run/orca/textfile",
 	}
 
 	// No DNS name: this registers once per machine, so a name would answer
@@ -829,10 +832,12 @@ certificatesResolvers:
 }
 
 // dashboardsEnabled reports whether the platform's own web UIs are published.
-// Both a domain to serve them on and a password to put in front of them are
-// required: without either they stay reachable only over an SSH tunnel.
+// A domain to serve them on, a password to put in front of them and HTTPS to
+// carry it are all required: over plain HTTP the password crosses the internet
+// readable by anyone on the way. Without any of them they stay reachable only
+// over SSH, which is how `orca top` and `orca logs` reach them anyway.
 func dashboardsEnabled(opts PlatformOptions) bool {
-	return opts.Domain != "" && opts.Ingress != nil && opts.Ingress.AuthHash != ""
+	return opts.Domain != "" && opts.Ingress != nil && opts.Ingress.TLS && opts.Ingress.AuthHash != ""
 }
 
 // dashboard is one of the platform's built-in web UIs.
