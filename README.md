@@ -257,13 +257,42 @@ orca secret list                          # every secret, and which are MISSING
 orca secret rm notifier/apiToken
 ```
 
-- Values are stored only on the cluster, never in your files.
+- Values are stored on the cluster, never in your service files.
 - `${secret.NAME}` in an `env:` value puts a secret inside a longer string,
   like a database URL.
 - Apply refuses to deploy a service while one of its secrets is unset.
 - Setting a secret restarts the services that use it. No redeploy needed.
 - Secrets are files by default because environment variables leak easily (into
   logs, crash reports, child processes).
+
+### Keeping a copy
+
+A rebuilt cluster has no secrets, so keep a copy of them:
+
+```
+orca secret export secrets.age        # every secret, encrypted to a passphrase
+orca secret import secrets.age        # put them back; shows what changes, then asks
+orca secret edit                      # the cluster's secrets in $EDITOR
+orca secret edit secrets.age          # or the file's, without touching the cluster
+orca secret export --plain            # print them in plaintext
+```
+
+- The file holds everything needed to rebuild: your secrets, the passwords
+  orca generated for databases, the registry logins and the dashboards'
+  password. Rebuilding is `orca bootstrap`, `orca secret import`, `orca apply`.
+- It is an ordinary [age](https://age-encryption.org) file, so `age -d` opens
+  it without orca. It is safe to commit only as far as its passphrase is
+  strong: anyone with the repository can try guesses forever.
+- The cluster is still what your services read. The file is a copy: it goes
+  out of date when you `orca secret set`, until you export again, and
+  `orca apply` never reads it.
+- Import writes only what differs, since writing a secret restarts the
+  services that use it. It never removes a secret the file lacks, and it
+  refuses to change a generated database password without `--force`.
+- `orca secret edit <file>` creates the file if it does not exist, which is a
+  way to write a new cluster's secrets down before the cluster exists.
+- While an editor is open, the secrets are in a temporary plaintext file only
+  you can read.
 
 ## Databases and backups
 
@@ -511,10 +540,10 @@ orca apply         # services move onto the private network
 - **Garage runs on one machine**, with no replication.
 - **HTTPS needs names Let's Encrypt can reach** over port 80. For names only in
   your own `/etc/hosts`, set `https: false`.
-- **Secrets live only on the cluster.** If you rebuild it, set them again
-  (`orca secret list` shows which). `orca secret set` refuses to change a
-  generated database password (unless you pass `--force`), because the
-  database was created with it.
+- **Secrets live only on the cluster** unless you export them. If you rebuild
+  it without an export, set them again (`orca secret list` shows which).
+  `orca secret set` refuses to change a generated database password (unless
+  you pass `--force`), because the database was created with it.
 - **Any container can reach any other.** Don't run code you don't trust.
 - **Every apply contacts your image registry** to pin digests, so a registry
   outage blocks deploys.
@@ -539,6 +568,9 @@ orca purge <group> [--yes]          delete a removed group and its data
 orca secret set <group>/<name> [--force]
 orca secret list
 orca secret rm <group>/<name> [--force]
+orca secret export [file] [--plain]
+orca secret import <file> [--yes] [--force]
+orca secret edit [file] [--plain] [--force]
 orca registry login <host> [-u <user>]
 orca registry list
 orca registry logout <host>

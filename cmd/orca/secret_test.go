@@ -149,13 +149,13 @@ func TestGeneratedSecretsAreGuarded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := guardGenerated(cfg, "shop", "db_password", "remove it", false); err == nil {
+	if err := guardGenerated(cfg, []secretRef{{"shop", "db_password"}}, "remove it", false); err == nil {
 		t.Error("removing a generated secret must be refused")
 	}
-	if err := guardGenerated(cfg, "shop", "db_password", "remove it", true); err != nil {
+	if err := guardGenerated(cfg, []secretRef{{"shop", "db_password"}}, "remove it", true); err != nil {
 		t.Errorf("--force overrides, got %v", err)
 	}
-	if err := guardGenerated(cfg, "shop", "api_token", "change it", false); err != nil {
+	if err := guardGenerated(cfg, []secretRef{{"shop", "api_token"}}, "change it", false); err != nil {
 		t.Errorf("a secret you set yourself is yours to change, got %v", err)
 	}
 }

@@ -59,6 +59,14 @@ Commands:
   secret list        Every secret the manifests reference, and whether it is set.
   secret rm <g>/<n>  Remove a secret. A secret orca generated for a template
                      is refused by set and rm unless --force is given.
+  secret export [f]  Write every secret the cluster holds to a file (or
+                     stdout), encrypted to a passphrase; --plain for plaintext.
+  secret import <f>  Apply a file's secrets to the cluster. Shows what would
+                     be added or changed and asks; --yes skips the question.
+                     Never removes anything.
+  secret edit [f]    Open the cluster's secrets in $EDITOR and apply what
+                     changed. With a file, edit the file instead, creating it
+                     if need be, and touch no cluster.
   registry login <h> Give the cluster credentials to pull private images from a
                      registry (ghcr.io, docker.io, ...). Prompts for the
                      username unless -u is given; the token is read from

@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -547,7 +549,7 @@ func (c *Cluster) PutSecret(ctx context.Context, group, name, value string) erro
 
 // putVariable writes a one-item variable, replacing any there.
 func (c *Cluster) putVariable(ctx context.Context, path, key, value string) error {
-	body, err := variableBody(path, key, value)
+	body, err := variableBody(path, map[string]string{key: value})
 	if err != nil {
 		return err
 	}
@@ -574,7 +576,7 @@ func (c *Cluster) CreateSecret(ctx context.Context, group, name, value string) (
 // createVariable writes a one-item variable only if it does not exist yet, and
 // reports whether it did. The body travels on stdin, as in PutSecret.
 func (c *Cluster) createVariable(ctx context.Context, path, key, value string) (bool, error) {
-	body, err := variableBody(path, key, value)
+	body, err := variableBody(path, map[string]string{key: value})
 	if err != nil {
 		return false, err
 	}
@@ -592,9 +594,80 @@ esac`, NomadAddr, path)
 	return strings.TrimSpace(out) == "created", nil
 }
 
-// variableBody is the request that writes a one-item variable.
-func variableBody(path, key, value string) ([]byte, error) {
-	return json.Marshal(map[string]any{"Path": path, "Items": map[string]string{key: value}})
+// variableBody is the request that writes one variable.
+func variableBody(path string, items map[string]string) ([]byte, error) {
+	return json.Marshal(map[string]any{"Path": path, "Items": items})
+}
+
+// variablePrefixes are everything orca keeps in the store that is a secret of
+// some kind: what a manifest references, the registry logins, and the
+// dashboard password. The apply lock is the one thing left out.
+var variablePrefixes = []string{deploy.SecretPrefix + "/", deploy.RegistryPrefix + "/", deploy.AdminPasswordPath}
+
+// Variables reads every secret the cluster holds, values included.
+//
+// One round trip however many there are: the listing and every read happen on
+// the machine, and what comes back is one line per variable. This is the only
+// call that pulls plaintext off the machine wholesale, and exporting or
+// editing the cluster's secrets is the only reason to make it.
+func (c *Cluster) Variables(ctx context.Context) (variables, error) {
+	// Fails closed, like SecretPaths: a listing or a read that fails must not
+	// pass for a store with less in it, since an export would then be a
+	// backup quietly missing secrets.
+	script := fmt.Sprintf(`set -o pipefail
+for prefix in %[2]s; do
+  curl -sf --max-time 10 "%[1]s/v1/vars?prefix=$prefix" | jq -r '.[].Path' || exit 1
+done | while IFS= read -r path; do
+  curl -sf --max-time 10 "%[1]s/v1/var/$path" | jq -c '{Path, Items}' || exit 1
+done`, NomadAddr, strings.Join(variablePrefixes, " "))
+
+	out, err := c.node.RunOutput(ctx, script)
+	if err != nil {
+		return nil, fmt.Errorf("read the cluster's secrets: %w", err)
+	}
+
+	vars := variables{}
+	dec := json.NewDecoder(strings.NewReader(out))
+	for dec.More() {
+		var v struct {
+			Path  string
+			Items map[string]string
+		}
+		if err := dec.Decode(&v); err != nil {
+			return nil, fmt.Errorf("read the cluster's secrets: %w", err)
+		}
+		vars[v.Path] = v.Items
+	}
+	return vars, nil
+}
+
+// PutVariables writes a set of variables, replacing any there, in one round
+// trip.
+//
+// Every body travels on stdin, one to a line, so no value is in an argument
+// list on either machine. Paths are the caller's to have checked: each goes
+// into a URL on the machine.
+func (c *Cluster) PutVariables(ctx context.Context, vars variables) error {
+	var bodies bytes.Buffer
+	for _, path := range slices.Sorted(maps.Keys(vars)) {
+		body, err := variableBody(path, vars[path])
+		if err != nil {
+			return err
+		}
+		bodies.Write(body)
+		bodies.WriteByte('\n')
+	}
+
+	// Stops at the first failure and names it: what was written before it
+	// stays written, and running the same import again writes the rest.
+	script := fmt.Sprintf(`while IFS= read -r body; do
+  path=$(jq -r .Path <<<"$body") || exit 1
+  curl -sf --max-time 10 -X PUT --data-binary @- "%s/v1/var/$path" <<<"$body" > /dev/null || { echo "could not write $path" >&2; exit 1; }
+done`, NomadAddr)
+	if _, err := c.node.RunStdin(ctx, script, bodies.Bytes()); err != nil {
+		return fmt.Errorf("write secrets: %w", err)
+	}
+	return nil
 }
 
 // readVariable returns one item of a variable, and whether the variable
@@ -687,16 +760,24 @@ curl -sf --max-time 10 "%s/v1/vars?prefix=%s/" | jq -r '.[].Path'`,
 	return hosts, nil
 }
 
+// The items of a registry's variable. The credential helper on each machine
+// reads them by these names.
+const (
+	registryUsernameKey = "username"
+	registryPasswordKey = "password"
+)
+
+func registryItems(username, password string) map[string]string {
+	return map[string]string{registryUsernameKey: username, registryPasswordKey: password}
+}
+
 // PutRegistry stores the credentials for one registry, replacing any there.
 //
 // The whole request body travels on stdin, so neither the token nor the
 // username is ever in an argument list on either machine.
 func (c *Cluster) PutRegistry(ctx context.Context, host, username, password string) error {
 	path := deploy.RegistryPath(host)
-	body, err := json.Marshal(map[string]any{
-		"Path":  path,
-		"Items": map[string]string{"username": username, "password": password},
-	})
+	body, err := variableBody(path, registryItems(username, password))
 	if err != nil {
 		return err
 	}

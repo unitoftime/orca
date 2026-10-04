@@ -3,6 +3,7 @@ module github.com/unitoftime/orca
 go 1.26.2
 
 require (
+	filippo.io/age v1.3.2
 	github.com/google/go-containerregistry v0.21.7
 	github.com/hashicorp/go-envparse v0.1.0
 	github.com/hashicorp/nomad/api v0.0.0-20260923175600-96dffc5a3e4f
@@ -12,6 +13,7 @@ require (
 )
 
 require (
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/docker/cli v29.5.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

@@ -232,11 +232,15 @@ A service lists the secrets it needs in its file, and you set the values with
 `orca secret set`. The files are the only list, so `orca secret list` can
 tell you exactly what is set and what is missing.
 
-**Values are stored only in the cluster**, in Nomad. Not in the repository,
-not in a key file, not in a job. They reach a container only when it starts.
-One consequence: CI can deploy without holding any secrets. The trade: a
-rebuilt cluster needs its secrets set again, and `orca secret list` shows
-which.
+**Values are stored in the cluster**, in Nomad. Not in a service file, not in
+a job. They reach a container only when it starts. One consequence: CI can
+deploy without holding any secrets. The trade: a rebuilt cluster has none.
+
+**An export is a copy, not the source.** `orca secret export` writes every
+secret the cluster holds to one file, encrypted to a passphrase, and
+`orca secret import` applies one. The cluster remains what services read and
+apply never opens the file, so deploying still needs no secret and no
+passphrase. Import writes only what differs and never removes anything.
 
 **Secrets arrive as files by default**, at `/secrets/<name>`. Environment
 variables leak easily: child processes inherit them, and libraries that log
