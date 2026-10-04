@@ -3,6 +3,7 @@
       shape yet.
 - [ ] Stages: one set of service files deployed as prod and test, each with
       its own vars. Held back until prod/test duplication actually bites.
+- [ ] Export and import secrets for resetting clusters. just password protected encrypted files I think
 
 Possible later:
 
