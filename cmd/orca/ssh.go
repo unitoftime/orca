@@ -108,6 +108,16 @@ func rsyncSSH() string {
 	return strings.Join(parts, " ")
 }
 
+// KeyLogin reports whether the host lets you in without a password typed.
+// BatchMode makes ssh fail where it would otherwise ask for one, and the
+// shared connection is bypassed: one opened with a password would let this
+// through without a key.
+func (n Node) KeyLogin(ctx context.Context) bool {
+	return exec.CommandContext(ctx, "ssh", "-n",
+		"-o", "BatchMode=yes", "-o", "ControlPath=none", "-o", "ConnectTimeout=10",
+		n.Host, "true").Run() == nil
+}
+
 // Run executes a command on the remote host, streaming output to the step log.
 func (n Node) Run(ctx context.Context, cmd string) error {
 	c := exec.CommandContext(ctx, "ssh", sshArgs(n.Host, cmd)...)

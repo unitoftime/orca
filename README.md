@@ -59,9 +59,12 @@ monitoring:
 Set up the server, then deploy:
 
 ```
-orca bootstrap            # on a fresh server: orca --ssh-copy-id bootstrap
+orca bootstrap
 orca apply
 ```
+
+On a server that does not accept your SSH key yet, `bootstrap` copies it over
+first, asking for the server's password once.
 
 `bootstrap` updates the OS, turns on automatic security updates, and installs
 Docker and Nomad. It is safe to run again; that is also how you upgrade orca on
@@ -546,9 +549,8 @@ orca password set                   change it
 orca nodes                          list the machines
 orca version                        orca's version and what it installs
 
-Flags that go before the command:
+A flag that goes before the command:
   -C <dir>          look for cluster.yaml starting here
-  --ssh-copy-id     copy your SSH key to the server first
 ```
 
 ## Learn more

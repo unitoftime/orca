@@ -29,6 +29,8 @@ a group of services; the directory is the group's name.
 Commands:
   bootstrap [node]   Bring a machine to a ready state: packages, docker, nomad.
                      Runs against every node in the config unless one is named.
+                     A machine that does not accept your SSH key yet is given
+                     it first, which asks for its password once.
   validate [group..] Parse and check the manifests without touching a machine.
   plan [group...]    Show what apply would change. Changes nothing.
   apply [group...]   Converge the cluster to the manifests. With no argument,
@@ -68,7 +70,6 @@ Commands:
 
 Flags:
   -C <dir>           Directory to search upward from (default ".")
-  --ssh-copy-id      Authorize your SSH key on the host first (fresh boxes)
 `
 
 const version = "0.0.1"
@@ -81,10 +82,7 @@ const version = "0.0.1"
 var build = "unknown"
 
 func main() {
-	var (
-		rootDir   = flag.String("C", ".", "directory to search upward from for cluster.yaml")
-		sshCopyID = flag.Bool("ssh-copy-id", false, "authorize your SSH key on the host before bootstrapping")
-	)
+	rootDir := flag.String("C", ".", "directory to search upward from for cluster.yaml")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
 
@@ -98,13 +96,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, args, *rootDir, *sshCopyID); err != nil {
+	if err := run(ctx, args, *rootDir); err != nil {
 		fmt.Fprintf(os.Stderr, "\norca: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, args []string, rootDir string, sshCopyID bool) error {
+func run(ctx context.Context, args []string, rootDir string) error {
 	cmd, rest := args[0], args[1:]
 
 	// Go's flag package stops at the first non-flag argument, so a global flag
@@ -113,8 +111,7 @@ func run(ctx context.Context, args []string, rootDir string, sshCopyID bool) err
 	// working directory instead and report that there is no cluster.yaml in
 	// it: an error about the wrong thing entirely.
 	for _, a := range rest {
-		switch a {
-		case "-C", "--ssh-copy-id":
+		if a == "-C" {
 			return fmt.Errorf("%s is a global flag and has to come before the command: orca %s ... %s", a, a, cmd)
 		}
 	}
@@ -163,7 +160,7 @@ func run(ctx context.Context, args []string, rootDir string, sshCopyID bool) err
 		if len(rest) > 0 {
 			ref = rest[0]
 		}
-		return cmdBootstrap(ctx, cfg, ref, sshCopyID)
+		return cmdBootstrap(ctx, cfg, ref)
 
 	case "apply":
 		return cmdApply(ctx, cfg, rest, false)

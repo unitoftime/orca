@@ -34,8 +34,8 @@ Check the files, then bring the server up and deploy:
 
 ```
 orca validate                   # touches no server
-orca --ssh-copy-id bootstrap    # installs Docker and Nomad; drop --ssh-copy-id
-                                # if your key is already on the server
+orca bootstrap                  # installs Docker and Nomad; asks for the
+                                # server's password if your key is not on it yet
 orca apply
 ```
 

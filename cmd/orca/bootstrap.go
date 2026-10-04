@@ -31,7 +31,7 @@ const remoteStageDir = "/tmp/orca-bootstrap"
 
 // cmdBootstrap brings one node (or every node, if ref is empty) to a ready
 // state: packages, docker, nomad, running and joined.
-func cmdBootstrap(ctx context.Context, cfg Config, ref string, sshCopyID bool) error {
+func cmdBootstrap(ctx context.Context, cfg Config, ref string) error {
 	nodes := cfg.Nodes
 	if ref != "" {
 		n, ok := cfg.FindNode(ref)
@@ -43,7 +43,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string, sshCopyID bool) e
 
 	for _, nc := range nodes {
 		fmt.Fprintf(os.Stderr, "\n=== bootstrap %s (%s, %s) ===\n", nc.Name, nc.Host, nc.Role)
-		if err := bootstrapNode(ctx, cfg, nc, sshCopyID); err != nil {
+		if err := bootstrapNode(ctx, cfg, nc); err != nil {
 			return fmt.Errorf("bootstrap %s: %w", nc.Host, err)
 		}
 	}
@@ -76,7 +76,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string, sshCopyID bool) e
 	return list.Run(ctx)
 }
 
-func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig, sshCopyID bool) error {
+func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig) error {
 	node := Node{Host: nc.Host}
 
 	vars, err := nodeVars(cfg, nc)
@@ -112,13 +112,9 @@ func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig, sshCopyID boo
 
 	var list StepList
 
-	if sshCopyID {
-		list.Add("Authorize SSH key on remote host", func(ctx context.Context) error {
-			c := exec.CommandContext(ctx, "ssh-copy-id", node.Host)
-			c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-			return c.Run()
-		})
-	}
+	list.Add("Check SSH key login", func(ctx context.Context) error {
+		return authorizeKey(ctx, node)
+	})
 
 	list.AddRun(node, "Install rsync", "command -v rsync >/dev/null || (apt-get update && apt-get install -y rsync)")
 	list.AddRun(node, "Create staging directory", "mkdir -p "+remoteStageDir)
@@ -130,6 +126,19 @@ func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig, sshCopyID boo
 	}
 
 	return list.Run(ctx)
+}
+
+// authorizeKey makes sure the machine accepts your SSH key, copying it over
+// when it does not yet. orca runs a command per ssh, so without a key this
+// run and every one after it would stop to ask for the machine's password.
+func authorizeKey(ctx context.Context, node Node) error {
+	if node.KeyLogin(ctx) {
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "\n  no key login to %s yet; running ssh-copy-id, which asks for its password once\n", node.Host)
+	c := exec.CommandContext(ctx, "ssh-copy-id", node.Host)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return c.Run()
 }
 
 // nodeVars builds the {{KEY}} substitutions for one node's scripts.
