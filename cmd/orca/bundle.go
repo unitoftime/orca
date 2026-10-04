@@ -34,6 +34,19 @@ type Bundle struct {
 	Secrets           map[string]map[string]string `yaml:"secrets,omitempty"`
 	Registries        map[string]RegistryLogin     `yaml:"registries,omitempty"`
 	DashboardPassword string                       `yaml:"dashboard_password,omitempty"`
+
+	// Certificates are the ones issued for services with `tls:`, by
+	// hostname. Not secrets anyone sets, but a rebuilt cluster that has them
+	// asks the certificate authority for nothing, and the authority limits
+	// how often it will be asked.
+	Certificates map[string]Certificate `yaml:"certificates,omitempty"`
+}
+
+// Certificate is one issued certificate and its key, both PEM.
+type Certificate struct {
+	Owner string `yaml:"owner"`
+	Cert  string `yaml:"cert"`
+	Key   string `yaml:"key"`
 }
 
 // RegistryLogin is the credentials the cluster pulls one registry's images
@@ -56,6 +69,8 @@ const bundleHeader = `# orca secrets, in plaintext. The shape:
 #       username: <username>
 #       password: <token>
 #   dashboard_password: <value>
+#   certificates:
+#     <hostname>: {owner: <group>/<service>, cert: <pem>, key: <pem>}
 
 `
 
@@ -111,6 +126,14 @@ func parseBundle(data []byte) (Bundle, error) {
 			errs = append(errs, fmt.Errorf("registry %s needs a username and a password", host))
 		}
 	}
+	for host, c := range b.Certificates {
+		if deploy.CertPath(host) == deploy.CertPrefix+"/" || strings.ContainsAny(host, "/ ") {
+			errs = append(errs, fmt.Errorf("certificate %q should be a hostname", host))
+		}
+		if c.Cert == "" || c.Key == "" {
+			errs = append(errs, fmt.Errorf("certificate %s needs a cert and a key", host))
+		}
+	}
 	if p := b.DashboardPassword; p != "" && len(p) < minPasswordLength {
 		errs = append(errs, fmt.Errorf("dashboard_password must be at least %d characters", minPasswordLength))
 	}
@@ -131,18 +154,31 @@ func (b Bundle) variables() variables {
 	if b.DashboardPassword != "" {
 		v[deploy.AdminPasswordPath] = map[string]string{deploy.AdminPasswordKey: b.DashboardPassword}
 	}
+	for host, c := range b.Certificates {
+		v[deploy.CertPath(host)] = map[string]string{
+			deploy.CertNameKey: host, deploy.CertOwnerKey: c.Owner,
+			deploy.CertChainKey: c.Cert, deploy.CertKeyKey: c.Key,
+		}
+	}
 	return v
 }
 
 // bundleOf is the store's variables as a bundle: the inverse of
 // Bundle.variables.
 func bundleOf(v variables) Bundle {
-	b := Bundle{Secrets: map[string]map[string]string{}, Registries: map[string]RegistryLogin{}}
+	b := Bundle{Secrets: map[string]map[string]string{}, Registries: map[string]RegistryLogin{}, Certificates: map[string]Certificate{}}
 	for path, items := range v {
 		if path == deploy.AdminPasswordPath {
 			b.DashboardPassword = items[deploy.AdminPasswordKey]
 		} else if host, ok := deploy.RegistryHost(path); ok {
 			b.Registries[host] = RegistryLogin{Username: items[registryUsernameKey], Password: items[registryPasswordKey]}
+		} else if strings.HasPrefix(path, deploy.CertPrefix+"/") {
+			// One still being asked for holds nothing to keep.
+			if items[deploy.CertChainKey] != "" {
+				b.Certificates[items[deploy.CertNameKey]] = Certificate{
+					Owner: items[deploy.CertOwnerKey], Cert: items[deploy.CertChainKey], Key: items[deploy.CertKeyKey],
+				}
+			}
 		} else if ref, ok := secretRefOf(path); ok {
 			if b.Secrets[ref.Group] == nil {
 				b.Secrets[ref.Group] = map[string]string{}
@@ -177,6 +213,9 @@ func variableLabel(path string) string {
 	}
 	if ref, ok := secretRefOf(path); ok {
 		return ref.String()
+	}
+	if key, ok := strings.CutPrefix(path, deploy.CertPrefix+"/"); ok {
+		return "certificate " + strings.ReplaceAll(key, "_", ".")
 	}
 	return path
 }

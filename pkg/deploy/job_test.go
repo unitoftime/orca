@@ -219,7 +219,7 @@ ports:
 	for _, want := range []string{
 		"traefik.enable=true",
 		"Host(`web.shop.example.com`)",
-		"tls.certresolver=orca",
+		".tls=true",
 	} {
 		if !strings.Contains(tags, want) {
 			t.Errorf("tags should contain %q, got:\n%s", want, tags)
@@ -244,8 +244,8 @@ func TestRoutesNameEntrypointsIngressDefines(t *testing.T) {
 					t.Errorf("tls=%v: route names entrypoint %q, which ingress does not define:\n%s", tls, ep, static)
 				}
 			}
-			if _, r, ok := strings.Cut(tag, ".tls.certresolver="); ok && (!tls || !strings.Contains(static, "\n  "+r+":\n")) {
-				t.Errorf("tls=%v: route names resolver %q that ingress does not define", tls, r)
+			if _, r, ok := strings.Cut(tag, ".tls.certresolver="); ok {
+				t.Errorf("tls=%v: route names resolver %q, and ingress defines none: its certificates come from the certificate job", tls, r)
 			}
 		}
 	}

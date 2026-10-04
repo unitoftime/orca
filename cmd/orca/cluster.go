@@ -602,7 +602,7 @@ func variableBody(path string, items map[string]string) ([]byte, error) {
 // variablePrefixes are everything orca keeps in the store that is a secret of
 // some kind: what a manifest references, the registry logins, and the
 // dashboard password. The apply lock is the one thing left out.
-var variablePrefixes = []string{deploy.SecretPrefix + "/", deploy.RegistryPrefix + "/", deploy.AdminPasswordPath}
+var variablePrefixes = []string{deploy.SecretPrefix + "/", deploy.RegistryPrefix + "/", deploy.AdminPasswordPath, deploy.CertPrefix + "/"}
 
 // Variables reads every secret the cluster holds, values included.
 //
@@ -611,6 +611,29 @@ var variablePrefixes = []string{deploy.SecretPrefix + "/", deploy.RegistryPrefix
 // call that pulls plaintext off the machine wholesale, and exporting or
 // editing the cluster's secrets is the only reason to make it.
 func (c *Cluster) Variables(ctx context.Context) (variables, error) {
+	vars, err := c.readVariables(ctx, variablePrefixes, "{Path, Items}")
+	if err != nil {
+		return nil, fmt.Errorf("read the cluster's secrets: %w", err)
+	}
+	return vars, nil
+}
+
+// Certificates reads every certificate record, without its private key:
+// what there is to know about a certificate (who asked, when it expires, why
+// it failed) is all in the rest, so the key has no reason to leave the
+// machine.
+func (c *Cluster) Certificates(ctx context.Context) (variables, error) {
+	vars, err := c.readVariables(ctx, []string{deploy.CertPrefix + "/"},
+		fmt.Sprintf("{Path, Items: (.Items | del(.%s))}", deploy.CertKeyKey))
+	if err != nil {
+		return nil, fmt.Errorf("read the cluster's certificates: %w", err)
+	}
+	return vars, nil
+}
+
+// readVariables reads every variable under the prefixes in one round trip.
+// project is the jq that shapes each one into a {Path, Items} line.
+func (c *Cluster) readVariables(ctx context.Context, prefixes []string, project string) (variables, error) {
 	// Fails closed, like SecretPaths: a listing or a read that fails must not
 	// pass for a store with less in it, since an export would then be a
 	// backup quietly missing secrets.
@@ -618,12 +641,12 @@ func (c *Cluster) Variables(ctx context.Context) (variables, error) {
 for prefix in %[2]s; do
   curl -sf --max-time 10 "%[1]s/v1/vars?prefix=$prefix" | jq -r '.[].Path' || exit 1
 done | while IFS= read -r path; do
-  curl -sf --max-time 10 "%[1]s/v1/var/$path" | jq -c '{Path, Items}' || exit 1
-done`, NomadAddr, strings.Join(variablePrefixes, " "))
+  curl -sf --max-time 10 "%[1]s/v1/var/$path" | jq -c '%[3]s' || exit 1
+done`, NomadAddr, strings.Join(prefixes, " "), project)
 
 	out, err := c.node.RunOutput(ctx, script)
 	if err != nil {
-		return nil, fmt.Errorf("read the cluster's secrets: %w", err)
+		return nil, err
 	}
 
 	vars := variables{}
@@ -634,7 +657,7 @@ done`, NomadAddr, strings.Join(variablePrefixes, " "))
 			Items map[string]string
 		}
 		if err := dec.Decode(&v); err != nil {
-			return nil, fmt.Errorf("read the cluster's secrets: %w", err)
+			return nil, err
 		}
 		vars[v.Path] = v.Items
 	}
@@ -725,6 +748,12 @@ func (c *Cluster) CreateAdminPassword(ctx context.Context, value string) (bool, 
 		return false, fmt.Errorf("store the dashboard password: %w", err)
 	}
 	return created, nil
+}
+
+// deleteVariable removes one variable. One that is already gone is not an
+// error: Nomad answers a delete of nothing with success.
+func (c *Cluster) deleteVariable(ctx context.Context, path string) error {
+	return c.node.RunQuiet(ctx, fmt.Sprintf(`curl -sf --max-time 10 -X DELETE "%s/v1/var/%s" > /dev/null`, NomadAddr, path))
 }
 
 // DeleteSecret removes one secret.

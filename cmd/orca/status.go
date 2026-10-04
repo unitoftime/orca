@@ -111,6 +111,7 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 	}
 
 	printVolumeUsage(ctx, cfg, cluster, want)
+	printCertificates(ctx, cluster, want)
 	return nil
 }
 

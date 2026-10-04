@@ -228,7 +228,7 @@ func TestDashboardRoutesReloadWithoutRestart(t *testing.T) {
 	job := platformJobNamed(t, platformOpts(), "traefik")
 	var found bool
 	for _, tmpl := range job.TaskGroups[0].Tasks[0].Templates {
-		if *tmpl.DestPath == "local/dynamic.yml" {
+		if *tmpl.DestPath == "secrets/dynamic.yml" {
 			found = true
 			if *tmpl.ChangeMode != "noop" {
 				t.Errorf("dynamic.yml change mode = %q, want noop", *tmpl.ChangeMode)
@@ -442,7 +442,7 @@ func TestDashboardRoutes(t *testing.T) {
 
 	for _, want := range []string{
 		"logs.example.com", "metrics.example.com",
-		"basicAuth", "admin:$2a$10$hash", "certResolver: orca",
+		"basicAuth", "admin:$2a$10$hash", "tls: {}",
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("dynamic config missing %q:\n%s", want, cfg)

@@ -112,6 +112,17 @@ func checkHostnames(groups []*manifest.Manifest, reserved map[string]string) err
 				}
 				taken[host] = who
 			}
+			// A name a service serves TLS for by itself is claimed like any
+			// other: a certificate has one owner, which is what decides when
+			// it is no longer needed.
+			if s.TLS != "" {
+				who := fmt.Sprintf("%s/%s (%s)", m.App, s.Name, s.SourceFile())
+				if prev, ok := taken[s.TLS]; ok {
+					errs = append(errs, fmt.Errorf("hostname %s is claimed by %s and %s", s.TLS, prev, who))
+					continue
+				}
+				taken[s.TLS] = who
+			}
 		}
 	}
 	return errors.Join(errs...)

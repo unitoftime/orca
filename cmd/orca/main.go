@@ -156,6 +156,10 @@ func run(ctx context.Context, args []string, rootDir string) error {
 		// What the status job runs on the machine, where there is no
 		// cluster.yaml; not listed in the usage.
 		return cmdServeStatus(ctx, rest)
+
+	case "serve-certs":
+		// What the certificate job runs on the machine; not listed either.
+		return cmdServeCerts(ctx, rest)
 	}
 
 	if err := needConfig(); err != nil {

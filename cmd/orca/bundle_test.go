@@ -17,6 +17,10 @@ func TestBundleSurvivesExportAndImport(t *testing.T) {
 		deploy.RegistryPath("ghcr.io"):           registryItems("you", "token"),
 		deploy.RegistryPath("localhost:5000"):    registryItems("you", "token"),
 		deploy.AdminPasswordPath:                 {deploy.AdminPasswordKey: "0123456789abcdef"},
+		deploy.CertPath("play.example.com"): {
+			deploy.CertNameKey: "play.example.com", deploy.CertOwnerKey: "game/proxy",
+			deploy.CertChainKey: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n", deploy.CertKeyKey: "-----BEGIN EC PRIVATE KEY-----\nBBBB\n-----END EC PRIVATE KEY-----\n",
+		},
 	}
 
 	file, err := encodeBundle(bundleOf(held), "a passphrase")

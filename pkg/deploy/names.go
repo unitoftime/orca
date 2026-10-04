@@ -73,6 +73,55 @@ const (
 	AdminPasswordKey  = "password"
 )
 
+// CertPrefix is where the certificates orca manages live in Nomad's variable
+// store: one variable per hostname, holding the request for it and, once
+// issued, the certificate itself. A sibling of SecretPrefix, like the others.
+//
+// The record is the whole of a certificate's state. Apply creates it to ask
+// for one, the certificate job fills it in and renews it, and a service's
+// files are rendered straight from it on whichever machine the service runs.
+const CertPrefix = "orca-cert"
+
+// The items of a certificate's variable.
+const (
+	CertNameKey  = "name"  // the hostname, since the path cannot spell it
+	CertOwnerKey = "owner" // <group>/<service> that asked for it
+	CertChainKey = "cert"  // PEM, leaf first; absent until issued
+	CertKeyKey   = "key"   // PEM private key
+	CertErrorKey = "error" // why the last attempt failed; absent when it did not
+
+	// CertAuthorityKey is the ACME directory the certificate came from. One
+	// from an authority the cluster no longer uses is replaced, which is what
+	// makes moving from a staging authority to the real one take effect.
+	CertAuthorityKey = "authority"
+)
+
+// CertPath is where one hostname's certificate lives. Written like
+// RegistryPath, for the same reason: Nomad refuses a "." in a variable path.
+func CertPath(host string) string {
+	return CertPrefix + "/" + registryPathReplacer.Replace(host)
+}
+
+// ACMEAccountPath holds the key of the cluster's account with the
+// certificate authority. ACMETokenPrefix holds the answer to each ownership
+// check in flight, by its token, so that any machine asked for one can give it.
+const (
+	ACMEAccountPath = "orca-acme/account"
+	ACMEAccountKey  = "key"
+	ACMETokenPrefix = "orca-acme/token"
+	ACMETokenKey    = "key_auth"
+)
+
+// ACMEChallengePath is the URL path a certificate authority fetches a token's
+// answer from, on port 80 of whatever the hostname resolves to.
+const ACMEChallengePath = "/.well-known/acme-challenge/"
+
+// The files a service with `tls:` finds its certificate in, under /secrets.
+const (
+	TLSCertFile = "tls/cert.pem"
+	TLSKeyFile  = "tls/key.pem"
+)
+
 // ApplyLockPath is the variable an apply holds a lock on for as long as it
 // runs, so two cannot interleave. A sibling of SecretPrefix, like the others.
 const ApplyLockPath = "orca-lock/apply"

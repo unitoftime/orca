@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"sort"
@@ -116,8 +117,10 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	// that build by its hash, so the build is found, and if need be made,
 	// before the job can be rendered. Plan does this too; it only ships in
 	// apply.
+	// The certificate job is the same build, and runs wherever there is
+	// HTTPS, since every certificate ingress presents comes from it.
 	var statusBin *statusBinary
-	if platformInScope && cfg.Monitoring.Status.Enabled {
+	if platformInScope && (cfg.Monitoring.Status.Enabled || cfg.Ingress.TLS()) {
 		b, err := resolveStatusBinary(ctx)
 		if err != nil {
 			return err
@@ -175,6 +178,24 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		return err
 	}
 
+	// A certificate a service serves itself is in hand before the service is
+	// submitted, for the reason a secret is checked: Nomad blocks a task
+	// whose certificate is missing, having already stopped the copy before it.
+	// The ones ingress presents are asked for in the same breath.
+	certRecords, err := cluster.Certificates(ctx)
+	if err != nil {
+		return err
+	}
+	certs := planCerts(wantedCerts(cfg, apps, platformInScope), certRecords, func(group string) bool {
+		// Every group is a full apply's to decide for, declared or not: one
+		// whose directory is gone has no use for its certificates either.
+		// A narrowed apply decides for the groups it names, likewise.
+		return len(args) == 0 || slices.Contains(args, group)
+	})
+	if err := checkCertsPossible(cfg, certs, current, platformInScope); err != nil {
+		return err
+	}
+
 	plans, err := cluster.PlanJobs(ctx, desired)
 	if err != nil {
 		return err
@@ -187,6 +208,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		for _, g := range toGenerate {
 			fmt.Printf("  generate secret %s\n", g)
 		}
+		fmt.Print(certs.String())
 		fmt.Println(plan.String())
 		return nil
 	}
@@ -199,6 +221,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		inScope = append(inScope, *j.ID)
 	}
 
+	fmt.Print(certs.String())
 	fmt.Println(plan.String())
 
 	if bad := plan.Unplaceable(); len(bad) > 0 {
@@ -236,12 +259,12 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	// Before the job that mounts it is submitted, and on a no-op apply too,
 	// so a build removed from the machine is back before the page restarts.
 	if statusBin != nil {
-		if err := shipStatusBinary(ctx, cfg, *statusBin); err != nil {
+		if err := shipStatusBinary(ctx, *statusBin, binaryHosts(cfg)); err != nil {
 			return err
 		}
 	}
 
-	if !plan.HasWork() {
+	if !plan.HasWork() && len(certs.Request) == 0 && len(certs.Remove) == 0 {
 		return waitForHealth(ctx, cluster, inScope, nil, false)
 	}
 
@@ -249,12 +272,63 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		return err
 	}
 
-	submitted, err := execute(ctx, cluster, plan)
+	// orca's own jobs first when a certificate is waited for, since the job
+	// that issues it may be among them. Everything else is held back until
+	// the certificates exist, so a name that cannot be proven changes no
+	// service.
+	submitted := map[string]bool{}
+	if len(certs.Request) > 0 {
+		own, rest := splitPlatform(plan)
+		if submitted, err = execute(ctx, cluster, own); err != nil {
+			return err
+		}
+		if err := requestCerts(ctx, cluster, certs.Request); err != nil {
+			return err
+		}
+		plan = rest
+	}
+
+	more, err := execute(ctx, cluster, plan)
 	if err != nil {
 		return err
 	}
+	maps.Copy(submitted, more)
+
+	// After the services that held them were updated or stopped.
+	removeCerts(ctx, cluster, certs.Remove)
 
 	return waitForHealth(ctx, cluster, inScope, submitted, true)
+}
+
+// splitPlatform divides a plan into the changes to orca's own jobs and the
+// rest.
+func splitPlatform(plan deploy.Plan) (own, rest deploy.Plan) {
+	for _, c := range plan.Changes {
+		if c.App == deploy.OrcaApp {
+			own.Changes = append(own.Changes, c)
+		} else {
+			rest.Changes = append(rest.Changes, c)
+		}
+	}
+	return own, rest
+}
+
+// binaryHosts is every machine a job made of orca's own binary runs on: the
+// status page's, and the certificate job's beside ingress.
+func binaryHosts(cfg Config) []NodeConfig {
+	var hosts []NodeConfig
+	add := func(n NodeConfig, err error) {
+		if err == nil && !slices.ContainsFunc(hosts, func(h NodeConfig) bool { return h.Host == n.Host }) {
+			hosts = append(hosts, n)
+		}
+	}
+	if cfg.Monitoring.Status.Enabled {
+		add(cfg.MonitoringNode())
+	}
+	if cfg.Ingress.TLS() {
+		add(cfg.IngressNode())
+	}
+	return hosts
 }
 
 // preflightSecrets checks that every secret the apply needs is set or about
@@ -706,6 +780,12 @@ func platformOptions(cfg Config, authHash string, statusBin *statusBinary) deplo
 		opts.Status = &deploy.StatusSpec{Image: images.Alpine}
 		if statusBin != nil {
 			opts.Status.Binary = statusBin.Remote()
+		}
+	}
+	if cfg.Ingress.TLS() {
+		opts.Certs = &deploy.CertsSpec{Image: images.Alpine, Directory: cfg.Ingress.ACMEDirectory}
+		if statusBin != nil {
+			opts.Certs.Binary = statusBin.Remote()
 		}
 	}
 	return opts

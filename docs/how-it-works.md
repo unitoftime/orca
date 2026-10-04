@@ -108,13 +108,14 @@ the `orca` group.
 |---|---|
 | Docker | Runs the containers. orca caps its log files so they cannot fill the disk. |
 | Nomad | The scheduler: starts, restarts and places containers, and stores the cluster's secrets. |
-| Traefik (ingress) | Routes hostnames to services, with HTTPS certificates from Let's Encrypt that renew themselves. Also serves the web dashboards. |
+| Traefik (ingress) | Routes hostnames to services over HTTPS, presenting the certificates the certificate job gets from Let's Encrypt. Also serves the web dashboards. |
 | CoreDNS (the resolver) | Runs on every machine so services can find each other by name. |
 | Vector | Runs on every machine, reads every container's logs and sends them to the log store. |
 | VictoriaLogs | Stores logs, with a hard disk limit. `orca logs` reads from it. |
 | VictoriaMetrics | Collects and stores metrics from services' `metrics` ports, Nomad and every machine. |
 | Node exporter | Runs on every machine and reports its CPU, memory, disks and network. |
 | Status page | orca itself, serving `status.<domain>`. `orca top` shows the same in a terminal. |
+| Certificate job | orca itself again. Gets and renews every certificate: the ones ingress presents, and the ones given to services that serve TLS themselves (`tls:`). |
 | Firewall | nftables rules generated from your files on every apply. Not a job. |
 | Security updates | Installed automatically from the OS's security updates. Docker and Nomad are pinned and not touched by them. |
 | Registry helper | Lets Nomad pull private images using the cluster's own registry logins. |
@@ -177,6 +178,44 @@ their own port number, so two services using the same port cannot share a
 machine. Ingress, the log and metric stores and the status page run on the
 first server unless you place them elsewhere. A service with a volume stays
 on the machine that holds its data.
+
+## Certificates
+
+One job gets every certificate the cluster serves, and everything else only
+reads them. Ingress presents them for hostname ports and the dashboards. A
+service on a raw port has no ingress in front of it, so `tls: <hostname>` has
+its certificate delivered into the container instead.
+
+**A certificate is one record in the cluster's variable store**, the same
+encrypted, replicated store secrets live in. Apply creates the record, which
+is the request. The certificate job fills it in, and renews it when two thirds
+of its life has passed. Nomad's agent on whichever machine runs the service
+renders the record into `/secrets/tls/` there, and rewrites the files when the
+record changes. Nothing copies a certificate between machines, and the job
+that issues them keeps nothing on its own disk.
+
+**Ingress reads the same records.** Nomad renders every issued certificate
+into ingress's configuration, which ingress reloads without restarting. So a
+certificate that is already issued keeps being served whether or not the job
+that issued it is running.
+
+**Proving a name** means the certificate authority fetching a token from port
+80 of wherever the name points. Ingress holds that port, and forwards every
+such fetch to the certificate job, which answers from the store. Before asking the authority to check, the job fetches
+the token through ingress itself, so a route that is not there is reported as
+that, and does not use up one of the authority's few allowed failures.
+
+**Apply waits for a certificate a service serves itself** before it submits
+that service. Nomad will not start a task whose certificate is missing, and
+by then it has stopped the copy that was running, so a name that cannot be
+proven has to stop the apply while nothing has changed. A certificate ingress
+presents is different: the service behind it runs the same without one, so a
+failure there is a warning, the job keeps trying, and a service can be
+deployed before its DNS is moved.
+
+**Renewal does not restart anything.** The files change in place and the
+service is expected to read them again. Restarting on a schedule the author
+did not choose is an outage, and the schedule is the authority's.
 
 ## Your data is safe by default
 

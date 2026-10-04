@@ -135,6 +135,37 @@ ports:
 - A service with no `ports` is not reachable at all, which is right for most
   background workers.
 
+### Serving TLS yourself
+
+A hostname port is HTTPS because ingress sits in front of it and presents its
+certificate. A service that takes connections directly, on a `tcp` or `udp`
+port, has no ingress in front, so it needs the certificate itself:
+
+```yaml
+name: proxy
+image: ghcr.io/you/game-proxy:latest
+tls: play.example.com
+ports:
+  7777: [tcp, udp]
+```
+
+- orca gets a certificate for the name and puts it in the container as
+  `/secrets/tls/cert.pem` (the full chain) and `/secrets/tls/key.pem`.
+- **The service must reload them from disk.** A certificate is renewed about
+  every two months, and orca rewrites the two files in place when it is. It
+  does not restart the service for it, because a renewal is nobody's deploy.
+- Point the name at the ingress machine: the certificate authority checks it
+  on port 80, which ingress answers. Apply gets the certificate before it
+  deploys the service, and stops with the authority's reason if it cannot.
+- The name can't also be a hostname port.
+
+Every certificate, these and the ones ingress presents for hostname ports and
+the dashboards, is issued and renewed by one job orca runs, and `orca status`
+shows each with when it expires. A hostname port's service is deployed even
+when its certificate cannot be issued yet, with a warning, so a service can be
+brought up before its DNS is moved; the certificate follows within a quarter
+of an hour of the name pointing at the machine.
+
 ### Finding other services
 
 Services reach each other by name:
@@ -278,8 +309,8 @@ orca secret export --plain            # print them in plaintext
 ```
 
 - The file holds everything needed to rebuild: your secrets, the passwords
-  orca generated for databases, the registry logins and the dashboards'
-  password. Rebuilding is `orca bootstrap`, `orca secret import`, `orca apply`.
+  orca generated for databases, the registry logins, the dashboards'
+  password and every certificate issued. Rebuilding is `orca bootstrap`, `orca secret import`, `orca apply`.
 - It is an ordinary [age](https://age-encryption.org) file, so `age -d` opens
   it without orca. It is safe to commit only as far as its passphrase is
   strong: anyone with the repository can try guesses forever.
@@ -475,6 +506,9 @@ nodes:
 
 ingress:                      # or `ingress: false` if nothing is served over HTTP
   acme_email: you@example.com # optional contact for Let's Encrypt
+  acme_directory: https://acme-staging-v02.api.letsencrypt.org/directory
+                              # where certificates come from; Let's Encrypt if
+                              # unset. Staging, as here, while testing
   https: false                # plain HTTP, for names Let's Encrypt can't reach;
                               # the dashboards are then not published
 

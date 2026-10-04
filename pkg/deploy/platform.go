@@ -24,7 +24,7 @@ const OrcaApp = manifest.ReservedGroup
 // when a component was added and the third would silently miss it.
 // vector is absent deliberately: it registers no port, so there is no address
 // to resolve or to filter logs by.
-var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-exporter", "status", "dns"}
+var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-exporter", "status", "certs", "dns"}
 
 // Ingress's entrypoints and certificate resolver, named once. The routes an
 // app carries in its catalog tags must name exactly what Traefik's own
@@ -32,7 +32,6 @@ var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-
 const (
 	EntryPointHTTP  = "http"
 	EntryPointHTTPS = "https"
-	CertResolver    = "orca"
 )
 
 // Well-known ports for the platform's data stores. They are fixed rather than
@@ -82,6 +81,7 @@ type PlatformOptions struct {
 	Logs    *LogsSpec
 	Metrics *MetricsSpec
 	Status  *StatusSpec
+	Certs   *CertsSpec
 
 	// DNS is the resolver. Enabled means services find each other by name;
 	// disabled means they have no way to, so it is on unless deliberately
@@ -130,6 +130,18 @@ type IngressSpec struct {
 type StatusSpec struct {
 	Image  string
 	Binary string
+}
+
+// CertsSpec is the certificate job: what gets the certificates services ask
+// for with `tls:` and keeps them renewed. Like the status page it is orca
+// itself, run as `orca serve-certs`; Image and Binary mean what they do there.
+type CertsSpec struct {
+	Image  string
+	Binary string
+
+	// Directory is the certificate authority's ACME directory. Empty is
+	// Let's Encrypt.
+	Directory string
 }
 
 // StatusBinaryDir is where apply ships orca's own binary for the status page.
@@ -184,6 +196,11 @@ func BuildPlatform(opts PlatformOptions) []*nomad.Job {
 		jobs = append(jobs, statusJob(opts))
 	}
 	if opts.Ingress != nil {
+		// Only with ingress: the authority checks a name on port 80, and
+		// ingress is what holds it.
+		if opts.Certs != nil {
+			jobs = append(jobs, certsJob(opts))
+		}
 		jobs = append(jobs, ingressJob(opts))
 	}
 	return jobs
@@ -560,6 +577,51 @@ func statusJob(opts PlatformOptions) *nomad.Job {
 	return job
 }
 
+// certsJob runs the certificate job.
+//
+// Host networking for the status page's reason: it reads and writes Nomad's
+// variable store, which answers on loopback. On the ingress machine, since
+// ingress is what forwards the authority's checks to it and what it checks
+// its own route through. It keeps nothing on disk.
+func certsJob(opts PlatformOptions) *nomad.Job {
+	job, group, task := platformJob(opts, "certs", opts.Certs.Image, 100, 64)
+	pinTo(group, opts.IngressNode)
+
+	group.Networks = []*nomad.NetworkResource{{
+		Mode:         "host",
+		DynamicPorts: []nomad.Port{{Label: "http", HostNetwork: storeNetwork(opts)}},
+	}}
+
+	task.Config["network_mode"] = "host"
+	task.Config["command"] = "/orca"
+	args := []string{
+		"serve-certs",
+		"--listen=${NOMAD_ADDR_http}",
+		fmt.Sprintf("--nomad=http://127.0.0.1:%d", NomadHTTPPort),
+	}
+	if opts.Certs.Directory != "" {
+		args = append(args, "--directory="+opts.Certs.Directory)
+	}
+	if opts.Ingress.ACMEEmail != "" {
+		args = append(args, "--email="+opts.Ingress.ACMEEmail)
+	}
+	task.Config["args"] = args
+	if opts.Certs.Binary != "" {
+		task.Config["volumes"] = []string{opts.Certs.Binary + ":/orca:ro"}
+	}
+
+	group.Services = []*nomad.Service{{
+		Name:      CatalogName(OrcaApp, "certs"),
+		Tags:      []string{DNSTag(OrcaApp, "certs")},
+		PortLabel: "http",
+		Provider:  "nomad",
+		Checks: []nomad.ServiceCheck{{
+			Type: "http", Path: "/healthz", Interval: dur("15s"), Timeout: dur("3s"),
+		}},
+	}}
+	return job
+}
+
 // Environment variables the status page finds the stores by.
 const (
 	StatusEnvMetrics = "ORCA_METRICS_URL"
@@ -709,7 +771,8 @@ sinks:
 
 func ingressJob(opts PlatformOptions) *nomad.Job {
 	job, group, task := platformJob(opts, "traefik", opts.Images.Traefik, 200, 256)
-	// Pinned for its certificates, and because it is where DNS points.
+	// Pinned because it is where DNS points. It keeps nothing on disk: its
+	// certificates come from the variable store.
 	pinTo(group, opts.IngressNode)
 
 	// Host networking, for two reasons: 80 and 443 have to be the real ports on
@@ -724,7 +787,6 @@ func ingressJob(opts PlatformOptions) *nomad.Job {
 		},
 	}}
 	task.Config["network_mode"] = "host"
-	task.Config["volumes"] = []string{PlatformVolumePath(opts.DataDir, "traefik") + ":/data"}
 	task.Config["args"] = []string{"--configFile=/local/traefik.yml"}
 
 	task.Templates = append(task.Templates, &nomad.Template{
@@ -744,8 +806,9 @@ func ingressJob(opts PlatformOptions) *nomad.Job {
 		// ingress for that would drop every HTTP service to re-route one.
 		task.Templates = append(task.Templates, &nomad.Template{
 			EmbeddedTmpl: ptr(dyn),
-			DestPath:     ptr("local/dynamic.yml"),
-			ChangeMode:   ptr("noop"),
+			// In the task's private tmpfs: it holds the certificates' keys.
+			DestPath:   ptr("secrets/dynamic.yml"),
+			ChangeMode: ptr("noop"),
 		})
 	}
 
@@ -781,7 +844,15 @@ entryPoints:
 
 	// With HTTPS off, ingress still routes — it just serves plain HTTP.
 	if opts.Ingress.TLS {
-		fmt.Fprintf(&b, `    http:
+		// allowACMEByPass leaves the path a certificate authority checks out
+		// of the redirect, so that check reaches the certificate job over
+		// plain HTTP, which is how the authority makes it.
+		//
+		// Ingress asks for no certificates itself. Every route on the HTTPS
+		// entrypoint serves whichever of the certificate job's matches the
+		// name; see traefikDynamicConfig.
+		fmt.Fprintf(&b, `    allowACMEByPass: true
+    http:
       redirections:
         entryPoint:
           to: %[1]s
@@ -789,9 +860,8 @@ entryPoints:
   %[1]s:
     address: ":443"
     http:
-      tls:
-        certResolver: %[2]s
-`, EntryPointHTTPS, CertResolver)
+      tls: {}
+`, EntryPointHTTPS)
 	}
 
 	// watch: routes follow Nomad's event stream instead of a poll every 15s,
@@ -805,27 +875,12 @@ providers:
       address: http://127.0.0.1:4646
 `)
 
-	if dashboardsEnabled(opts) {
+	if traefikDynamicConfig(opts) != "" {
 		// Watched, so a changed route reaches Traefik without a restart.
 		b.WriteString(`  file:
-    filename: /local/dynamic.yml
+    filename: /secrets/dynamic.yml
     watch: true
 `)
-	}
-
-	if opts.Ingress.TLS {
-		fmt.Fprintf(&b, `
-certificatesResolvers:
-  %s:
-    acme:
-`, CertResolver)
-		if opts.Ingress.ACMEEmail != "" {
-			fmt.Fprintf(&b, "      email: %q\n", opts.Ingress.ACMEEmail)
-		}
-		fmt.Fprintf(&b, `      storage: /data/acme.json
-      httpChallenge:
-        entryPoint: %s
-`, EntryPointHTTP)
 	}
 
 	return b.String()
@@ -849,10 +904,14 @@ type dashboard struct {
 
 	// fallback is used until the service has registered.
 	fallback string
+
+	// internal is a backend with no page of its own to publish.
+	internal bool
 }
 
-// traefikDynamicConfig publishes the platform's web UIs on subdomains, behind
-// basic auth.
+// traefikDynamicConfig is the routing ingress cannot learn from the catalog:
+// the platform's web UIs on subdomains, behind basic auth, and the ownership
+// checks the certificate job answers.
 //
 // vmui, the query UI built into both Victoria binaries, is what makes logs
 // and metrics explorable in a browser without running Grafana. The status
@@ -863,8 +922,93 @@ type dashboard struct {
 // privileged, on every machine" behind one shared password. It stays
 // reachable over an SSH tunnel.
 func traefikDynamicConfig(opts PlatformOptions) string {
-	if !dashboardsEnabled(opts) {
+	boards := dashboards(opts)
+	certs := opts.Certs != nil && opts.Ingress != nil && opts.Ingress.TLS
+	if len(boards) == 0 && !certs {
 		return ""
+	}
+	if certs {
+		// A backend like any dashboard's. Its port is dynamic, so there is
+		// no address to fall back to; see the status page's.
+		boards = append(boards, dashboard{name: "certs", service: CatalogName(OrcaApp, "certs"), fallback: "http://127.0.0.1:1", internal: true})
+	}
+
+	var b strings.Builder
+
+	// Resolve every backend up front. The fallback keeps the file valid before
+	// a store has registered, which matters because an unparseable dynamic
+	// config would take down the routes that do work alongside it.
+	for _, d := range boards {
+		fmt.Fprintf(&b, `{{ $%s := %q }}{{ range nomadService %q }}{{ $%s = printf "http://%%s:%%d" .Address .Port }}{{ end }}`+"\n",
+			d.name, d.fallback, d.service, d.name)
+	}
+
+	b.WriteString("http:\n")
+	if dashboardsEnabled(opts) {
+		b.WriteString("  middlewares:\n    dashboard-auth:\n      basicAuth:\n        users:\n")
+		fmt.Fprintf(&b, "          - %q\n", "admin:"+opts.Ingress.AuthHash)
+	}
+
+	b.WriteString("  routers:\n")
+	for _, d := range boards {
+		if d.internal {
+			continue
+		}
+		fmt.Fprintf(&b, `    %s:
+      rule: "Host(`+"`"+`%s.%s`+"`"+`)"
+      service: %s
+      middlewares: [dashboard-auth]
+`, d.name, d.name, opts.Domain, d.name)
+		if opts.Ingress.TLS {
+			b.WriteString("      tls: {}\n")
+		}
+	}
+	if certs {
+		// Every ownership check, for any name, goes to the certificate job:
+		// it is the only thing here that asks an authority for anything.
+		fmt.Fprintf(&b, `    acme:
+      rule: "PathPrefix(`+"`"+`%s`+"`"+`)"
+      entryPoints: [%s]
+      service: certs
+`, ACMEChallengePath, EntryPointHTTP)
+	}
+
+	b.WriteString("  services:\n")
+	for _, d := range boards {
+		fmt.Fprintf(&b, `    %s:
+      loadBalancer:
+        servers:
+          - url: %q
+`, d.name, fmt.Sprintf("{{ $%s }}", d.name))
+	}
+
+	if certs {
+		// Every certificate the cluster holds, rendered from the store, so
+		// one that is issued or renewed reaches ingress without a restart and
+		// without the certificate job being up: Nomad renders this, and
+		// ingress watches the file. A record still waiting for its
+		// certificate is skipped. toJSON writes each PEM as one quoted line,
+		// which YAML reads back as it was.
+		//
+		// The section is written only once there is a certificate to put in
+		// it. Traefik refuses a file whose tls section is empty, the whole
+		// file and not just the section, and the file is also what routes
+		// the ownership checks that the first certificate depends on.
+		fmt.Fprintf(&b, `{{ $none := true }}{{ range nomadVarList %[1]q }}{{ with nomadVar .Path }}{{ if .%[2]s.Value }}{{ if $none }}{{ $none = false }}tls:
+  certificates:
+{{ end }}    - certFile: {{ .%[2]s | toJSON }}
+      keyFile: {{ .%[3]s | toJSON }}
+{{ end }}{{ end }}{{ end }}`, CertPrefix, CertChainKey, CertKeyKey)
+	}
+
+	return b.String()
+}
+
+// dashboards is the platform's published web UIs, or none when they are not
+// published.
+func dashboards(opts PlatformOptions) []dashboard {
+	if !dashboardsEnabled(opts) {
+		return nil
 	}
 
 	// Backends are resolved from the catalog rather than assumed to be on
@@ -896,45 +1040,7 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 			fallback: fmt.Sprintf("http://127.0.0.1:%d", MetricsPort),
 		})
 	}
-	if len(boards) == 0 {
-		return ""
-	}
-
-	var b strings.Builder
-
-	// Resolve every backend up front. The fallback keeps the file valid before
-	// a store has registered, which matters because an unparseable dynamic
-	// config would take down the routes that do work alongside it.
-	for _, d := range boards {
-		fmt.Fprintf(&b, `{{ $%s := %q }}{{ range nomadService %q }}{{ $%s = printf "http://%%s:%%d" .Address .Port }}{{ end }}`+"\n",
-			d.name, d.fallback, d.service, d.name)
-	}
-
-	b.WriteString("http:\n  middlewares:\n    dashboard-auth:\n      basicAuth:\n        users:\n")
-	fmt.Fprintf(&b, "          - %q\n", "admin:"+opts.Ingress.AuthHash)
-
-	b.WriteString("  routers:\n")
-	for _, d := range boards {
-		fmt.Fprintf(&b, `    %s:
-      rule: "Host(`+"`"+`%s.%s`+"`"+`)"
-      service: %s
-      middlewares: [dashboard-auth]
-`, d.name, d.name, opts.Domain, d.name)
-		if opts.Ingress.TLS {
-			fmt.Fprintf(&b, "      tls:\n        certResolver: %s\n", CertResolver)
-		}
-	}
-
-	b.WriteString("  services:\n")
-	for _, d := range boards {
-		fmt.Fprintf(&b, `    %s:
-      loadBalancer:
-        servers:
-          - url: %q
-`, d.name, fmt.Sprintf("{{ $%s }}", d.name))
-	}
-
-	return b.String()
+	return boards
 }
 
 // DashboardURLs lists where the platform UIs are published, for reporting.

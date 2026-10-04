@@ -65,6 +65,12 @@ type IngressConfig struct {
 	// issues certificates to an account with no contact.
 	ACMEEmail string `yaml:"acme_email"`
 
+	// ACMEDirectory is the certificate authority that certificates come
+	// from, as its ACME directory URL. Empty is Let's Encrypt. Its
+	// staging directory is the one to use while trying things out: it has
+	// far higher limits, and its certificates are not trusted by browsers.
+	ACMEDirectory string `yaml:"acme_directory"`
+
 	// Node is the machine ingress runs on, and so the one your DNS points
 	// at. Empty is the first server. See Config.IngressNode.
 	Node string `yaml:"node"`
@@ -245,7 +251,7 @@ func (c *IngressConfig) UnmarshalYAML(node *yaml.Node) error {
 		return fmt.Errorf("ingress: admin_password is no longer set in cluster.yaml; the dashboards have a password generated for the cluster. " +
 			"`orca password` shows it and `orca password set` changes it")
 	}
-	on, err := decodeToggle(node, "ingress", []string{"https", "acme_email", "node"}, &out)
+	on, err := decodeToggle(node, "ingress", []string{"https", "acme_email", "acme_directory", "node"}, &out)
 	if err != nil {
 		return err
 	}

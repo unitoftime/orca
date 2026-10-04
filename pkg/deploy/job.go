@@ -234,6 +234,9 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 	}
 
 	task.Templates = append(task.Templates, secretFiles(m, s)...)
+	if s.TLS != "" {
+		task.Templates = append(task.Templates, certFiles(s.TLS)...)
+	}
 
 	group := &nomad.TaskGroup{
 		Name:     ptr(s.Name),
@@ -549,9 +552,10 @@ func metricsService(m *manifest.Manifest, s *manifest.Service, opts Options) *no
 // Nomad catalog, and routes to the address and port registered alongside
 // them, which is why the routed port is the one registered.
 //
-// The entrypoint and resolver are the names ingress's own configuration
-// defines. They must match exactly, because Traefik drops a route whose
-// entrypoint is missing.
+// The entrypoint is the name ingress's own configuration defines. It must
+// match exactly, because Traefik drops a route whose entrypoint is missing.
+// The certificate is not named: ingress serves the one that matches the host,
+// from those the certificate job has issued.
 func traefikTags(m *manifest.Manifest, s *manifest.Service, opts Options) []string {
 	for _, cport := range s.PortNumbers() {
 		ex := s.Ports[cport]
@@ -568,7 +572,7 @@ func traefikTags(m *manifest.Manifest, s *manifest.Service, opts Options) []stri
 		if opts.TLS {
 			tags = append(tags,
 				fmt.Sprintf("traefik.http.routers.%s.entrypoints=%s", router, EntryPointHTTPS),
-				fmt.Sprintf("traefik.http.routers.%s.tls.certresolver=%s", router, CertResolver))
+				fmt.Sprintf("traefik.http.routers.%s.tls=true", router))
 		} else {
 			tags = append(tags, fmt.Sprintf("traefik.http.routers.%s.entrypoints=%s", router, EntryPointHTTP))
 		}

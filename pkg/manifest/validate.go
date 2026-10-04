@@ -118,6 +118,7 @@ func (m *Manifest) Validate() error {
 			validateSecrets(se, s)
 			validatePorts(se, s, claimed)
 			validateNode(se, s)
+			validateTLS(se, s)
 		}
 
 		e.errs = append(e.errs, se.errs...)
@@ -381,6 +382,32 @@ func validatePorts(e *errList, s *Service, claimed map[string]string) {
 	// series nobody could tell apart.
 	if metrics > 1 {
 		e.addf("declares %d metrics ports; a service is scraped on one, so serve every metric from it", metrics)
+	}
+}
+
+// validateTLS checks the name a service wants a certificate for.
+func validateTLS(e *errList, s *Service) {
+	if s.TLS == "" {
+		return
+	}
+	s.TLS = strings.ToLower(s.TLS)
+	if err := validateHostname(s.TLS); err != nil {
+		e.addf("tls: %v", err)
+	}
+	if s.IsTemplated() {
+		e.addf("tls: a template serves no TLS of its own; put it on the service that does")
+	}
+	// A name ingress already serves has its certificate there, and a
+	// certificate is for a port a client can reach.
+	raw := false
+	for _, p := range s.Ports {
+		if p.Kind == PortDomain && p.Domain == s.TLS {
+			e.addf("tls: %s is already served over HTTPS by ingress on this service's hostname port; tls is for a raw port", s.TLS)
+		}
+		raw = raw || p.Kind == PortRaw
+	}
+	if !raw {
+		e.addf("tls: needs a tcp or udp port to serve it on; a hostname port is already HTTPS through ingress")
 	}
 }
 

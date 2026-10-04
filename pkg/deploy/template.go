@@ -154,3 +154,22 @@ func secretFiles(m *manifest.Manifest, s *manifest.Service) []*nomad.Template {
 	sort.Slice(out, func(i, j int) bool { return *out[i].DestPath < *out[j].DestPath })
 	return out
 }
+
+// certFiles renders a hostname's certificate and key into the task, from its
+// record in the variable store.
+//
+// noop, where a secret restarts: a certificate renews every couple of months
+// whether or not anything was deployed, and restarting whatever serves it on
+// that schedule is an outage nobody asked for. Nomad rewrites the files in
+// place and the service reloads them.
+func certFiles(host string) []*nomad.Template {
+	file := func(item, dest string) *nomad.Template {
+		return &nomad.Template{
+			EmbeddedTmpl: ptr(fmt.Sprintf("{{ with nomadVar %q }}{{ .%s }}{{ end }}", CertPath(host), item)),
+			DestPath:     ptr("secrets/" + dest),
+			Perms:        ptr("0444"), // as secretFiles
+			ChangeMode:   ptr("noop"),
+		}
+	}
+	return []*nomad.Template{file(CertChainKey, TLSCertFile), file(CertKeyKey, TLSKeyFile)}
+}

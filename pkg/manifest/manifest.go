@@ -116,6 +116,12 @@ type Service struct {
 	// in postgres://user:${secret.pw}@db/app.
 	Secrets []Secret `yaml:"secrets,omitempty"`
 
+	// TLS is a hostname the service serves TLS for by itself, on a raw port,
+	// instead of behind ingress. orca gets the certificate and delivers it as
+	// /secrets/tls/cert.pem and /secrets/tls/key.pem, rewritten in place when
+	// it renews, so the service has to reload them from disk.
+	TLS string `yaml:"tls,omitempty"`
+
 	// Node pins the service to a named machine from cluster.yaml. Leave it
 	// empty on a one-machine cluster. A service with a volume is pinned
 	// whether or not this is set, because its data is on one disk; this only

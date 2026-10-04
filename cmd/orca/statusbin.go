@@ -19,10 +19,11 @@ import (
 	"github.com/unitoftime/orca/pkg/deploy"
 )
 
-// The status page is orca itself, run on the machine as `orca serve-status`.
-// Until orca publishes an image of its own, apply ships a build of orca there
-// and the status job mounts it into a stock image. This file is that shipping:
-// finding a build that runs on the machine, and putting it there.
+// The status page is orca itself, run on the machine as `orca serve-status`,
+// and the certificate job is too, as `orca serve-certs`. Until orca publishes
+// an image of its own, apply ships a build of orca to their machines and each
+// job mounts it into a stock image. This file is that shipping: finding a
+// build that runs on the machine, and putting it there.
 //
 // Swapping to a published image means deleting this file and setting the
 // status spec's Image instead of its Binary; nothing else changes.
@@ -157,11 +158,16 @@ func fileSHA256(file string) (string, error) {
 //
 // The two most recent other builds are kept: Nomad reverts a failed rollout to
 // the previous job, and that job names the previous build.
-func shipStatusBinary(ctx context.Context, cfg Config, bin statusBinary) error {
-	host, err := cfg.MonitoringNode()
-	if err != nil {
-		return err
+func shipStatusBinary(ctx context.Context, bin statusBinary, hosts []NodeConfig) error {
+	for _, host := range hosts {
+		if err := shipStatusBinaryTo(ctx, bin, host); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func shipStatusBinaryTo(ctx context.Context, bin statusBinary, host NodeConfig) error {
 	node := Node{Host: host.Host}
 	remote := bin.Remote()
 
@@ -170,7 +176,7 @@ func shipStatusBinary(ctx context.Context, cfg Config, bin statusBinary) error {
 		return err
 	}
 	if strings.TrimSpace(present) != "yes" {
-		fmt.Printf("  ship    orca to %s for the status page ... ", host.Name)
+		fmt.Printf("  ship    orca to %s ... ", host.Name)
 		if err := node.RunQuiet(ctx, "mkdir -p "+shQuote(path.Dir(remote))); err != nil {
 			fmt.Println("FAILED")
 			return err
