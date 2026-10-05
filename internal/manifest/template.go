@@ -10,8 +10,7 @@ import (
 
 // Template is a known-good piece of infrastructure orca operates for you,
 // selected as `template: postgres:17`. It is sugar: it expands into an ordinary
-// service, so deploys, logs, metrics, discovery and rollback need no new
-// machinery.
+// service, so deploys, logs, metrics and discovery need no new machinery.
 //
 // The template owns everything that has to be correct and is tedious or
 // dangerous to get right by hand: the pinned image, the port, the health

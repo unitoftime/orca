@@ -76,8 +76,8 @@ func TestOrphansAreMatchedByExactGroup(t *testing.T) {
 	o := orphansOf(l, map[Volume]bool{{Group: "blog", Service: "db"}: true})
 
 	want := []Volume{{"shop", "db"}, {"shop-prod", "db"}}
-	if len(o.Volumes) != 2 || o.Volumes[0] != want[0] || o.Volumes[1] != want[1] {
-		t.Errorf("orphans = %v, want %v", o.Volumes, want)
+	if len(o) != 2 || o[0] != want[0] || o[1] != want[1] {
+		t.Errorf("orphans = %v, want %v", o, want)
 	}
 
 	script, err := deleteVolumesScript([]Volume{{"shop", "db"}})

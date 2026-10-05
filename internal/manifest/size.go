@@ -108,5 +108,3 @@ func (s *Size) UnmarshalYAML(node *yaml.Node) error {
 	*s = v
 	return nil
 }
-
-func (s Size) MarshalYAML() (any, error) { return s.String(), nil }

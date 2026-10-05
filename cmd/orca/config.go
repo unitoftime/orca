@@ -36,9 +36,6 @@ const (
 // file, one group per directory, so the cluster is a thing you can see whole
 // rather than a config file pointing at a list of other files.
 type Config struct {
-	// MovedName is `name:`, which is no longer set here; see validate.
-	MovedName string `yaml:"name"`
-
 	Nodes []NodeConfig `yaml:"nodes"`
 
 	// The capabilities orca runs for you. Each is absent for "on with
@@ -153,12 +150,6 @@ func (c *Config) applyDefaults() {
 func (c Config) validate() error {
 	if len(c.Nodes) == 0 {
 		return fmt.Errorf("no nodes defined")
-	}
-	// It only ever chose the folder backups went under, which a name at the
-	// top of this file gave no hint of. That is now said where the bucket is.
-	if c.MovedName != "" {
-		return fmt.Errorf("name is no longer set in cluster.yaml; all it did was choose the folder backups go under, "+
-			"which is now `path: %s` on the storage target, beside its bucket", c.MovedName)
 	}
 	if err := c.Monitoring.validate(); err != nil {
 		return err

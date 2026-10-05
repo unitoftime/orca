@@ -127,7 +127,7 @@ secrets:
 	}
 }
 
-// The deploy hash is taken over the job spec, so template ordering that follows
+// Nomad redeploys a job whose spec changed, so template ordering that follows
 // the manifest's ordering would redeploy every service whose secrets were
 // merely reordered.
 func TestSecretFileOrderIsStable(t *testing.T) {

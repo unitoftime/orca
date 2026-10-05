@@ -123,17 +123,3 @@ func Unavailable(err error) bool {
 	}
 	return err != nil
 }
-
-// Fake resolves from a table, for tests and for any path that must not touch
-// the network.
-type Fake map[string]string
-
-func (f Fake) Resolve(_ context.Context, ref string) (Pinned, error) {
-	if IsDigest(ref) {
-		return Pinned{Ref: ref}, nil
-	}
-	if got, ok := f[ref]; ok {
-		return Pinned{Ref: got}, nil
-	}
-	return Pinned{}, fmt.Errorf("resolve %q: not in the fake registry", ref)
-}

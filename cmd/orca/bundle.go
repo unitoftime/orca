@@ -35,10 +35,11 @@ type Bundle struct {
 	Registries        map[string]RegistryLogin     `yaml:"registries,omitempty"`
 	DashboardPassword string                       `yaml:"dashboard_password,omitempty"`
 
-	// Certificates are the ones issued for services with `tls:`, by
-	// hostname. Not secrets anyone sets, but a rebuilt cluster that has them
-	// asks the certificate authority for nothing, and the authority limits
-	// how often it will be asked.
+	// Certificates are every one issued, by hostname: the ones ingress
+	// presents and the ones given to services with `tls:`. Not secrets
+	// anyone sets, but a rebuilt cluster that has them asks the certificate
+	// authority for nothing, and the authority limits how often it will be
+	// asked.
 	Certificates map[string]Certificate `yaml:"certificates,omitempty"`
 }
 

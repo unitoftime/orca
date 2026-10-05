@@ -57,7 +57,7 @@ const StopTimeout = 30 * time.Second
 // checks and Nomad promotes it to the real tags.
 const CanaryTag = "orca-canary"
 
-// Meta keys orca stamps on every job it owns. ManagedKey is what makes "which
+// Meta keys orca stamps on every job it owns. MetaManaged is what makes "which
 // jobs are mine" answerable, so orca never touches a job someone else created.
 const (
 	MetaManaged = "orca.managed"
@@ -77,10 +77,9 @@ const (
 	MetaNetwork = "orca.network"
 )
 
-// Options are the cluster facts a manifest cannot know, since it lives in its
-// own repo.
+// Options are the cluster facts a service file does not hold.
 type Options struct {
-	// Datacenter is the Nomad datacenter, from cluster.yaml.
+	// Datacenter is the Nomad datacenter.
 	Datacenter string
 
 	// Ingress reports whether the front door runs at all. A port routed

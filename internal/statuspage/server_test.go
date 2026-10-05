@@ -88,7 +88,7 @@ func TestLinks(t *testing.T) {
 	if got := get(&Server{}); len(got) != 0 {
 		t.Errorf("no links passed, got %v", got)
 	}
-	want := []Link{{Name: "nomad", URL: "https://nomad.example.com"}, {Name: "logs", URL: "https://logs.example.com"}}
+	want := []Link{{Name: "metrics", URL: "https://metrics.example.com"}, {Name: "logs", URL: "https://logs.example.com"}}
 	if got := get(&Server{Links: want}); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("links = %v, want %v", got, want)
 	}

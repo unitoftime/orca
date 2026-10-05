@@ -16,8 +16,8 @@ import (
 type Summary struct {
 	Time time.Time `json:"time"`
 
-	// Problems is every warning and failure, worst first. Empty is the
-	// "All good" the page leads with.
+	// Problems is every warning and failure, worst first, for whatever reads
+	// the summary to act on: `orca top --json` prints it.
 	Problems []Problem `json:"problems"`
 
 	Machines []Machine `json:"machines"`

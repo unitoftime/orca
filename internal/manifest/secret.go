@@ -106,24 +106,6 @@ func (s *Secret) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-func (s Secret) MarshalYAML() (any, error) {
-	// The bare name round-trips as a bare name. orca serializes resolved
-	// manifests for plan diffs and desired-state hashes, so a secret that
-	// marshalled into a mapping it was not written as would make every plan
-	// show a change that is not one.
-	if s.Env == "" && s.Path == "" {
-		return s.Name, nil
-	}
-	out := map[string]string{"name": s.Name}
-	if s.Env != "" {
-		out["env"] = s.Env
-	}
-	if s.Path != "" {
-		out["path"] = s.Path
-	}
-	return out, nil
-}
-
 // validSecretFile reports whether a path is a plain relative location under the
 // secrets directory. Checked rather than assumed: the value is joined onto a
 // destination path on the machine, so "../../etc/cron.d/x" would write a file

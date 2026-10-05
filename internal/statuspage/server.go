@@ -45,7 +45,7 @@ type Server struct {
 	cached *Summary
 }
 
-// Link is another web UI the page links to: Nomad's, and the stores' own.
+// Link is another web UI the page links to: the stores' own.
 type Link struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`

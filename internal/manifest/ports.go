@@ -231,24 +231,6 @@ func (p Port) String() string {
 	return ""
 }
 
-// MarshalYAML writes the scalar form, or the list form when a raw port binds
-// more than one protocol. orca serializes resolved manifests to hash desired
-// state, so what comes back has to be what went in.
-func (p Port) MarshalYAML() (any, error) {
-	if p.Kind == PortRaw && len(p.Binds) > 1 {
-		out := make([]string, 0, len(p.Binds))
-		for _, b := range p.Binds {
-			if b.Host != 0 {
-				out = append(out, fmt.Sprintf("%s:%d", b.Proto, b.Host))
-				continue
-			}
-			out = append(out, b.Proto)
-		}
-		return out, nil
-	}
-	return p.String(), nil
-}
-
 // sortedPorts returns a port map's keys in ascending order. Map iteration is
 // random and the generated jobspec has to be byte-stable, or every apply would
 // look like a change and redeploy everything.

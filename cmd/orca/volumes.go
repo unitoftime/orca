@@ -146,17 +146,12 @@ type Volume struct {
 // Path is where the volume lives on its machine.
 func (v Volume) Path() string { return deploy.VolumePath(dataDir, v.Group, v.Service) }
 
-// VolumeListing is every service volume one machine holds.
-type VolumeListing struct {
-	Volumes []Volume
-}
-
 // ListVolumes lists the volumes on this machine.
 //
 // Listing the one directory everything lives under is what stops "kept" from
 // meaning "invisible": data whose service was removed is found by looking,
 // so nothing has to be remembered for it to be findable later.
-func (n Node) ListVolumes(ctx context.Context) (VolumeListing, error) {
+func (n Node) ListVolumes(ctx context.Context) ([]Volume, error) {
 	script := fmt.Sprintf(`set -e
 if [ -d %[1]s ]; then
   cd %[1]s && find . -mindepth 2 -maxdepth 2 -type d | sed 's|^\./||'
@@ -164,24 +159,24 @@ fi`, shQuote(deploy.VolumeRoot(dataDir)))
 
 	out, err := n.RunOutput(ctx, script)
 	if err != nil {
-		return VolumeListing{}, fmt.Errorf("list volumes: %w", err)
+		return nil, fmt.Errorf("list volumes: %w", err)
 	}
 	return parseVolumeListing(out), nil
 }
 
-func parseVolumeListing(out string) VolumeListing {
-	var l VolumeListing
+func parseVolumeListing(out string) []Volume {
+	var l []Volume
 	for _, line := range strings.Split(out, "\n") {
 		g, s, ok := strings.Cut(strings.TrimSpace(line), "/")
 		if ok && g != "" && s != "" {
-			l.Volumes = append(l.Volumes, Volume{Group: g, Service: s})
+			l = append(l, Volume{Group: g, Service: s})
 		}
 	}
-	sort.Slice(l.Volumes, func(i, j int) bool {
-		if l.Volumes[i].Group != l.Volumes[j].Group {
-			return l.Volumes[i].Group < l.Volumes[j].Group
+	sort.Slice(l, func(i, j int) bool {
+		if l[i].Group != l[j].Group {
+			return l[i].Group < l[j].Group
 		}
-		return l.Volumes[i].Service < l.Volumes[j].Service
+		return l[i].Service < l[j].Service
 	})
 	return l
 }

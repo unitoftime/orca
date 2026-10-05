@@ -5,14 +5,9 @@ import (
 	"github.com/unitoftime/orca/internal/manifest"
 )
 
-// OrcaServices are those services that register an address.
-//
-// One list serves the resolver's name list, the log command's target list
-// and the jobs themselves. With three separate lists, two would be updated
-// when a component was added and the third would silently miss it.
-// vector is absent deliberately: it registers no port, so there is no address
-// to resolve or to filter logs by.
-var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-exporter", "status", "certs", "dns"}
+// OrcaServices are the services orca runs for itself, by the names `orca
+// logs` knows them by.
+var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-exporter", "status", "certs", "dns", "vector"}
 
 // Well-known ports for the platform's data stores. They are fixed rather than
 // dynamic so a store keeps its address across restarts, and they bind the
@@ -112,8 +107,9 @@ type StatusSpec struct {
 	Binary string
 }
 
-// CertsSpec is the certificate job: what gets the certificates services ask
-// for with `tls:` and keeps them renewed. Like the status page it is orca
+// CertsSpec is the certificate job: what gets every certificate, the ones
+// ingress presents and the ones services ask for with `tls:`, and keeps them
+// renewed. Like the status page it is orca
 // itself, run as `orca serve-certs`; Image and Binary mean what they do there.
 type CertsSpec struct {
 	Image  string

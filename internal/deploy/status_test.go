@@ -37,8 +37,8 @@ func TestSummarizeHealthy(t *testing.T) {
 	}
 }
 
-// The case a spec-hash comparison cannot see: the spec is perfectly current
-// and nothing works.
+// The case comparing specs cannot see: the spec is perfectly current and
+// nothing works.
 func TestSummarizeCrashLoop(t *testing.T) {
 	jobs := map[string]JobState{"a-web": job("a-web", "a", "web", 1)}
 	allocs := []AllocState{{

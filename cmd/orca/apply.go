@@ -406,7 +406,7 @@ func execute(ctx context.Context, cluster *Cluster, plan deploy.Plan) (map[strin
 		// This deletes no data. The volume stays on disk and `orca status`
 		// reports it as orphaned, so "kept" never means "invisible".
 		fmt.Printf("  stop    %s/%s ... ", c.Group, c.Service)
-		if err := cluster.Stop(ctx, c.JobID, true); err != nil {
+		if err := cluster.Stop(ctx, c.JobID); err != nil {
 			fmt.Println("FAILED")
 			errs = append(errs, err)
 			continue

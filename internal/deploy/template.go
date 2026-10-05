@@ -90,7 +90,7 @@ func renderTemplate(m *manifest.Manifest, s *manifest.Service) string {
 	// did not are written as files instead, by secretFiles.
 	//
 	// Sorted by the variable name, which is unique among them, so the rendered
-	// template and therefore the job hash is stable across runs.
+	// template and therefore the job is the same from one run to the next.
 	var envSecrets []manifest.Secret
 	for _, sec := range s.Secrets {
 		if !sec.IsFile() {
@@ -129,8 +129,8 @@ func renderTemplate(m *manifest.Manifest, s *manifest.Service) string {
 // secret from a file expects the file to *be* the secret, and the format it
 // would otherwise have to parse is a format orca would have to invent.
 //
-// Sorted by destination so the job spec, and therefore the deploy hash, does
-// not change when the manifest's ordering does.
+// Sorted by destination so the job does not change, and nothing is
+// redeployed, when only the manifest's ordering does.
 func secretFiles(m *manifest.Manifest, s *manifest.Service) []*nomad.Template {
 	var out []*nomad.Template
 	for _, sec := range s.Secrets {

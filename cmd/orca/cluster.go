@@ -132,14 +132,14 @@ func (c *Cluster) Submit(ctx context.Context, job *nomad.Job, modifyIndex uint64
 	return nil
 }
 
-// Stop stops a job. purge additionally removes it from Nomad's state; it never
-// touches data on disk, which only `orca purge` does.
-func (c *Cluster) Stop(ctx context.Context, jobID string, purge bool) error {
+// Stop stops a job and removes it from Nomad's state. It never touches data
+// on disk, which only `orca purge` does.
+func (c *Cluster) Stop(ctx context.Context, jobID string) error {
 	api, err := c.client(ctx)
 	if err != nil {
 		return err
 	}
-	if _, _, err := api.Jobs().Deregister(jobID, purge, (&nomad.WriteOptions{}).WithContext(ctx)); err != nil {
+	if _, _, err := api.Jobs().Deregister(jobID, true, (&nomad.WriteOptions{}).WithContext(ctx)); err != nil {
 		return fmt.Errorf("stop %s: %w", jobID, err)
 	}
 	return nil

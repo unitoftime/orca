@@ -125,41 +125,6 @@ func TestListErrors(t *testing.T) {
 	}
 }
 
-// orca serializes resolved manifests to hash desired state, so what comes back
-// has to be what went in; otherwise every plan shows a change that is not one.
-func TestPortRoundTrip(t *testing.T) {
-	for _, in := range []string{"internal", "metrics", "errors.example.com", "tcp", "udp:7778"} {
-		p, err := ParsePort(in)
-		if err != nil {
-			t.Fatalf("ParsePort(%q): %v", in, err)
-		}
-		out, err := yaml.Marshal(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.TrimSpace(string(out)); got != in {
-			t.Errorf("%q round-tripped to %q", in, got)
-		}
-	}
-
-	// The list form has to come back as a list, not as a string.
-	var s Service
-	if err := yaml.Unmarshal([]byte("name: g\nimage: i:1\nports:\n  7777: [tcp, udp]\n"), &s); err != nil {
-		t.Fatal(err)
-	}
-	out, err := yaml.Marshal(s.Ports[7777])
-	if err != nil {
-		t.Fatal(err)
-	}
-	var back Port
-	if err := yaml.Unmarshal(out, &back); err != nil {
-		t.Fatalf("re-parsing %q: %v", out, err)
-	}
-	if strings.Join(back.Protocols(), ",") != "tcp,udp" {
-		t.Errorf("list round-tripped to %+v via %q", back, out)
-	}
-}
-
 // internal is the one reach that is not public, and the whole security model
 // leans on that distinction.
 func TestPublicAndIngress(t *testing.T) {

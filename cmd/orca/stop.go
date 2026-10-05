@@ -34,7 +34,7 @@ func cmdStop(ctx context.Context, cfg Config, group string) error {
 
 	for _, id := range jobs {
 		fmt.Printf("  stop    %s ... ", id)
-		if err := cluster.Stop(ctx, id, true); err != nil {
+		if err := cluster.Stop(ctx, id); err != nil {
 			fmt.Println("FAILED")
 			return err
 		}
@@ -103,7 +103,7 @@ func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
 	// Exact group match: a volume's group is its directory, not a prefix of
 	// its name, so purging "shop" can never reach "shop-prod".
 	var mine []nodeVolume
-	for _, o := range orphans.Volumes {
+	for _, o := range orphans {
 		if o.Group == group {
 			mine = append(mine, o)
 		}
@@ -135,7 +135,7 @@ func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
 	}
 
 	for _, id := range jobs {
-		if err := cluster.Stop(ctx, id, true); err != nil {
+		if err := cluster.Stop(ctx, id); err != nil {
 			return err
 		}
 	}
@@ -204,38 +204,34 @@ type nodeVolume struct {
 	Host string
 }
 
-// orphanSet is data whose service is no longer declared, across every machine.
-type orphanSet struct {
-	Volumes []nodeVolume
-}
-
-// findOrphans lists undeclared volumes on every machine. Every one, not just
-// the machine orca is talking to: a volume lives where its service was pinned,
-// and data on the second machine is no less kept than data on the first.
-func findOrphans(ctx context.Context, cfg Config) (orphanSet, error) {
+// findOrphans lists data whose service is no longer declared, on every
+// machine. Every one, not just the machine orca is talking to: a volume lives
+// where its service was pinned, and data on the second machine is no less
+// kept than data on the first.
+func findOrphans(ctx context.Context, cfg Config) ([]nodeVolume, error) {
 	vols, err := declaredVolumes(cfg)
 	if err != nil {
-		return orphanSet{}, err
+		return nil, err
 	}
-	var out orphanSet
+	var out []nodeVolume
 	for _, nc := range cfg.Nodes {
-		l, err := nc.Node().ListVolumes(ctx)
+		held, err := nc.Node().ListVolumes(ctx)
 		if err != nil {
-			return orphanSet{}, fmt.Errorf("node %s: %w", nc.Name, err)
+			return nil, fmt.Errorf("node %s: %w", nc.Name, err)
 		}
-		for _, v := range orphansOf(l, vols).Volumes {
-			out.Volumes = append(out.Volumes, nodeVolume{Volume: v, Node: nc.Name, Host: nc.Host})
+		for _, v := range orphansOf(held, vols) {
+			out = append(out, nodeVolume{Volume: v, Node: nc.Name, Host: nc.Host})
 		}
 	}
 	return out, nil
 }
 
 // orphansOf is the comparison on its own, so it is testable without a machine.
-func orphansOf(l VolumeListing, vols map[Volume]bool) VolumeListing {
-	var out VolumeListing
-	for _, v := range l.Volumes {
-		if !vols[v] {
-			out.Volumes = append(out.Volumes, v)
+func orphansOf(held []Volume, declared map[Volume]bool) []Volume {
+	var out []Volume
+	for _, v := range held {
+		if !declared[v] {
+			out = append(out, v)
 		}
 	}
 	return out

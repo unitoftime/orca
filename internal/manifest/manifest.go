@@ -51,8 +51,6 @@ func (c *CPU) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-func (c CPU) MarshalYAML() (any, error) { return c.Float(), nil }
-
 // Manifest is one group: the services in one directory. The files are desired
 // state: a service removed from them is stopped on the next apply, so there
 // is no enabled field and no way to express "declared but off".

@@ -185,10 +185,8 @@ func validateSource(e *errList, s *Service) {
 	}
 	spec := t.Spec()
 
-	// A template owns these. Agreeing with it is harmless and has to be
-	// allowed, because orca serializes resolved manifests (for plan diffs and
-	// desired-state hashes) and must be able to read back what it wrote.
-	// Contradicting it is the actual error.
+	// A template owns these. Agreeing with it is harmless; contradicting it
+	// is the error.
 	for _, cport := range s.PortNumbers() {
 		if cport != spec.Port {
 			e.addf("template %s listens on %d, but this declares port %d", t, spec.Port, cport)
@@ -413,7 +411,7 @@ func validateTLS(e *errList, s *Service) {
 
 // validateNode checks the shape of a node reference. Whether that machine is
 // actually in cluster.yaml is checked by apply, which is the first thing that
-// knows what machines exist; a manifest lives in its own repo and cannot know.
+// knows what machines exist.
 func validateNode(e *errList, s *Service) {
 	if s.Node == "" {
 		return

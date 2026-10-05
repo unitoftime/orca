@@ -210,9 +210,6 @@ func TestStatusIsPublishedWithTheDashboards(t *testing.T) {
 			t.Errorf("dynamic config missing %q:\n%s", want, cfg)
 		}
 	}
-	if urls := DashboardURLs(platformOpts()); len(urls) == 0 || urls[0] != "https://status.example.com" {
-		t.Errorf("status should be the first url, got %v", urls)
-	}
 
 	opts := platformOpts()
 	opts.Status = nil
@@ -397,9 +394,6 @@ func TestDashboardsRequireAPassword(t *testing.T) {
 	}
 	if got := traefikDynamicConfig(opts); got != "" {
 		t.Errorf("want no dynamic config, got:\n%s", got)
-	}
-	if got := DashboardURLs(opts); got != nil {
-		t.Errorf("want no urls, got %v", got)
 	}
 }
 

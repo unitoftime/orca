@@ -51,8 +51,8 @@ fi
 echo "=== 3. Resolving bind address ==="
 # Empty BIND_IP means a single-machine cluster: bind loopback so nothing is
 # exposed at all. orca drives Nomad over SSH, so it needs no network listener.
-# Once a second node exists, cluster.yaml carries each node's ip and that address
-# is bound instead.
+# Once a second node exists, cluster.yaml carries each node's private_ip and
+# that address is bound instead.
 BIND_IP="{{BIND_IP}}"
 if [ -z "${BIND_IP}" ]; then
   BIND_IP="127.0.0.1"
@@ -64,7 +64,7 @@ fi
 echo "=== 4. Creating platform volume directories ==="
 # These back the platform's stateful jobs, which bind-mount them. Created now
 # so the first deploy does not have Docker create them as root on demand.
-for v in victorialogs victoriametrics traefik vector; do
+for v in victorialogs victoriametrics vector; do
   mkdir -p "${DATA_DIR}/volumes/${v}"
 done
 

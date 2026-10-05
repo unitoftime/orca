@@ -34,7 +34,7 @@ const rolloutTimeout = deploy.ProgressDeadline + time.Minute
 const healthPoll = 2 * time.Second
 
 // cmdStatus reports what is actually running, as opposed to what was last
-// submitted. A matching spec hash says a deploy happened, not that anything
+// submitted. A job that is current says a deploy happened, not that anything
 // works. This is the command that answers the second question.
 func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 	cluster, err := clusterFor(ctx, cfg)
@@ -103,11 +103,11 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 			fmt.Printf("\ncould not check for data left by removed services: %v\n", orphanErr)
 			return
 		}
-		if len(orphans.Volumes) == 0 {
+		if len(orphans) == 0 {
 			return
 		}
 		fmt.Printf("\ndata kept for services that are no longer declared:\n")
-		for _, o := range orphans.Volumes {
+		for _, o := range orphans {
 			fmt.Printf("  %s:%s\n", o.Node, o.Path())
 		}
 		fmt.Printf("remove it with: orca purge <group>\n")

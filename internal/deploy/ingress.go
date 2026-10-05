@@ -341,18 +341,6 @@ func dashboards(opts PlatformOptions) []dashboard {
 	return boards
 }
 
-// DashboardURLs lists where the platform UIs are published, for reporting.
-func DashboardURLs(opts PlatformOptions) []string {
-	var out []string
-	if dashboardsEnabled(opts) && opts.Status != nil {
-		out = append(out, dashboardURL(opts, "status"))
-	}
-	for _, name := range otherDashboards(opts) {
-		out = append(out, dashboardURL(opts, name))
-	}
-	return out
-}
-
 // otherDashboards names the published UIs besides the status page, which
 // links to each of them.
 func otherDashboards(opts PlatformOptions) []string {
@@ -369,10 +357,8 @@ func otherDashboards(opts PlatformOptions) []string {
 	return out
 }
 
+// dashboardURL is where a published UI is reached. Over HTTPS, always: they
+// are not published without it.
 func dashboardURL(opts PlatformOptions, name string) string {
-	scheme := "http"
-	if opts.Ingress.TLS {
-		scheme = "https"
-	}
-	return scheme + "://" + name + "." + opts.Domain
+	return "https://" + name + "." + opts.Domain
 }

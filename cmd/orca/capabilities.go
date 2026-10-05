@@ -90,8 +90,8 @@ type MonitoringConfig struct {
 	Status  StatusConfig  `yaml:"status"`
 
 	// Domain is where the dashboards are published: "example.com" gives
-	// status.example.com, and nomad., logs. and metrics. beside it. Empty
-	// publishes none; they are then reachable only over an SSH tunnel.
+	// status.example.com, and logs. and metrics. beside it. Empty publishes
+	// none; what they show is then reached with `orca top` and `orca logs`.
 	// Services name their own hostnames, so nothing else hangs off it.
 	Domain string `yaml:"domain"`
 
@@ -184,19 +184,6 @@ func decodeToggle(node *yaml.Node, what string, allowed []string, out any) (bool
 	return true, nil
 }
 
-// hasKey reports whether a mapping sets key.
-func hasKey(node *yaml.Node, key string) bool {
-	if node == nil || node.Kind != yaml.MappingNode {
-		return false
-	}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == key {
-			return true
-		}
-	}
-	return false
-}
-
 func checkCapabilityFields(node *yaml.Node, what string, allowed []string) error {
 	ok := map[string]bool{}
 	for _, a := range allowed {
@@ -242,15 +229,6 @@ func (c IngressConfig) TLS() bool {
 func (c *IngressConfig) UnmarshalYAML(node *yaml.Node) error {
 	type plain IngressConfig
 	var out plain
-	if hasKey(node, "domain") {
-		return fmt.Errorf("ingress: domain has moved to monitoring.domain, and is only where the dashboards are published; a service names its own hostname")
-	}
-	// The dashboards' password is the cluster's, generated at bootstrap, and
-	// is changed the way a secret is: in the cluster, not in a file.
-	if hasKey(node, "admin_password") {
-		return fmt.Errorf("ingress: admin_password is no longer set in cluster.yaml; the dashboards have a password generated for the cluster. " +
-			"`orca password` shows it and `orca password set` changes it")
-	}
 	on, err := decodeToggle(node, "ingress", []string{"https", "acme_email", "acme_directory", "node"}, &out)
 	if err != nil {
 		return err

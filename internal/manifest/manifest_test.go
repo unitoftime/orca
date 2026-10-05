@@ -1,12 +1,10 @@
 package manifest
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/unitoftime/orca/internal/images"
-	"gopkg.in/yaml.v3"
 )
 
 // A group file using most of the manifest: a template, a raw port, a secret
@@ -210,38 +208,6 @@ func TestVolumeScalarAndMappingForms(t *testing.T) {
 	// arbitrary.
 	if _, err := ParseGroup("a", []byte("{name: x, image: i:1, volume: 5G}"), "orca.yaml"); err == nil {
 		t.Fatal("a bare volume size without a template should be rejected")
-	}
-}
-
-// Services must re-parse from what orca writes: plan diffs serialize resolved
-// services, and a parser that rejects its own output is a bug.
-func TestServiceRoundTrip(t *testing.T) {
-	m, err := ParseGroup("blog", []byte(fullExample), "orca.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var docs [][]byte
-	for _, s := range m.Services {
-		out, err := yaml.Marshal(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		docs = append(docs, out)
-	}
-
-	again, err := ParseGroup("blog", bytes.Join(docs, []byte("---\n")), "orca.yaml")
-	if err != nil {
-		t.Fatalf("a marshalled service must parse again:\n%s\nerror: %v", bytes.Join(docs, []byte("---\n")), err)
-	}
-	if len(again.Services) != len(m.Services) {
-		t.Fatalf("round trip changed the service count: %d vs %d", len(again.Services), len(m.Services))
-	}
-	for i := range m.Services {
-		a, b := m.Services[i], again.Services[i]
-		if a.Name != b.Name || a.Memory != b.Memory || a.CPU != b.CPU || a.PrimaryPort() != b.PrimaryPort() {
-			t.Errorf("service %d differs after round trip: %+v vs %+v", i, a, b)
-		}
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 
 // phase is one host-setup script, plus any extra templates staged beside it.
 type phase struct {
-	name       string
 	script     string   // template name under templates/host/
 	extraFiles []string // config files the script installs
 }
@@ -22,9 +21,9 @@ type phase struct {
 // idempotent, so re-running bootstrap on a live node converges it rather than
 // rebuilding it. That is how a version bump in versions.go rolls out.
 var hostPhases = []phase{
-	{name: "prep", script: "prep.sh"},
-	{name: "docker", script: "docker.sh"},
-	{name: "nomad", script: "nomad.sh", extraFiles: []string{"nomad.hcl", "docker-credential-orca"}},
+	{script: "prep.sh"},
+	{script: "docker.sh"},
+	{script: "nomad.sh", extraFiles: []string{"nomad.hcl", "docker-credential-orca"}},
 }
 
 // remoteStageDir is where a machine's setup scripts are put to be run as

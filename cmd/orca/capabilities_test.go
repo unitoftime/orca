@@ -191,23 +191,6 @@ nodes:
 	}
 }
 
-// The settings that moved must not still be accepted where they were, or a
-// config carried over from the old shape would look applied and be ignored.
-func TestOldTopLevelSettingsAreRefused(t *testing.T) {
-	for _, body := range []string{
-		"domain: example.com\nnodes:\n  - host: root@10.0.0.1\n",
-		"acme_email: me@example.com\nnodes:\n  - host: root@10.0.0.1\n",
-		"admin_password: x\nnodes:\n  - host: root@10.0.0.1\n",
-		"platform_node: box0\nnodes:\n  - host: root@10.0.0.1\n",
-		"backups:\n  bucket: b\nnodes:\n  - host: root@10.0.0.1\n",
-		"platform:\n  ingress: false\nnodes:\n  - host: root@10.0.0.1\n",
-	} {
-		if _, err := loadConfig(writeConfig(t, body)); err == nil {
-			t.Errorf("a config still using the old shape should be refused:\n%s", body)
-		}
-	}
-}
-
 // A bad size is reported when the config is read, not as a container that
 // exits 2 on the machine with its usage text and no error.
 func TestCapabilityRejectsBadSize(t *testing.T) {
@@ -277,34 +260,5 @@ func TestIngressHTTPS(t *testing.T) {
 		if got := cfg.Ingress.TLS(); got != c.want {
 			t.Errorf("%q: TLS = %v, want %v", c.yaml, got, c.want)
 		}
-	}
-}
-
-// ingress.domain moved to monitoring.domain. A cluster.yaml that still has it
-// is told where it went, not just that the field is unknown.
-func TestIngressDomainSaysWhereItMoved(t *testing.T) {
-	_, err := loadConfig(writeConfig(t, `
-ingress:
-  domain: example.com
-nodes:
-  - host: root@10.0.0.1
-`))
-	if err == nil || !strings.Contains(err.Error(), "monitoring.domain") {
-		t.Errorf("err = %v, want it to point at monitoring.domain", err)
-	}
-}
-
-// The dashboards' password is the cluster's, changed with `orca password set`.
-// One left in cluster.yaml is refused rather than ignored, since ignoring it
-// would look like it worked, and says what to do instead.
-func TestIngressAdminPasswordIsRefused(t *testing.T) {
-	_, err := loadConfig(writeConfig(t, `
-ingress:
-  admin_password: hunter2
-nodes:
-  - host: root@10.0.0.1
-`))
-	if err == nil || !strings.Contains(err.Error(), "orca password set") {
-		t.Errorf("err = %v, want it to point at orca password set", err)
 	}
 }

@@ -56,13 +56,6 @@ func (v *Volume) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-func (v Volume) MarshalYAML() (any, error) {
-	if v.Mount == "" {
-		return v.Size.String(), nil
-	}
-	return map[string]string{"size": v.Size.String(), "mount": v.Mount}, nil
-}
-
 // checkKnownFields rejects mapping keys outside the allowed set, reproducing
 // the strict decoding that yaml.Node.Decode drops.
 func checkKnownFields(node *yaml.Node, what string, allowed ...string) error {

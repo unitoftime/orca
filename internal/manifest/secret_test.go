@@ -1,11 +1,8 @@
 package manifest
 
 import (
-	"bytes"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 // notifier is a small background service with no ports. It reads its secrets
@@ -115,52 +112,6 @@ env:
 	want := []string{"api_key", "db_password"}
 	if got := m.Secrets(); !equalStrings(got, want) {
 		t.Errorf("Secrets() = %v, want both the declared and the interpolated: %v", got, want)
-	}
-}
-
-// orca serializes resolved manifests to hash desired state, so a secret that
-// marshalled back differently than it was written would make every plan show a
-// change that is not one.
-func TestSecretRoundTrip(t *testing.T) {
-	body := `name: app
-image: i:1
-cpu: 0.5
-memory: 512M
-secrets:
-    - bare
-    - name: as_env
-      env: AS_ENV
-    - name: as_file
-      path: nested/file.pem
-`
-	m, err := ParseGroup("shop", []byte(body), "app.yaml")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(4)
-	if err := enc.Encode(m.Services[0]); err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	enc.Close()
-
-	again, err := ParseGroup("shop", buf.Bytes(), "app.yaml")
-	if err != nil {
-		t.Fatalf("re-parse what we wrote: %v\n%s", err, buf.String())
-	}
-
-	for i, sec := range m.Services[0].Secrets {
-		got := again.Services[0].Secrets[i]
-		if got != sec {
-			t.Errorf("secret %d round-tripped to %+v, want %+v", i, got, sec)
-		}
-	}
-	// A bare name must stay bare, or the re-encoded form differs from the
-	// authored one even though nothing changed.
-	if !strings.Contains(buf.String(), "- bare\n") {
-		t.Errorf("a bare secret should round-trip as a bare name:\n%s", buf.String())
 	}
 }
 

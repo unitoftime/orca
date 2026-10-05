@@ -160,7 +160,7 @@ func resolveLogTarget(cfg Config, target string) ([]logJob, error) {
 	// The platform is not a directory on disk, so it is added by hand. vector
 	// is included though it registers no address: it produces logs like
 	// anything else, and being unable to ask for them would be surprising.
-	for _, p := range append(deploy.OrcaServices, "vector") {
+	for _, p := range deploy.OrcaServices {
 		all = append(all, svc{manifest.ReservedGroup, p, []logJob{{ID: deploy.JobID(manifest.ReservedGroup, p)}}})
 	}
 	for _, m := range groups {

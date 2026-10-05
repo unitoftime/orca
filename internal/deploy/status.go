@@ -397,8 +397,8 @@ func (a AllocState) Since() time.Time {
 }
 
 // anyTaskFailing reports a task that is dead or restarting under a job that is
-// supposed to be running: the crash-loop case that a spec-hash comparison
-// cannot see, because the spec is perfectly current while nothing works.
+// supposed to be running: the crash-loop case, which comparing specs cannot
+// see, because the spec is perfectly current while nothing works.
 func anyTaskFailing(allocs []AllocState) bool {
 	for _, a := range allocs {
 		if a.ClientStatus == "failed" {
