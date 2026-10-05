@@ -126,7 +126,11 @@ func secretEditFile(file string, plain bool) error {
 // have is the cluster as it was read. Nothing is ever removed; see bundleDiff.
 func applyBundle(ctx context.Context, cfg Config, cluster *Cluster, want Bundle, have variables, yes, force bool) error {
 	wantVars := want.variables()
-	diff := diffVariables(wantVars, have)
+	// Compared with the cluster as a bundle would hold it, so that what a
+	// variable carries beyond its secret never reads as a difference: an
+	// exported certificate is otherwise "changed" by being imported straight
+	// back.
+	diff := diffVariables(wantVars, bundleOf(have).variables())
 
 	for _, p := range diff.Add {
 		fmt.Printf("  add     %s\n", variableLabel(p))
@@ -228,7 +232,7 @@ func readBundleFile(file string) (Bundle, string, error) {
 // editor is open, in memory rather than on disk where the system offers that,
 // and is removed afterwards.
 func editBundle(b Bundle) (Bundle, error) {
-	doc, err := marshalBundle(b)
+	doc, err := marshalBundle(b.withoutCertificates())
 	if err != nil {
 		return Bundle{}, err
 	}
@@ -252,6 +256,7 @@ func editBundle(b Bundle) (Bundle, error) {
 		}
 		after, err := parseBundle(edited)
 		if err == nil {
+			after.Certificates = b.Certificates
 			return after, nil
 		}
 		fmt.Fprintf(os.Stderr, "the edit does not load:\n%v\n", err)

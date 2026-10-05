@@ -322,6 +322,8 @@ orca secret export --plain            # print them in plaintext
   refuses to change a generated database password without `--force`.
 - `orca secret edit <file>` creates the file if it does not exist, which is a
   way to write a new cluster's secrets down before the cluster exists.
+- Certificates are in an export, so a rebuilt cluster does not have to ask
+  for them again, but an edit leaves them out and keeps them as they were.
 - While an editor is open, the secrets are in a temporary plaintext file only
   you can read.
 

@@ -69,15 +69,22 @@ const bundleHeader = `# orca secrets, in plaintext. The shape:
 #       username: <username>
 #       password: <token>
 #   dashboard_password: <value>
-#   certificates:
-#     <hostname>: {owner: <group>/<service>, cert: <pem>, key: <pem>}
+`
 
+// bundleCertsHeader is added for a bundle that holds certificates, which is
+// only ever one that was exported: nobody writes those by hand.
+const bundleCertsHeader = `#   certificates:
+#     <hostname>: {owner: <group>/<service>, cert: <pem>, key: <pem>}
 `
 
 // marshalBundle is the bundle as the document a person edits.
 func marshalBundle(b Bundle) ([]byte, error) {
 	var out bytes.Buffer
 	out.WriteString(bundleHeader)
+	if len(b.Certificates) > 0 {
+		out.WriteString(bundleCertsHeader)
+	}
+	out.WriteString("\n")
 	if len(b.variables()) == 0 {
 		return out.Bytes(), nil
 	}
@@ -163,8 +170,18 @@ func (b Bundle) variables() variables {
 	return v
 }
 
+// withoutCertificates is the bundle a person edits. Certificates are orca's
+// to get and renew, long, and nothing anyone types, so they are kept out of
+// an editor and carried across an edit untouched.
+func (b Bundle) withoutCertificates() Bundle {
+	b.Certificates = nil
+	return b
+}
+
 // bundleOf is the store's variables as a bundle: the inverse of
-// Bundle.variables.
+// Bundle.variables, except that it keeps only what a bundle holds. A
+// variable can carry more (a certificate's record notes where it came from
+// and why its last renewal failed), and none of that is a secret to keep.
 func bundleOf(v variables) Bundle {
 	b := Bundle{Secrets: map[string]map[string]string{}, Registries: map[string]RegistryLogin{}, Certificates: map[string]Certificate{}}
 	for path, items := range v {
