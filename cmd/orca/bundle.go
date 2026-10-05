@@ -12,6 +12,7 @@ import (
 	"filippo.io/age"
 	"filippo.io/age/armor"
 	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
 	"github.com/unitoftime/orca/internal/registry"
 	"gopkg.in/yaml.v3"
 )
@@ -214,11 +215,8 @@ func secretRefOf(path string) (secretRef, bool) {
 	if !ok {
 		return secretRef{}, false
 	}
-	group, name, ok := strings.Cut(rest, "/")
-	if !ok || group == "" || name == "" || strings.Contains(name, "/") {
-		return secretRef{}, false
-	}
-	return secretRef{Group: group, Name: name}, true
+	group, name, ok := manifest.SplitRef(rest)
+	return secretRef{Group: group, Name: name}, ok
 }
 
 // variableLabel is a variable under the name its owner knows it by.

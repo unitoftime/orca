@@ -43,12 +43,9 @@ var secretNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // parseSecretRef splits and validates "<group>/<name>".
 func parseSecretRef(ref string) (group, name string, err error) {
-	group, name, ok := strings.Cut(ref, "/")
-	if !ok || group == "" || name == "" {
+	group, name, ok := manifest.SplitRef(ref)
+	if !ok {
 		return "", "", fmt.Errorf("secret %q must be <group>/<name>, e.g. blog/session_key", ref)
-	}
-	if strings.Contains(name, "/") {
-		return "", "", fmt.Errorf("secret %q must be <group>/<name>, with no further slashes", ref)
 	}
 	for what, part := range map[string]string{"group": group, "name": name} {
 		if !secretNamePattern.MatchString(part) {

@@ -92,10 +92,18 @@ func (b *Backup) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// TargetRef splits a "<group>/<service>" reference.
+// SplitRef splits "<group>/<name>", which is how a service, a secret or a
+// target is named from outside its group. ok is false for anything else: a
+// part missing, or a slash too many.
+func SplitRef(ref string) (group, name string, ok bool) {
+	group, name, ok = strings.Cut(ref, "/")
+	return group, name, ok && group != "" && name != "" && !strings.Contains(name, "/")
+}
+
+// TargetRef splits a backup's "<group>/<service>" reference to its target.
 func TargetRef(ref string) (group, service string, err error) {
-	group, service, ok := strings.Cut(ref, "/")
-	if !ok || group == "" || service == "" || strings.Contains(service, "/") {
+	group, service, ok := SplitRef(ref)
+	if !ok {
 		return "", "", fmt.Errorf(
 			"backup.to %q must be <group>/<service>, e.g. storage/offsite", ref)
 	}

@@ -2,7 +2,7 @@ package deploy
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/unitoftime/orca/internal/manifest"
@@ -25,19 +25,6 @@ func (f *FirewallPorts) Add(proto string, port int) {
 	}
 }
 
-func dedupe(ports []int) []int {
-	seen := map[int]bool{}
-	var out []int
-	for _, p := range ports {
-		if !seen[p] {
-			seen[p] = true
-			out = append(out, p)
-		}
-	}
-	sort.Ints(out)
-	return out
-}
-
 // NomadPorts are the scheduler's own ports: HTTP API, RPC and Serf.
 var NomadPorts = []int{NomadHTTPPort, 4647, NomadSerfPort}
 
@@ -46,6 +33,12 @@ const NomadHTTPPort = 4646
 
 // NomadSerfPort is Serf's gossip port, which answers on udp as well as tcp.
 const NomadSerfPort = 4648
+
+// dedupe is the ports in order with no repeats, so an unchanged cluster
+// renders an unchanged ruleset.
+func dedupe(ports []int) []int {
+	return slices.Compact(slices.Sorted(slices.Values(ports)))
+}
 
 // Ruleset is one nftables table orca keeps on a machine. Each is its own
 // table, deleted and recreated rather than a global flush, so the rules

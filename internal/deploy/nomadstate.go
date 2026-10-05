@@ -3,6 +3,8 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -340,13 +342,13 @@ func describePlacement(m *nomad.AllocationMetric) string {
 		return ""
 	}
 	var parts []string
-	for _, k := range sortedKeys(m.ConstraintFiltered) {
+	for _, k := range slices.Sorted(maps.Keys(m.ConstraintFiltered)) {
 		parts = append(parts, fmt.Sprintf("%s (%d nodes)", k, m.ConstraintFiltered[k]))
 	}
-	for _, k := range sortedKeys(m.DimensionExhausted) {
+	for _, k := range slices.Sorted(maps.Keys(m.DimensionExhausted)) {
 		parts = append(parts, "no capacity: "+k)
 	}
-	for _, k := range sortedKeys(m.ClassFiltered) {
+	for _, k := range slices.Sorted(maps.Keys(m.ClassFiltered)) {
 		parts = append(parts, "class filtered: "+k)
 	}
 	return strings.Join(parts, "; ")
@@ -363,18 +365,9 @@ func deref[T any](p *T) T {
 // firstKey is the smallest key of a map, so that "the first task group" is
 // the same one every time it is asked for.
 func firstKey[V any](m map[string]V) string {
-	keys := sortedKeys(m)
+	keys := slices.Sorted(maps.Keys(m))
 	if len(keys) == 0 {
 		return ""
 	}
 	return keys[0]
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
-
-	"golang.org/x/term"
 )
 
 // cmdReboot implements `orca reboot [node] [--yes]`: restart one machine, and
@@ -45,13 +42,8 @@ func cmdReboot(ctx context.Context, cfg Config, in invocation) error {
 	}
 
 	fmt.Printf("Everything running on %s stops until it is back, usually a minute or two.\n", nc.Name)
-	if !yes {
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			return fmt.Errorf("this would reboot %s and there is no terminal to confirm at; re-run with --yes if that is what you meant", nc.Name)
-		}
-		if !confirmYes(fmt.Sprintf("reboot %s? [y/N] ", nc.Name)) {
-			return fmt.Errorf("cancelled")
-		}
+	if err := confirmAction("reboot "+nc.Name, yes); err != nil {
+		return err
 	}
 
 	// Detached and a moment late, so this command has returned before the

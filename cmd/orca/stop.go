@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -130,8 +128,8 @@ func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
 		fmt.Printf("  secret  %s\n", s)
 	}
 
-	if !yes && !confirm(fmt.Sprintf("\npermanently delete the above? type %q to confirm: ", group), group) {
-		return fmt.Errorf("cancelled")
+	if err := confirmTyped("\npermanently delete the above? ", group, yes); err != nil {
+		return err
 	}
 
 	for _, id := range jobs {
@@ -268,15 +266,4 @@ func groupSecrets(ctx context.Context, cluster *Cluster, group string) ([]string
 	}
 	sort.Strings(out)
 	return out, nil
-}
-
-// confirm asks for a specific word rather than y/n. Typing the name of the
-// thing being deleted is hard to do by reflex.
-func confirm(prompt, want string) bool {
-	fmt.Print(prompt)
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
-		return false
-	}
-	return strings.TrimSpace(line) == want
 }

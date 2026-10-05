@@ -166,14 +166,8 @@ func applyBundle(ctx context.Context, cfg Config, cluster *Cluster, want Bundle,
 		return err
 	}
 
-	if !yes {
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			return fmt.Errorf("this would write %d to the cluster and there is no terminal to confirm at; "+
-				"re-run with --yes if that is what you meant", len(changed))
-		}
-		if !confirmYes(fmt.Sprintf("write %d to the cluster? [y/N] ", len(changed))) {
-			return fmt.Errorf("cancelled")
-		}
+	if err := confirmAction(fmt.Sprintf("write %d to the cluster", len(changed)), yes); err != nil {
+		return err
 	}
 
 	write := variables{}
@@ -260,8 +254,8 @@ func editBundle(b Bundle) (Bundle, error) {
 			return after, nil
 		}
 		fmt.Fprintf(os.Stderr, "the edit does not load:\n%v\n", err)
-		if !confirmYes("edit it again? [y/N] ") {
-			return Bundle{}, fmt.Errorf("cancelled; nothing changed")
+		if !saidYes("edit it again? [y/N] ") {
+			return Bundle{}, fmt.Errorf("%w; nothing changed", errCanceled)
 		}
 	}
 }

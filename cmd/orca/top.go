@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -126,7 +128,7 @@ func renderTop(w io.Writer, s statuspage.Summary, color bool, now time.Time) {
 	fmt.Fprintln(w, p.dim(asOf))
 	// A source that could not be read leaves its sections blank, and blank
 	// must not read as quiet.
-	for _, what := range sortedKeys(s.Unavailable) {
+	for _, what := range slices.Sorted(maps.Keys(s.Unavailable)) {
 		level := statuspage.LevelWarn
 		if what == "nomad" {
 			level = statuspage.LevelCrit

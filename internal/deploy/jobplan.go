@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -68,7 +69,7 @@ func JobPlanFromNomad(r *nomad.JobPlanResponse) JobPlan {
 		}
 	}
 	var failed []string
-	for _, tg := range sortedKeys(r.FailedTGAllocs) {
+	for _, tg := range slices.Sorted(maps.Keys(r.FailedTGAllocs)) {
 		if why := describePlacement(r.FailedTGAllocs[tg]); why != "" {
 			failed = append(failed, why)
 		}

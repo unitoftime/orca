@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 
@@ -15,7 +13,6 @@ import (
 	"github.com/unitoftime/orca/internal/images"
 	"github.com/unitoftime/orca/internal/manifest"
 	"github.com/unitoftime/orca/internal/registry"
-	"golang.org/x/term"
 )
 
 // cmdApply converges the cluster to the manifests. With no argument it applies
@@ -677,35 +674,8 @@ func confirmStops(plan deploy.Plan, yes bool) error {
 		fmt.Printf("no manifests here declare: %s\n", strings.Join(gone, ", "))
 	}
 
-	// Refused rather than assumed when there is nobody to ask. A pipeline that
-	// meant it says so with --yes; one that did not would otherwise discover
-	// it had stopped a database.
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf(
-			"this would stop %d running service(s) and there is no terminal to confirm at; "+
-				"re-run with --yes if that is what you meant", len(stops))
-	}
-
-	if !confirmYes(fmt.Sprintf("stop %d running service(s)? [y/N] ", len(stops))) {
-		return fmt.Errorf("cancelled")
-	}
-	return nil
-}
-
-// confirmYes asks a yes/no question, defaulting to no.
-//
-// Lighter than purge's "type the name": a stop keeps data and is undone by
-// applying again from the right directory, so the friction should match the
-// cost.
-func confirmYes(prompt string) bool {
-	fmt.Print(prompt)
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true
-	}
-	return false
+	// Lighter than purge's "type the name": a stop keeps data and is undone
+	// by applying again from the right directory, so the friction should
+	// match the cost.
+	return confirmAction(fmt.Sprintf("stop %d running service(s)", len(stops)), false)
 }

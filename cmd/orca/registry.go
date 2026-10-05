@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -93,7 +95,7 @@ func registryList(ctx context.Context, cfg Config) error {
 		fmt.Println("no registry credentials set")
 		return nil
 	}
-	for _, h := range sortedKeys(hosts) {
+	for _, h := range slices.Sorted(maps.Keys(hosts)) {
 		fmt.Println(h)
 	}
 	return nil
@@ -205,13 +207,13 @@ func preflightRegistries(ctx context.Context, cluster *Cluster, private map[stri
 // checkRegistries is preflightRegistries' judgement, without the cluster.
 func checkRegistries(private map[string][]string, have map[string]bool) error {
 	var lines []string
-	for _, host := range sortedKeys(private) {
+	for _, host := range slices.Sorted(maps.Keys(private)) {
 		if have[host] {
 			continue
 		}
 		refs := append([]string(nil), private[host]...)
 		sort.Strings(refs)
-		lines = append(lines, fmt.Sprintf("  %-20s %s", host, strings.Join(dedupe(refs), ", ")))
+		lines = append(lines, fmt.Sprintf("  %-20s %s", host, strings.Join(slices.Compact(refs), ", ")))
 	}
 	if len(lines) == 0 {
 		return nil
@@ -219,24 +221,4 @@ func checkRegistries(private map[string][]string, have map[string]bool) error {
 	return errors.New("these images are private, and the cluster has no credentials for their registry:\n" +
 		strings.Join(lines, "\n") +
 		"\n\nlog in with: orca registry login <host>")
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// dedupe drops adjacent repeats from a sorted list.
-func dedupe(sorted []string) []string {
-	out := sorted[:0]
-	for i, s := range sorted {
-		if i == 0 || s != sorted[i-1] {
-			out = append(out, s)
-		}
-	}
-	return out
 }

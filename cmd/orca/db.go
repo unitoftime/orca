@@ -25,7 +25,7 @@ import (
 // it is a database nobody asked to back up, and listing its backups would
 // return an empty bucket that looks like data loss.
 func findDatabase(cfg Config, ref string) (*manifest.Manifest, *manifest.Service, deploy.BackupSpec, error) {
-	group, name, ok := strings.Cut(ref, "/")
+	group, name, ok := manifest.SplitRef(ref)
 	if !ok {
 		return nil, nil, deploy.BackupSpec{}, fmt.Errorf("database %q must be <group>/<service>, e.g. shop/db", ref)
 	}
@@ -121,8 +121,8 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation)
 		fmt.Printf("Each database in it is restored beside the one it replaces, then swapped in, ending connections to it.\n")
 		fmt.Printf("What each held before is kept on the server as <name>%s<time>.\n", deploy.PreRestoreSuffix)
 	}
-	if !yes && !confirm(fmt.Sprintf("type %q to confirm: ", s.Name), s.Name) {
-		return fmt.Errorf("cancelled")
+	if err := confirmTyped("", s.Name, yes); err != nil {
+		return err
 	}
 
 	// Checked whichever way the name arrived: typed, or read back from the
