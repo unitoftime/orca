@@ -28,7 +28,7 @@ const topInterval = 5 * time.Second
 // its status, how full it is, and what it is using.
 //
 // It reads the status page's own summary over SSH rather than working the
-// numbers out itself, so the terminal and the page are one judgement and
+// numbers out itself, so the terminal and the page are one judgment and
 // cannot disagree.
 func cmdTop(ctx context.Context, cfg Config, in invocation) error {
 	watch, asJSON := in.Has(flagWatch), in.Has(flagJSON)
@@ -83,7 +83,7 @@ func useColor() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
-// palette colours a level; without colour, the level is spelled out where it
+// palette colors a level; without color, the level is spelled out where it
 // matters instead.
 type palette bool
 
@@ -326,9 +326,9 @@ func ofTotal(u *statuspage.Usage) string {
 	return statuspage.BytesHuman(u.Used) + " / " + statuspage.BytesHuman(u.Total)
 }
 
-// table lines up columns by what is visible. text/tabwriter counts colour
-// escapes as width, so a coloured cell would push its row out of line with
-// the uncoloured ones.
+// table lines up columns by what is visible. text/tabwriter counts color
+// escapes as width, so a colored cell would push its row out of line with
+// the uncolored ones.
 type table struct{ rows [][]string }
 
 func (t *table) row(cells ...string) { t.rows = append(t.rows, cells) }

@@ -150,9 +150,9 @@ func TestBackupCredentialsComeFromTheSecretStore(t *testing.T) {
 
 // A periodic job's children inherit its metadata, so without filtering them
 // every past backup run would appear as a service of its own.
-func TestPeriodicChildrenAreRecognised(t *testing.T) {
+func TestPeriodicChildrenAreRecognized(t *testing.T) {
 	if !IsPeriodicChild("shop-db-backup/periodic-1790268603") {
-		t.Error("a periodic child should be recognised")
+		t.Error("a periodic child should be recognized")
 	}
 	if IsPeriodicChild("shop-db-backup") {
 		t.Error("the parent is not a child")

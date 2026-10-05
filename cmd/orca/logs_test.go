@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Flags must be recognised wherever they appear. Stopping at the first
+// Flags must be recognized wherever they appear. Stopping at the first
 // positional argument would fold the rest of the line into the search, so
 // `orca logs worker tick -n 3` would search for the literal "tick -n 3" and
 // silently find nothing, which is indistinguishable from a service that said

@@ -389,7 +389,7 @@ function nodeCard(m) {
 }
 
 // Every service on the node, by what it claimed. The bar is the node's
-// claimable memory, one segment per service, orca's own in grey.
+// claimable memory, one segment per service, orca's own in gray.
 function placed(m) {
   if (!m.placed || !m.placed.length) return null;
   const total = m.claimedMemory ? m.claimedMemory.total : 0;

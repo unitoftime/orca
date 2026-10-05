@@ -45,7 +45,7 @@ func TestVarsFillInValues(t *testing.T) {
 		"blog/prod/server.yaml": "name: server\nimage: ghcr.io/x/server:${var.commit}\nenv:\n  PUBLIC_IP: ${var.public_ip}\n",
 		"blog/prod/proxy.yaml":  "name: proxy\nimage: ghcr.io/x/proxy:${var.commit}\n",
 		"blog/test/server.yaml": "name: server\nimage: ghcr.io/x/server:${var.commit}\n",
-		"blog/organisation.txt": "not yaml",
+		"blog/organization.txt": "not yaml",
 	})
 	groups, err := Discover(root)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestVarsFillInValues(t *testing.T) {
 	}
 }
 
-// A directory holding only a vars.yaml is organisation, not a group, and a
+// A directory holding only a vars.yaml is organization, not a group, and a
 // vars.yaml beside cluster.yaml is not a stray service file.
 func TestVarsFileIsNotAServiceFile(t *testing.T) {
 	root := tree(t, map[string]string{

@@ -204,7 +204,7 @@ func preflightRegistries(ctx context.Context, cluster *Cluster, private map[stri
 	return checkRegistries(private, have)
 }
 
-// checkRegistries is preflightRegistries' judgement, without the cluster.
+// checkRegistries is preflightRegistries' judgment, without the cluster.
 func checkRegistries(private map[string][]string, have map[string]bool) error {
 	var lines []string
 	for _, host := range slices.Sorted(maps.Keys(private)) {

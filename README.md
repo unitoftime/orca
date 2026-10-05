@@ -66,7 +66,7 @@ orca apply
 
 On a server that does not accept your SSH key yet, `bootstrap` copies it over
 first, asking for the server's password once. It leaves the server's SSH
-settings alone, so logging in with that password still works afterwards;
+settings alone, so logging in with that password still works afterward;
 turn that off yourself if you do not want it.
 
 `bootstrap` updates the OS, turns on automatic security updates, and installs

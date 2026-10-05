@@ -13,8 +13,8 @@ import (
 )
 
 // What the page asks the metric store. Host series come from the node
-// exporter on each machine, labelled node=<name>; allocation series from each
-// machine's Nomad agent, per task, labelled with the allocation.
+// exporter on each machine, labeled node=<name>; allocation series from each
+// machine's Nomad agent, per task, labeled with the allocation.
 const (
 	hostSel = `job="nodes"`
 

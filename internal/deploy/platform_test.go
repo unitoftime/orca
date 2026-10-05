@@ -548,7 +548,7 @@ func TestScrapeConfigScrapesMetricsPorts(t *testing.T) {
 		}
 	})
 
-	t.Run("each machine is labelled with its name", func(t *testing.T) {
+	t.Run("each machine is labeled with its name", func(t *testing.T) {
 		f := render(t, nil,
 			registration{Address: "10.0.0.10", Port: 23456, Tags: []string{"node=box0"}},
 			registration{Address: "10.0.0.11", Port: 24567, Tags: []string{"node=box1"}},
@@ -575,7 +575,7 @@ func TestScrapeConfigScrapesEveryNomadAgent(t *testing.T) {
 		{Address: "10.0.0.11", Port: 24567, Tags: []string{"node=box1"}},
 	}
 
-	t.Run("one machine: loopback, labelled", func(t *testing.T) {
+	t.Run("one machine: loopback, labeled", func(t *testing.T) {
 		job := renderScrape(t, platformOpts(), nil, nodes[:1]).job("nomad")
 		if job == nil {
 			t.Fatal("no nomad job")

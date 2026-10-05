@@ -99,7 +99,7 @@ type ServiceStatus struct {
 // Summarize folds the cluster's raw state into one row per service.
 //
 // It is a pure function of its inputs so the classification, which is the part
-// with actual judgement in it, is testable without a machine.
+// with actual judgment in it, is testable without a machine.
 func Summarize(jobs map[string]JobState, allocs []AllocState, deployments []DeploymentState) []ServiceStatus {
 	latest := latestDeployments(deployments)
 
@@ -365,7 +365,7 @@ func Rollout(s ServiceStatus, version uint64, allocs []AllocState, deployments [
 	}
 
 	// No deployment for this version: a change Nomad applied in place without
-	// one, or a job that never has one. The ordinary judgement holds once
+	// one, or a job that never has one. The ordinary judgment holds once
 	// every allocation it wants running is on the new version.
 	current := 0
 	for _, a := range allocs {

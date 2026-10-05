@@ -196,7 +196,7 @@ replicas: -5
 }
 
 // Syntax errors abort decoding, so only the first is reported even when the
-// manifest has several. This records the behaviour deliberately: semantic
+// manifest has several. This records the behavior deliberately: semantic
 // errors accumulate, syntax errors do not.
 func TestSyntaxErrorsDoNotAccumulate(t *testing.T) {
 	_, err := ParseGroup("a", []byte(`

@@ -69,7 +69,7 @@ func TestRenderTop(t *testing.T) {
 		}
 	}
 	if strings.Contains(out, "\x1b[") {
-		t.Error("no colour was asked for")
+		t.Error("no color was asked for")
 	}
 
 	// Laid out as the page is: no verdict above the sections, and trouble
@@ -97,9 +97,9 @@ func TestRenderTopSaysWhatItCouldNotRead(t *testing.T) {
 	}
 }
 
-// Colour must not push a row out of line: a coloured cell is the same width
-// on screen as an uncoloured one.
-func TestRenderTopAlignsWithColour(t *testing.T) {
+// Color must not push a row out of line: a colored cell is the same width
+// on screen as an uncolored one.
+func TestRenderTopAlignsWithColor(t *testing.T) {
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	var b bytes.Buffer
 	renderTop(&b, topFixture(now), true, now)

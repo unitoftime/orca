@@ -106,7 +106,7 @@ func (p Plan) Unplaceable() []Change {
 	return out
 }
 
-// String renders the plan for a human. Unchanged services are summarised rather
+// String renders the plan for a human. Unchanged services are summarized rather
 // than listed: most applies change one thing, and a wall of "unchanged" buries
 // the line that matters.
 func (p Plan) String() string {

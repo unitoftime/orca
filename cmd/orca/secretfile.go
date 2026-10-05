@@ -155,7 +155,7 @@ func applyBundle(ctx context.Context, cfg Config, cluster *Cluster, want Bundle,
 	}
 
 	// Only a change is guarded. Adding a generated secret is how a rebuilt
-	// cluster gets back the password its restored data was initialised with.
+	// cluster gets back the password its restored data was initialized with.
 	var changedSecrets []secretRef
 	for _, p := range diff.Change {
 		if ref, ok := secretRefOf(p); ok {
@@ -224,7 +224,7 @@ func readBundleFile(file string) (Bundle, string, error) {
 //
 // The plaintext sits in a file only its owner can read for as long as the
 // editor is open, in memory rather than on disk where the system offers that,
-// and is removed afterwards.
+// and is removed afterward.
 func editBundle(b Bundle) (Bundle, error) {
 	doc, err := marshalBundle(b.withoutCertificates())
 	if err != nil {

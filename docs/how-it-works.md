@@ -313,7 +313,7 @@ Setting a new value restarts the services that use it; no redeploy needed.
 **Generated secrets.** Templates create their own secrets on the first apply,
 named after the service: a `db` service gets `db_password`, which other
 services use as `${secret.db_password}`. Nobody types or sees the value. It
-is created once and never replaced, because a database initialised with a
+is created once and never replaced, because a database initialized with a
 password is locked out if it changes. `orca secret set` and `orca secret rm`
 refuse a generated secret unless you pass `--force`.
 

@@ -139,7 +139,7 @@ func TestPipedSecretIsReadWhole(t *testing.T) {
 }
 
 // Setting or removing a generated password locks the database out of the
-// data it was initialised with, so it takes --force.
+// data it was initialized with, so it takes --force.
 func TestGeneratedSecretsAreGuarded(t *testing.T) {
 	root := writeTree(t, map[string]string{
 		"cluster.yaml": "nodes:\n  - host: root@10.0.0.1\n",

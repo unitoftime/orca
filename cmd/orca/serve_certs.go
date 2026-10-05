@@ -375,7 +375,7 @@ func (a *acmeIssuer) authorize(ctx context.Context, client *acme.Client, host, u
 	if err := a.store.put(ctx, tokenPath, map[string]string{deploy.ACMETokenKey: answer}); err != nil {
 		return err
 	}
-	// Not ctx: the token is removed even when the attempt was cancelled.
+	// Not ctx: the token is removed even when the attempt was canceled.
 	defer a.store.delete(context.WithoutCancel(ctx), tokenPath)
 
 	// Checked from here before the authority is asked to. A failed check of

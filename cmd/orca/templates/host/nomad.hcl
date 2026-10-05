@@ -53,7 +53,7 @@ client {
   }
 
   # Where a thing binds is a property of its job spec, not something a
-  # firewall has to correct afterwards. Two named networks, and the rule is
+  # firewall has to correct afterward. Two named networks, and the rule is
   # that nothing orca deploys for itself may use "public": public exposure is
   # opt-in, and the only opt-in is a service's port naming a protocol.
   #

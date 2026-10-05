@@ -96,7 +96,7 @@ func Discover(root string) ([]*Manifest, error) {
 			return nil
 		}
 		if len(files) == 0 {
-			// A directory that only holds other directories is organisation,
+			// A directory that only holds other directories is organization,
 			// not a group.
 			return nil
 		}

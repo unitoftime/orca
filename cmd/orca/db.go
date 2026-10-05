@@ -155,7 +155,7 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation)
 // extension says what kind of dump it is.
 //
 // Checked because the name reaches a shell on the machine. It is quoted there
-// too, and the quoting is the real defence. This is the second lock, and the
+// too, and the quoting is the real defense. This is the second lock, and the
 // one that produces a sentence rather than a silent nothing when a name is not
 // what orca wrote. A bucket holding a file orca did not create is worth saying
 // out loud either way.

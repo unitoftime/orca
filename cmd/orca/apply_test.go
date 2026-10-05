@@ -98,7 +98,7 @@ func TestNodeForVolumeSkipsALeadingClient(t *testing.T) {
 	}
 }
 
-func TestNodeForVolumeHonoursNode(t *testing.T) {
+func TestNodeForVolumeHonorsNode(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
 		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: roleServer},
 		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: roleClient},

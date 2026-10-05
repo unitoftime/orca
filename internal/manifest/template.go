@@ -325,7 +325,7 @@ else
 fi
 
 # Applying a layout is not the same as the cluster having finished acting on
-# it. For a short window afterwards every other call answers 500 "Layout not
+# it. For a short window afterward every other call answers 500 "Layout not
 # ready", which under set -e ends the script with curl's exit 22 and no
 # explanation at all.
 for i in $(seq 1 60); do

@@ -343,7 +343,7 @@ func preflightSecrets(ctx context.Context, cluster *Cluster, groups []*manifest.
 	return missingGenerated(needed, generated, set)
 }
 
-// missingGenerated is preflightSecrets' judgement, without the cluster.
+// missingGenerated is preflightSecrets' judgment, without the cluster.
 //
 // A generated secret not yet created counts as set: apply creates it before
 // anything that reads it is submitted, and plan has to be able to say an apply

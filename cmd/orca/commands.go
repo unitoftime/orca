@@ -403,7 +403,7 @@ func (c *command) flag(name string) *flagSpec {
 
 // parseCommandLine reads what was typed after `orca`.
 //
-// Flags are recognised wherever they appear, and everything else is an
+// Flags are recognized wherever they appear, and everything else is an
 // argument. Stopping at the first argument would fold the rest of the line
 // into it, so `orca logs worker tick -n 3` would search for the literal
 // "tick -n 3" and silently find nothing. A flag the command does not take is

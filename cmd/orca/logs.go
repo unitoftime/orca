@@ -207,7 +207,7 @@ func resolveLogTarget(cfg Config, target string) ([]logJob, error) {
 func printLogLine(raw []byte) {
 	var l LogLine
 	if err := json.Unmarshal(raw, &l); err != nil {
-		// Not a line orca recognises; show it rather than swallow it.
+		// Not a line orca recognizes; show it rather than swallow it.
 		fmt.Println(string(raw))
 		return
 	}

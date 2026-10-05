@@ -280,7 +280,7 @@ func (c *Cluster) QueryLogs(ctx context.Context, query string, limit int, fn fun
 	return nil
 }
 
-// TailLogs streams matching lines until the context is cancelled.
+// TailLogs streams matching lines until the context is canceled.
 func (c *Cluster) TailLogs(ctx context.Context, query string, fn func([]byte)) error {
 	addr, err := c.logStore(ctx)
 	if err != nil {

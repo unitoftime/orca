@@ -200,7 +200,7 @@ func validateSource(e *errList, s *Service) {
 		e.addf("template %s needs a volume, e.g. volume: 20G", t)
 	}
 	// Postgres does not work from an arbitrary directory, so a mount that
-	// looks honoured and is not would be a genuinely confusing failure.
+	// looks honored and is not would be a genuinely confusing failure.
 	if s.Volume != nil && s.Volume.Mount != spec.VolumeMount {
 		e.addf("template %s fixes the volume mount at %s, but this sets %s", t, spec.VolumeMount, s.Volume.Mount)
 	}
@@ -375,7 +375,7 @@ func validatePorts(e *errList, s *Service, claimed map[string]string) {
 		e.addf("declares %d ports over HTTP; a service gets one hostname, so route the rest through it or split the service", hostnames)
 	}
 
-	// One scrape target per service: the metrics are labelled by group and
+	// One scrape target per service: the metrics are labeled by group and
 	// service, and two targets under the same labels would be two sets of
 	// series nobody could tell apart.
 	if metrics > 1 {

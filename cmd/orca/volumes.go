@@ -347,7 +347,7 @@ func checkVolumePlacement(ctx context.Context, cfg Config, dirs []VolumeDir) err
 	return misplacedVolumes(dirs, holders)
 }
 
-// misplacedVolumes is checkVolumePlacement's judgement, without the machines.
+// misplacedVolumes is checkVolumePlacement's judgment, without the machines.
 func misplacedVolumes(dirs []VolumeDir, holders map[string][]string) error {
 	var errs []error
 	for _, d := range dirs {

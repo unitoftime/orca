@@ -99,7 +99,7 @@ func unreachable(err error) bool {
 }
 
 // rsyncSSH is rsync's -e: the same ssh, so an upload rides the shared
-// connection too. rsync splits it on spaces and honours quotes.
+// connection too. rsync splits it on spaces and honors quotes.
 func rsyncSSH() string {
 	parts := []string{"ssh"}
 	for _, o := range sshOptions() {
