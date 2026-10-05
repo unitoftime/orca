@@ -166,7 +166,7 @@ func shipStatusBinary(ctx context.Context, bin statusBinary, hosts []NodeConfig)
 }
 
 func shipStatusBinaryTo(ctx context.Context, bin statusBinary, host NodeConfig) error {
-	node := Node{Host: host.Host}
+	node := host.Node()
 	remote := bin.Remote()
 
 	present, err := node.RunOutput(ctx, fmt.Sprintf("test -f %s && echo yes || true", shQuote(remote)))

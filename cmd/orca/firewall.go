@@ -133,7 +133,7 @@ func applyFirewall(ctx context.Context, cfg Config, all []*manifest.Manifest) er
 
 	anyChanged := false
 	for _, nc := range cfg.Nodes {
-		node := Node{Host: nc.Host}
+		node := nc.Node()
 		for _, rs := range []deploy.Ruleset{scheduler, inbound} {
 			changed, err := node.InstallRuleset(ctx, rs, nc.PrivateIP)
 			if unreachable(err) {

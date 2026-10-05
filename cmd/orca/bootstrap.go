@@ -60,7 +60,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string) error {
 	if len(servers) == 0 {
 		return fmt.Errorf("no server node to wait on")
 	}
-	first := Node{Host: servers[0].Host}
+	first := servers[0].Node()
 	cluster := newCluster(first)
 
 	fmt.Fprintf(os.Stderr, "\n=== cluster ===\n")
@@ -74,7 +74,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string) error {
 	var others []Node
 	for _, nc := range nodes {
 		if nc.Host != first.Host {
-			others = append(others, Node{Host: nc.Host})
+			others = append(others, nc.Node())
 		}
 	}
 	if len(others) > 0 {
@@ -100,7 +100,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string) error {
 }
 
 func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig) error {
-	node := Node{Host: nc.Host}
+	node := nc.Node()
 
 	vars, err := nodeVars(cfg, nc)
 	if err != nil {

@@ -179,3 +179,47 @@ func (n Node) IP() string {
 	}
 	return host
 }
+
+// RunStdin runs a remote command with data on its stdin.
+//
+// Both streams are captured rather than passed through, so what a command
+// narrates does not bury orca's own one-line-per-change output. On failure
+// everything it said is included in the error, which is the moment it is
+// worth reading.
+func (n Node) RunStdin(ctx context.Context, cmd string, stdin []byte) (string, error) {
+	var out, errOut bytes.Buffer
+	c := exec.CommandContext(ctx, "ssh", sshArgsStdin(n.Host, cmd)...)
+	c.Stdin = bytes.NewReader(stdin)
+	c.Stdout = &out
+	c.Stderr = &errOut
+	if err := c.Run(); err != nil {
+		return out.String(), fmt.Errorf("ssh %s: %w: %s", n.Host, err, strings.TrimSpace(errOut.String()))
+	}
+	return out.String(), nil
+}
+
+// RunQuiet runs a remote command, discarding its output unless it fails.
+func (n Node) RunQuiet(ctx context.Context, cmd string) error {
+	var out, errOut bytes.Buffer
+	c := exec.CommandContext(ctx, "ssh", sshArgs(n.Host, cmd)...)
+	c.Stdout = &out
+	c.Stderr = &errOut
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("ssh %s: %w: %s", n.Host, err, strings.TrimSpace(out.String()+" "+errOut.String()))
+	}
+	return nil
+}
+
+// shQuote renders a value as one POSIX shell word, safe to interpolate into a
+// script.
+//
+// Every value orca puts in a remote script goes through this or is built from
+// a name the manifest validator already constrained. The one that needs it
+// most is a backup's filename: it comes from listing the bucket, so it is
+// remote input. Inside a double-quoted string $(...) still runs, so writing a
+// file into the backup bucket would be command execution as root on the
+// machine, taken at the moment someone runs a restore, when things are
+// already going badly.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}

@@ -138,7 +138,7 @@ func (c *Config) applyDefaults() {
 	for i := range c.Nodes {
 		n := &c.Nodes[i]
 		if n.Name == "" {
-			n.Name = strings.ReplaceAll(Node{Host: n.Host}.IP(), ".", "-")
+			n.Name = strings.ReplaceAll(n.Node().IP(), ".", "-")
 		}
 		if n.Role == "" {
 			if i == 0 {
@@ -225,6 +225,9 @@ func (c Config) validate() error {
 
 	return nil
 }
+
+// Node is the machine, as something to run commands on.
+func (n NodeConfig) Node() Node { return Node{Host: n.Host} }
 
 // What a node's host and name may be spelled with. Both go into commands:
 // the host is handed to ssh as an argument, where one starting with a dash

@@ -63,7 +63,7 @@ func dbList(ctx context.Context, cfg Config, cluster *Cluster, ref string) error
 		return err
 	}
 
-	names, err := cluster.ListBackups(ctx, spec)
+	names, err := cluster.node.ListBackups(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation)
 	if err != nil {
 		return err
 	}
-	names, err := cluster.ListBackups(ctx, spec)
+	names, err := cluster.node.ListBackups(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -141,10 +141,13 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation)
 		if err != nil {
 			return err
 		}
-		node, _ := cfg.FindNode(nodeName)
-		return newCluster(Node{Host: node.Host}).RestoreRedis(ctx, spec, m.Group, s.Name, name, s.ResolvedImage())
+		node, ok := cfg.FindNode(nodeName)
+		if !ok {
+			return fmt.Errorf("%s is on %q, which is not a machine in cluster.yaml", in.Arg(0), nodeName)
+		}
+		return node.Node().RestoreRedis(ctx, spec, m.Group, s.Name, name, s.ResolvedImage())
 	}
-	return cluster.RestoreBackup(ctx, spec, m.Group, s.Name, name, s.ResolvedImage())
+	return cluster.node.RestoreBackup(ctx, spec, m.Group, s.Name, name, s.ResolvedImage())
 }
 
 // backupName is the shape a backup file has: <group>-<service>-<stamp>.<ext>,

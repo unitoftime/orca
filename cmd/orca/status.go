@@ -162,7 +162,7 @@ func printVolumeUsage(ctx context.Context, cfg Config, cluster *Cluster, want ma
 		return
 	}
 
-	facts, err := inspectVolumes(ctx, cfg, cluster, dirs, true)
+	facts, err := inspectVolumes(ctx, cfg, cluster.node, dirs, true)
 	if err != nil {
 		fmt.Printf("\ncould not measure volumes: %v\n", err)
 		return
@@ -383,12 +383,12 @@ func clusterFor(ctx context.Context, cfg Config) (*Cluster, error) {
 	case 1:
 		// One server is the only candidate, so probing it would only turn a
 		// clear failure later into a vaguer one now.
-		return newCluster(Node{Host: servers[0].Host}), nil
+		return newCluster(servers[0].Node()), nil
 	}
 
 	var tried []string
 	for _, s := range servers {
-		c := newCluster(Node{Host: s.Host})
+		c := newCluster(s.Node())
 		if c.Alive(ctx) {
 			return c, nil
 		}

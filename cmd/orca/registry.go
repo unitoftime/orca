@@ -83,7 +83,7 @@ func registryLogin(ctx context.Context, cfg Config, host, username string) error
 	// to be found as "unauthorized" at the next deploy.
 	var stale []string
 	for _, nc := range cfg.Nodes {
-		ok, err := newCluster(Node{Host: nc.Host}).HasCredentialHelper(ctx)
+		ok, err := nc.Node().HasCredentialHelper(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not check %s for the credential helper: %v\n", nc.Name, err)
 			continue
@@ -258,4 +258,17 @@ func dedupe(sorted []string) []string {
 		}
 	}
 	return out
+}
+
+// HasCredentialHelper reports whether this machine's Nomad will use the
+// registry credential helper: the helper installed, and the config naming it.
+// Either alone pulls anonymously, which is what a machine bootstrapped by an
+// older orca does until it is bootstrapped again.
+func (n Node) HasCredentialHelper(ctx context.Context) (bool, error) {
+	const script = `if command -v docker-credential-orca >/dev/null && grep -q 'helper *= *"orca"' /etc/nomad.d/nomad.hcl; then echo yes; else echo no; fi`
+	out, err := n.RunOutput(ctx, script)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) == "yes", nil
 }

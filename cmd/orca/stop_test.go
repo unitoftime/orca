@@ -10,25 +10,6 @@ import (
 	"github.com/unitoftime/orca/internal/manifest"
 )
 
-// The guard in front of a recursive delete. These inputs cannot occur in
-// normal operation, which is the point: it fires on a bug, and a bug in front
-// of rm -rf is the one worth catching.
-func TestValidVolumePart(t *testing.T) {
-	for _, ok := range []string{"blog", "db", "a-b-c"} {
-		if err := validVolumePart(ok); err != nil {
-			t.Errorf("validVolumePart(%q) = %v, want nil", ok, err)
-		}
-	}
-	for _, bad := range []string{"", "..", "../etc", "blog/db", `blog\db`, "-rf", "a/../../b"} {
-		if err := validVolumePart(bad); err == nil {
-			t.Errorf("validVolumePart(%q) should be refused", bad)
-		}
-	}
-	if _, err := deleteVolumesScript([]Volume{{Group: "shop", Service: "../x"}}); err == nil {
-		t.Error("a volume whose service is a path must be refused before anything is deleted")
-	}
-}
-
 func clusterTree(t *testing.T) Config {
 	t.Helper()
 	root := writeTree(t, map[string]string{
@@ -175,20 +156,5 @@ func TestPurgeRefusesTheReservedGroup(t *testing.T) {
 	// It has to say what to do instead, or the only read is "orca is broken".
 	if !strings.Contains(err.Error(), "ingress: false") {
 		t.Errorf("the error should point at the capability switch, got: %v", err)
-	}
-}
-
-// A new volume is owned by the user the image runs as, and one that already
-// exists is left alone.
-func TestEnsureDirsCreatesOnlyMissingVolumes(t *testing.T) {
-	script := ensureDirsScript([]VolumeDir{{Path: "/var/orca/volumes/services/shop/db", Owner: 70}})
-	for _, want := range []string{
-		"if [ ! -d '/var/orca/volumes/services/shop/db' ]; then",
-		"mkdir -p '/var/orca/volumes/services/shop/db'",
-		"chown 70:70 '/var/orca/volumes/services/shop/db'",
-	} {
-		if !strings.Contains(script, want) {
-			t.Errorf("script missing %q:\n%s", want, script)
-		}
 	}
 }

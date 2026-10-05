@@ -34,7 +34,7 @@ func cmdReboot(ctx context.Context, cfg Config, in invocation) error {
 	default:
 		return fmt.Errorf("say which machine to reboot; the machines are: %s", nodeNames(cfg))
 	}
-	node := Node{Host: nc.Host}
+	node := nc.Node()
 
 	// Read before anything is asked, so a machine that cannot be reached is
 	// said so now. It is also what tells "back" from "has not gone down yet":
@@ -71,7 +71,7 @@ func cmdReboot(ctx context.Context, cfg Config, in invocation) error {
 	// from its own saved state; nothing has to be applied again.
 	server := node
 	if nc.Role != roleServer {
-		server = Node{Host: cfg.Servers()[0].Host}
+		server = cfg.Servers()[0].Node()
 	}
 	if err := waitForNomad(ctx, server); err != nil {
 		return err

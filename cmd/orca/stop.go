@@ -153,7 +153,7 @@ func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
 		byHost[v.Host] = append(byHost[v.Host], v.Volume)
 	}
 	for host, vols := range byHost {
-		if err := newCluster(Node{Host: host}).DeleteVolumes(ctx, vols); err != nil {
+		if err := (Node{Host: host}).DeleteVolumes(ctx, vols); err != nil {
 			return err
 		}
 	}
@@ -219,7 +219,7 @@ func findOrphans(ctx context.Context, cfg Config) (orphanSet, error) {
 	}
 	var out orphanSet
 	for _, nc := range cfg.Nodes {
-		l, err := newCluster(Node{Host: nc.Host}).ListVolumes(ctx)
+		l, err := nc.Node().ListVolumes(ctx)
 		if err != nil {
 			return orphanSet{}, fmt.Errorf("node %s: %w", nc.Name, err)
 		}
