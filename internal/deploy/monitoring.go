@@ -30,6 +30,8 @@ func metricsJob(opts PlatformOptions) *nomad.Job {
 		fmt.Sprintf("-storage.minFreeDiskSpaceBytes=%d", opts.Metrics.MinFreeBytes),
 		"-promscrape.config=/local/scrape.yml",
 	}
+	task.Config["args"] = append(task.Config["args"].([]string),
+		lockEndpoints("deleteAuthKey", "snapshotAuthKey", "forceMergeAuthKey", "forceFlushAuthKey", "search.resetCacheAuthKey")...)
 
 	task.Templates = append(task.Templates, &nomad.Template{
 		EmbeddedTmpl: ptr(scrapeConfig(opts)),
@@ -300,6 +302,25 @@ func statusEnv(opts PlatformOptions) string {
 	return b.String()
 }
 
+// lockEndpoints closes the endpoints of a store that remove or rearrange
+// what it holds. Each flag makes one of them demand a key, and the key given
+// is one nobody has.
+//
+// A store is asked things by every container on the machine and, through
+// ingress, by a browser that is logged in to its dashboard, which will send
+// a request a page on another site told it to. Nothing orca does uses these
+// endpoints, so they answer no one.
+//
+// The key is the allocation's own ID: not guessable, different each time the
+// store starts, and kept nowhere.
+func lockEndpoints(flags ...string) []string {
+	args := make([]string, len(flags))
+	for i, f := range flags {
+		args[i] = "-" + f + "=${NOMAD_ALLOC_ID}"
+	}
+	return args
+}
+
 func logsJob(opts PlatformOptions) *nomad.Job {
 	job, group, task := platformJob(opts, "victorialogs", opts.Images.VictoriaLogs, 200, 512)
 	pinTo(group, opts.MonitoringNode)
@@ -316,6 +337,10 @@ func logsJob(opts PlatformOptions) *nomad.Job {
 		// setting is most of orca's answer to "the disk filled up again".
 		fmt.Sprintf("-retention.maxDiskSpaceUsageBytes=%d", opts.Logs.DiskBytes),
 	}
+	// Deleting logs is something the store only does when started with a
+	// flag for it, which it is not.
+	task.Config["args"] = append(task.Config["args"].([]string),
+		lockEndpoints("partitionManageAuthKey", "forceMergeAuthKey", "forceFlushAuthKey")...)
 
 	group.Services = []*nomad.Service{{
 		Name:      CatalogName(manifest.ReservedGroup, "victorialogs"),

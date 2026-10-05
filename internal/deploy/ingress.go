@@ -193,6 +193,27 @@ func dashboardsEnabled(opts PlatformOptions) bool {
 	return opts.Domain != "" && opts.Ingress != nil && opts.Ingress.TLS && opts.Ingress.AuthHash != ""
 }
 
+// How many requests a second one address may make of the dashboards, and how
+// many at once. Enough for a page that loads a few dozen files and then
+// polls, and a ceiling on how fast a password can be guessed from one place.
+const (
+	dashboardRequestsPerSecond = 10
+	dashboardRequestBurst      = 100
+)
+
+// notFromAnotherSite is the part of a dashboard's route that refuses a
+// request another site's page told the browser to make.
+//
+// A browser that is logged in to a dashboard sends its password with every
+// request there, including one a page elsewhere asks for: a form that posts
+// to the metric store, say. The browser also says where each request came
+// from, in Sec-Fetch-Site, so those are simply not routed. What is let
+// through from elsewhere is following a link to a page, which is how the
+// status page's own links to the other two arrive, and which only reads.
+// Anything that sends no such header is not a browser being steered.
+const notFromAnotherSite = "!(HeaderRegexp(`Sec-Fetch-Site`, `^(cross-site|same-site)$`)" +
+	" && !(Method(`GET`) && Header(`Sec-Fetch-Mode`, `navigate`) && Header(`Sec-Fetch-Dest`, `document`)))"
+
 // dashboard is one of the platform's built-in web UIs.
 type dashboard struct {
 	name string
@@ -243,8 +264,13 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 
 	b.WriteString("http:\n")
 	if dashboardsEnabled(opts) {
+		// The limit comes first, so a wrong password costs a guess against
+		// it as well: one shared password stands between the internet and
+		// every log line, and checking one is slow on purpose.
 		b.WriteString("  middlewares:\n    dashboard-auth:\n      basicAuth:\n        users:\n")
 		fmt.Fprintf(&b, "          - %q\n", "admin:"+opts.Ingress.AuthHash)
+		fmt.Fprintf(&b, "    dashboard-limit:\n      rateLimit:\n        average: %d\n        burst: %d\n",
+			dashboardRequestsPerSecond, dashboardRequestBurst)
 	}
 
 	b.WriteString("  routers:\n")
@@ -253,10 +279,10 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 			continue
 		}
 		fmt.Fprintf(&b, `    %s:
-      rule: "Host(`+"`"+`%s.%s`+"`"+`)"
+      rule: "Host(`+"`"+`%s.%s`+"`"+`) && %s"
       service: %s
-      middlewares: [dashboard-auth]
-`, d.name, d.name, opts.Domain, d.name)
+      middlewares: [dashboard-limit, dashboard-auth]
+`, d.name, d.name, opts.Domain, notFromAnotherSite, d.name)
 		if opts.Ingress.TLS {
 			b.WriteString("      tls: {}\n")
 		}

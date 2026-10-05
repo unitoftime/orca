@@ -22,7 +22,10 @@ Its defenses face outward. Inside the cluster there are deliberately very few.
   bootstrap` and kept on each machine in a file only root can read. A
   container holds none.
 - **The dashboards are published only over HTTPS**, behind a password
-  generated for the cluster. Nomad's own UI is never published.
+  generated for the cluster. How fast it can be guessed from one address is
+  limited, a request that another site's page tells your browser to make is
+  refused, and the stores behind them will not delete what they hold for
+  anyone. Nomad's own UI is never published.
 - **Secrets are stored in the cluster**, not in your files, and reach a
   container only when it starts.
 - **What orca installs is pinned**: Nomad, Docker and the network plugins by
