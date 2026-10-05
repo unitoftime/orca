@@ -243,6 +243,12 @@ func uploadEnv(spec BackupSpec) string {
 	f.setLiteral("RCLONE_CONFIG_STORE_PROVIDER", "Other")
 	f.setLiteral("RCLONE_CONFIG_STORE_ENDPOINT", spec.Endpoint)
 	f.setLiteral("RCLONE_CONFIG_STORE_REGION", spec.Region)
+	// rclone otherwise makes sure the bucket exists before every upload, by
+	// trying to create it. A key allowed only to read and write objects in
+	// one bucket, which is the key a backup should have, is refused that, and
+	// the upload fails. The bucket is yours to have made; a missing one fails
+	// the upload on its own, by name.
+	f.setLiteral("RCLONE_CONFIG_STORE_NO_CHECK_BUCKET", "true")
 	f.setSecret("RCLONE_CONFIG_STORE_ACCESS_KEY_ID", spec.KeyIDSecret)
 	f.setSecret("RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY", spec.SecretKeySecret)
 	return f.String()
