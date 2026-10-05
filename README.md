@@ -668,3 +668,15 @@ Flags that go anywhere on the line:
 
 [How orca works](docs/how-it-works.md) explains what runs on your server, how
 networking and data safety work, and what orca deliberately leaves out.
+
+## License
+
+orca is released under the [MIT License](LICENSE).
+
+What it installs on your server is other people's software, under their own
+licenses, and not all of them are as permissive. Nomad is under the Business
+Source License 1.1, Garage under the AGPL 3.0, and Redis 8 under your choice
+of the RSALv2, the SSPLv1 or the AGPLv3. orca fetches each from its publisher
+onto your server and redistributes none of them.
+
+To report a security problem, see [SECURITY.md](SECURITY.md).
