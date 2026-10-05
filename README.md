@@ -85,7 +85,8 @@ somewhere else.
 
 ## Writing a service
 
-Each `.yaml` file in a group holds one or more services, separated by `---`:
+Each `.yaml` (or `.yml`) file in a group holds one or more services, separated
+by `---`:
 
 ```yaml
 # shop/web.yaml
@@ -93,7 +94,7 @@ name: web
 image: ghcr.io/you/shop:latest
 cpu: 1                    # vCPUs; default 0.5
 memory: 1G                # default 512M
-replicas: 2               # default 1; with 2 or more, deploys have no downtime
+replicas: 2               # default 1; see Limitations for what 2 or more buys
 env:
   LOG_LEVEL: info
   DATABASE_URL: postgres://postgres:${secret.db_password}@db:5432/postgres
@@ -160,9 +161,10 @@ ports:
 
 - orca gets a certificate for the name and puts it in the container as
   `/secrets/tls/cert.pem` (the full chain) and `/secrets/tls/key.pem`.
-- **The service must reload them from disk.** A certificate is renewed about
-  every two months, and orca rewrites the two files in place when it is. It
-  does not restart the service for it, because a renewal is nobody's deploy.
+- **The service must reload them from disk.** A certificate is renewed two
+  thirds of the way through its life (every two months, for one that lasts
+  three), and orca rewrites the two files in place when it is. It does not
+  restart the service for it, because a renewal is nobody's deploy.
 - Point the name at the ingress machine: the certificate authority checks it
   on port 80, which ingress answers. Apply gets the certificate before it
   deploys the service, and stops with the authority's reason if it cannot.
@@ -348,8 +350,8 @@ memory: 2G
 volume: 20G
 ```
 
-orca picks the image, port (5432, internal only), storage and memory settings,
-and generates a password. Other services in the group use it as
+orca picks the image, port (5432, internal only), storage and memory settings
+(1G unless you say otherwise), and generates a password. Other services in the group use it as
 `${secret.db_password}`. You connect as the `postgres` user and create your own
 databases and roles.
 
@@ -364,6 +366,7 @@ name: offsite
 target: s3
 endpoint: https://<account>.r2.cloudflarestorage.com
 bucket: orca-backups
+region: auto                # the default; set it where the store needs one, as S3 does
 ```
 
 ```
@@ -452,16 +455,21 @@ volume: 20G
 ```
 
 An S3-compatible store on your own server, using Garage. orca creates a bucket
-named after the group and service (`files-store`) and an access key:
+named after the group and service (`files-store`) and an access key. A service
+in the same group uses them like this:
 
 ```yaml
 env:
-  S3_ENDPOINT: http://store.files:3900
+  S3_ENDPOINT: http://store:3900
   S3_REGION: orca
   S3_BUCKET: files-store
   S3_KEY_ID: ${secret.store_key_id}
   S3_SECRET: ${secret.store_secret_key}
 ```
+
+A secret belongs to its group, so a service in another group cannot name
+these two. Keep the store in the group that uses it, or copy both values into
+the other group with `orca secret set` and reach the store as `store.files`.
 
 ## Seeing what is going on
 
@@ -477,9 +485,11 @@ orca logs shop/web -f                # follow
 orca logs shop/web --since 24h -n 500
 ```
 
-A service is `running`, `pending` (starting or deploying), `failed`, or
-`unplaced` (there is no machine it fits on; the reason is shown). `orca status`
-also lists data left behind by services you removed.
+A service is `running`, `pending` (starting or deploying), `failed`,
+`unplaced` (there is no machine it fits on; the reason is shown) or `stopped`
+(with Nomad's own tools, not by orca). A database's backup shows as `scheduled` until its first
+run, and from then on as how that run went. `orca status` also lists data
+left behind by services you removed.
 
 Logs are kept for 14 days (up to 10G) and outlive the container that wrote
 them. Metrics are kept for 30 days.
@@ -588,9 +598,11 @@ orca apply         # services move onto the private network
 
 - **More than one machine has not been tested on real hardware yet.**
 - **A service with one replica restarts on deploy**, so it is briefly down.
-  With `replicas: 2` or more, a new set of copies starts beside the old one and
-  takes the traffic once healthy, with no downtime. A service with a volume or
-  a raw port is still replaced one copy at a time.
+  On one machine, a service with `replicas: 2` or more that has a port, and no
+  raw `tcp` or `udp` one, deploys with no downtime: a new set of copies starts
+  beside the old one and takes the traffic once healthy. Above one machine its
+  copies are replaced one at a time instead, because each holds its port on
+  the machine it runs on.
 - **Backups are scheduled dumps**, not continuous: if the server dies, you lose
   what changed since the last one. Only Postgres and Redis are backed up; a
   plain service's `volume:` is not.

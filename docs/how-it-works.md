@@ -83,11 +83,13 @@ Only one apply runs at a time. A second one, from CI or another machine,
 stops at once and says who holds the cluster; one that dies without
 finishing gives way within a minute.
 
-A service with `replicas: 2` or more, no volume and no raw port is deployed
-blue/green: a full new set of copies starts beside the old one and is sent
-traffic only once all of them pass their checks, then the old set drains and
-stops. It briefly needs room for both. Anything else is replaced one copy at
-a time.
+On one machine, a service with `replicas: 2` or more that has a port, and no
+raw `tcp` or `udp` one, is deployed blue/green: a full new set of copies starts beside the
+old one and is sent traffic only once all of them pass their checks, then the
+old set drains and stops. It briefly needs room for both. Anything else is
+replaced one copy at a time. That includes every service above one machine,
+where a copy holds its port on the machine it runs on and a second set would
+have nowhere to bind.
 
 When nothing changed and nothing is wrong, apply says so and exits quickly,
 so it is safe to run on every commit.
@@ -120,8 +122,11 @@ the `orca` group.
 | Security updates | Installed automatically from the OS's security updates. Docker and Nomad are pinned and not touched by them. |
 | Registry helper | Lets Nomad pull private images using the cluster's own registry logins. |
 
-Each of these can be switched off in `cluster.yaml`; see the
-[README](../README.md#configuring-the-cluster).
+Ingress, the resolver, the firewall, the log and metric stores and the status
+page can each be switched off in `cluster.yaml`; see the
+[README](../README.md#configuring-the-cluster). Vector goes with the log
+store, the node exporter with the metric store, and the certificate job with
+HTTPS. The rest is what orca is made of.
 
 **None of them depends on another being healthy.** If the log store is down,
 Vector keeps logs on disk (up to a limit) and sends them later. If Traefik
@@ -353,7 +358,6 @@ backups; keep what matters somewhere else too.
 | High availability | One machine is one failure domain. Backups, not replicas. |
 | Manage databases, roles or schemas | You are the superuser. |
 | A web UI for deploying | The CLI and your files are the interface. |
-| Alerting | Disk caps remove the main reason for it; `orca top` answers "is anything wrong" when you ask. |
 
 ## Not built yet
 
