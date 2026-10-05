@@ -74,6 +74,9 @@ Commands:
   registry list      The registries the cluster has credentials for.
   registry logout <h> Remove a registry's credentials.
   nodes              List the machines in the config.
+  reboot [node]      Restart a machine and wait for it to be back. For the
+                     "reboot required" an installed update leaves; orca never
+                     reboots one itself. Asks first; --yes skips the question.
   version            Print orca's version and the stack it installs.
 
 Flags:
@@ -182,6 +185,9 @@ func run(ctx context.Context, args []string, rootDir string) error {
 
 	case "stop":
 		return cmdStop(ctx, cfg, rest)
+
+	case "reboot":
+		return cmdReboot(ctx, cfg, rest)
 
 	case "purge":
 		return cmdPurge(ctx, cfg, rest)

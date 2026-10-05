@@ -216,7 +216,7 @@ func renderMachine(w io.Writer, p palette, m statuspage.Machine) {
 		head = append(head, p.level(statuspage.LevelWarn, "no metrics"))
 	}
 	if m.RebootRequired {
-		head = append(head, p.level(statuspage.LevelWarn, "reboot required"))
+		head = append(head, p.level(statuspage.LevelWarn, "reboot required (orca reboot "+m.Name+")"))
 	}
 	fmt.Fprintf(w, "  %s\n", strings.Join(head, "  "))
 

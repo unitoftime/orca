@@ -70,6 +70,12 @@ first, asking for the server's password once.
 Docker and Nomad. It is safe to run again; that is also how you upgrade orca on
 the server.
 
+An update that needs a reboot, a new kernel mostly, waits for one: orca never
+restarts a server on its own. `orca top` and the status page say "reboot
+required" when one is waiting, and `orca reboot` restarts the server when you
+choose to. Everything on it stops for a minute or two and comes back by
+itself.
+
 Like git, orca finds `cluster.yaml` by looking upward from where you are, so
 every command works from anywhere inside the directory. `-C <dir>` points it
 somewhere else.
@@ -622,6 +628,7 @@ orca db restore <group>/<service> [backup] [--yes]
 orca password                       the dashboards' password
 orca password set                   change it
 orca nodes                          list the machines
+orca reboot [node] [--yes]          restart a machine and wait for it
 orca version                        orca's version and what it installs
 
 A flag that goes before the command:
