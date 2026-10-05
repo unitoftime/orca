@@ -471,6 +471,7 @@ func (a *acmeIssuer) account(ctx context.Context) (*acme.Client, error) {
 		return nil, fmt.Errorf("the account key in %s: %w", deploy.ACMEAccountPath, err)
 	}
 
+	version, _ := buildVersion()
 	client := &acme.Client{Key: key, DirectoryURL: a.directory, UserAgent: "orca/" + version}
 	account := &acme.Account{}
 	if a.email != "" {

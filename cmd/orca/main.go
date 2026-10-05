@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 )
 
@@ -83,14 +84,33 @@ Flags:
   -C <dir>           Directory to search upward from (default ".")
 `
 
-const version = "0.0.1"
+// build names this build where Go has not recorded it: only in the one orca
+// builds for the machines, from a copy of its source that has no history.
+var build string
 
-// build is the git revision this binary was built from, stamped by the
-// Makefile. Two builds of an unreleased tool are otherwise indistinguishable,
-// and telling them apart matters more here than it would for a released one:
-// the binary on your PATH came from `make install` at some point in the past,
-// and the tree has moved since.
-var build = "unknown"
+// buildVersion says which build of orca this is, and whether it is one that
+// `go install` made from a published version, which can be fetched and built
+// again.
+//
+// Go records it in the binary: the version asked for, or for a build from a
+// checkout the commit, its time and whether the tree had changes. So two
+// builds are told apart without a number kept by hand, which matters most for
+// the one on your PATH from `make install` at some point in the past.
+func buildVersion() (version string, published bool) {
+	if build != "" {
+		return build, false
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "unknown", false
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs" {
+			return info.Main.Version, false
+		}
+	}
+	return info.Main.Version, info.Main.Path == modulePath
+}
 
 func main() {
 	rootDir := flag.String("C", ".", "directory to search upward from for cluster.yaml")
@@ -148,7 +168,8 @@ func run(ctx context.Context, args []string, rootDir string) error {
 
 	switch cmd {
 	case "version":
-		fmt.Printf("orca %s (%s)\n  nomad  %s\n  docker %s\n", version, build, Versions.Nomad, Versions.Docker)
+		version, _ := buildVersion()
+		fmt.Printf("orca %s\n  nomad  %s\n  docker %s\n", version, Versions.Nomad, Versions.Docker)
 		return nil
 
 	case "validate":

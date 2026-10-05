@@ -1,6 +1,6 @@
 module github.com/unitoftime/orca
 
-go 1.26.2
+go 1.26.0
 
 require (
 	filippo.io/age v1.3.2

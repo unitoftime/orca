@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 
 	"github.com/unitoftime/orca/pkg/deploy"
@@ -90,14 +89,13 @@ func runsOnMachine(file string) bool {
 //
 // Kept in the user cache per version, so it is built once, not every apply.
 func buildForMachine(ctx context.Context) (string, error) {
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Path != modulePath || info.Main.Version == "" || info.Main.Version == "(devel)" {
-		return "", fmt.Errorf("the status page runs orca on the machine, and this build of orca can't run there: " +
-			"it is not a static linux/amd64 binary, and it was built from a source tree, so there is no version to rebuild. " +
-			"Build it with `make build` (or CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/orca) " +
-			"and run that, or turn the page off with `monitoring: {status: false}` in cluster.yaml")
+	version, published := buildVersion()
+	if !published {
+		return "", fmt.Errorf("the status page and the certificate job run orca on the machine, and this build of orca can't run there: " +
+			"it is not a static linux/amd64 binary, and it was built from a checkout, so there is no published version to build one from. " +
+			"On Linux, build it with `make build` and run that; anywhere else, run a published version " +
+			"(go install " + modulePath + "/cmd/orca@latest)")
 	}
-	version := info.Main.Version
 
 	cache, err := os.UserCacheDir()
 	if err != nil {
