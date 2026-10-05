@@ -1,5 +1,3 @@
 /build/
 /orca
 *.log
-orca.local.yaml
-/testcluster/

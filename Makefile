@@ -13,7 +13,7 @@ test:
 	go test ./...
 
 fmt:
-	gofmt -w ./cmd
+	gofmt -w .
 
 vet:
 	go vet ./...

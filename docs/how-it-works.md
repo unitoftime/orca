@@ -367,6 +367,8 @@ backups; keep what matters somewhere else too.
 - On-demand health checks, and alerting.
 - Backups of a plain service's `volume:`. Only Postgres and Redis are backed
   up.
+- Continuous archiving for Postgres, for a recovery point of seconds rather
+  than the time since the last backup.
 - Stages: one set of service files deployed as prod and test with different
   values. Today each stage is its own directory, and variables carry the
   values that differ.
