@@ -369,6 +369,11 @@ backups; keep what matters somewhere else too.
   up.
 - Continuous archiving for Postgres, for a recovery point of seconds rather
   than the time since the last backup.
+- Replacing the cluster's Nomad token. `orca bootstrap` makes one when there
+  is none; one that has leaked is replaced by hand, with Nomad's own tools.
+- Setting Garage up without downloading anything. Today its setup step
+  installs `curl` and `jq` from Alpine's package servers each time it runs,
+  the one thing orca fetches that is not pinned.
 - Stages: one set of service files deployed as prod and test with different
   values. Today each stage is its own directory, and variables carry the
   values that differ.

@@ -67,7 +67,10 @@ func registryLogin(ctx context.Context, cfg Config, host, username string) error
 
 	// From here, before storing anything, so a typo or an expired token is
 	// caught with someone at the keyboard rather than at a pull on the machine.
-	if err := registry.Verify(ctx, host, username, token); err != nil {
+	verifyCtx, cancel := context.WithTimeout(ctx, resolveTimeout)
+	err = registry.Verify(verifyCtx, host, username, token)
+	cancel()
+	if err != nil {
 		return err
 	}
 
@@ -124,8 +127,9 @@ func registryLogout(ctx context.Context, cfg Config, raw string) error {
 	return nil
 }
 
-// resolveTimeout bounds one registry lookup. A registry that stops
-// answering would otherwise hold a CI apply until the job's own timeout.
+// resolveTimeout bounds one request to a registry. A registry that stops
+// answering would otherwise hold a CI apply until the job's own timeout, or
+// a login until someone gave up on it.
 const resolveTimeout = 30 * time.Second
 
 // imageResolver pins images to digests for one apply, and remembers which

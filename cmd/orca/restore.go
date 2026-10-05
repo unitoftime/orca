@@ -23,6 +23,24 @@ export NOMAD_TOKEN
 nomad_get() { printf 'X-Nomad-Token: %s\n' "$NOMAD_TOKEN" | curl -sf --max-time 10 -H @- "` + nomadAddr + `$1"; }
 `
 
+// restoreDir is where a restore puts the backup it downloads, for as long as
+// the restore runs.
+const restoreDir = dataDir + "/restore"
+
+// restoreWork makes the directory one restore works in, and leaves its path
+// in $WORK.
+//
+// The directory has to be readable by whoever the database's image runs as,
+// which is not root. In /tmp that would make a dump of the whole database
+// readable by every user of the machine, so it is made inside a directory
+// only root can enter; a container is handed it directly and never walks
+// the path.
+const restoreWork = `mkdir -p ` + restoreDir + `
+chmod 700 ` + restoreDir + `
+WORK=$(mktemp -d -p ` + restoreDir + `)
+chmod 755 "$WORK"
+`
+
 // rcloneEnvScript writes the S3 credentials to a private file on the machine
 // and prints its path.
 //
@@ -135,11 +153,9 @@ BUCKET=%[3]s
 PREFIX=%[4]s
 NAME=%[6]s
 
-WORK=$(mktemp -d)
-PGENV=$(mktemp)
+`+restoreWork+`PGENV=$(mktemp)
 chmod 600 "$PGENV"
 trap 'rm -rf "$WORK" "$ENVFILE" "$PGENV"' EXIT
-chmod 755 "$WORK"
 
 echo "downloading $NAME"
 docker run --rm --network host --env-file "$ENVFILE" -v "$WORK:/work" %[2]s \
@@ -331,8 +347,7 @@ STAMP=$(date -u +%%Y%%m%%dT%%H%%M%%SZ)
 KEEP=%[9]s-$STAMP
 TMP=orca-restore-$JOB
 
-WORK=$(mktemp -d)
-SPEC=$(mktemp)
+`+restoreWork+`SPEC=$(mktemp)
 STOPPED=0
 SWAPPED=0
 DONE=0
@@ -350,7 +365,6 @@ cleanup() {
   rm -rf "$WORK" "$ENVFILE" "$SPEC"
 }
 trap cleanup EXIT
-chmod 755 "$WORK"
 
 echo "downloading $NAME"
 docker run --rm --network host --env-file "$ENVFILE" -v "$WORK:/work" %[2]s \

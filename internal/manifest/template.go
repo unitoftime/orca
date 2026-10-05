@@ -278,7 +278,13 @@ admin_token = "{{ with nomadVar "%[1]s_admin_token" }}{{ .value }}{{ end }}"
 // skipped once a role is assigned, and creating a bucket or importing a key
 // that already exists is not an error worth failing on.
 const garageInit = `set -eu
-apk add --no-cache curl jq >/dev/null 2>&1
+# Quiet when it works. When it does not, what apk said is the only account of
+# why: usually that its package servers could not be reached.
+if ! OUT=$(apk add --no-cache curl jq 2>&1); then
+  echo "could not install curl and jq, which setting Garage up needs:" >&2
+  printf '%%s\n' "$OUT" >&2
+  exit 1
+fi
 
 TOKEN="{{ with nomadVar "%[1]s_admin_token" }}{{ .value }}{{ end }}"
 KEY_ID="{{ with nomadVar "%[1]s_key_id" }}{{ .value }}{{ end }}"
