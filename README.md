@@ -522,6 +522,7 @@ Everything is on by default. Turn a piece off with `false`, or adjust it:
 ```yaml
 nodes:
   - host: root@203.0.113.10
+    name: box1
 
 ingress:                      # or `ingress: false` if nothing is served over HTTP
   acme_email: you@example.com # optional contact for Let's Encrypt
@@ -568,7 +569,8 @@ nodes:
   Tailscale or WireGuard), and every node needs a `private_ip`. Anything else
   on that network is treated like the internet: it reaches SSH and the ports
   your files publish, and nothing more.
-- Servers (`role: server`, the default) must be an odd number: 1, 3 or 5.
+- The first node listed is a server and the rest are clients, unless a node
+  says `role:`. Servers must be an odd number: 1, 3 or 5.
 - HTTPS (ingress) and monitoring run on the first server. Use `node:` under
   `ingress` or `monitoring` to move them. Your DNS points at the ingress
   machine.

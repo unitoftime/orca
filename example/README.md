@@ -8,7 +8,7 @@ A small cluster you can point at your own server and bring up. It runs:
 - `shop/app`: an app that connects to `shop/db` by name and logs whether it got
   through
 
-A fresh Debian or Ubuntu server with 2 GB of memory is plenty.
+A fresh Debian or Ubuntu server with 4 GB of memory is plenty.
 
 ## Run it
 

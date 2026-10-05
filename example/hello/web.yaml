@@ -1,6 +1,7 @@
 # A small web server at https://hello.<domain>. It answers with the request it
 # received, so you can see ingress and HTTPS working. With two replicas, a
-# deploy replaces them one at a time, with no downtime.
+# deploy starts a new pair beside the old one and switches over once it is
+# healthy, with no downtime.
 name: web
 image: traefik/whoami:latest
 cpu: 0.1
