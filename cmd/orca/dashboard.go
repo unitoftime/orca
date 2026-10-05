@@ -64,13 +64,11 @@ func passwordShow(ctx context.Context, cfg Config, cluster *Cluster) error {
 	}
 	// Only the password goes to stdout, so it can be piped; who to log in as,
 	// and where, go to stderr.
+	// The dashboards are published only over HTTPS, so without it there is
+	// nowhere to say.
 	where := ""
-	if cfg.Ingress.Enabled && cfg.Monitoring.Domain != "" && cfg.Monitoring.Status.Enabled {
-		scheme := "http"
-		if cfg.Ingress.TLS() {
-			scheme = "https"
-		}
-		where = " at " + scheme + "://status." + cfg.Monitoring.Domain
+	if cfg.Ingress.TLS() && cfg.Monitoring.Domain != "" && cfg.Monitoring.Status.Enabled {
+		where = " at https://status." + cfg.Monitoring.Domain
 	}
 	fmt.Fprintf(os.Stderr, "user admin%s, password:\n", where)
 	fmt.Println(password)

@@ -99,7 +99,7 @@ func (p *Port) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
 		var raw string
 		if err := node.Decode(&raw); err != nil {
-			return fmt.Errorf("port must be internal, metrics, http, a hostname, or a protocol like tcp or udp:7778")
+			return fmt.Errorf("port must be internal, metrics, a hostname, or a protocol like tcp or udp:7778")
 		}
 		parsed, err := ParsePort(raw)
 		if err != nil {
