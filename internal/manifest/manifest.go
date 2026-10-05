@@ -57,12 +57,12 @@ func (c CPU) MarshalYAML() (any, error) { return c.Float(), nil }
 // state: a service removed from them is stopped on the next apply, so there
 // is no enabled field and no way to express "declared but off".
 //
-// Neither field is written in a file. App comes from the directory name, so
+// Neither field is written in a file. Group comes from the directory name, so
 // nothing inside repeats it and two groups cannot collide because two
 // directories cannot share a path; Services are merged from every file in that
 // directory.
 type Manifest struct {
-	App      string
+	Group    string
 	Services []*Service
 	Path     string
 
@@ -72,7 +72,7 @@ type Manifest struct {
 	Vars Vars
 }
 
-// Service is one container in an app.
+// Service is one container in a group.
 type Service struct {
 	Name string `yaml:"name"`
 
@@ -349,7 +349,7 @@ func (m *Manifest) GeneratedSecrets() []string {
 // Secrets lists every secret the manifest asks for, whether declared in
 // `secrets:` or referenced through ${secret.NAME}, sorted and deduplicated.
 // Apply uses it to check that every one exists before deploying anything,
-// rather than after half the app is already down.
+// rather than after half the group is already down.
 func (m *Manifest) Secrets() []string {
 	seen := map[string]bool{}
 	for _, s := range m.Services {
@@ -381,12 +381,12 @@ func (m *Manifest) Secrets() []string {
 type HostPort struct {
 	Port    int
 	Proto   string // "tcp" or "udp"
-	App     string
+	Group   string
 	Service string
 }
 
 // HostPorts lists every raw host port this manifest claims, sorted. Host ports
-// are a single namespace across every app on the machine, so apply collects
+// are a single namespace across every group on the machine, so apply collects
 // these from all manifests to reject a collision before deploying rather than
 // letting it surface as a placement failure. The firewall is generated from
 // exactly this list.
@@ -405,7 +405,7 @@ func (m *Manifest) HostPorts() []HostPort {
 				out = append(out, HostPort{
 					Port:    b.HostPort(cport),
 					Proto:   b.Proto,
-					App:     m.App,
+					Group:   m.Group,
 					Service: s.Name,
 				})
 			}

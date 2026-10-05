@@ -20,8 +20,8 @@ import (
 )
 
 // cmdApply converges the cluster to the manifests. With no argument it applies
-// every app in cluster.yaml; named apps narrow the scope, and anything outside
-// that scope is left completely alone.
+// every group beside cluster.yaml; named groups narrow the scope, and anything
+// outside that scope is left completely alone.
 func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) error {
 	yes, args := in.Has(flagYes), in.args
 
@@ -57,7 +57,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 		return err
 	}
 
-	apps, err := scopeGroups(all, args, current)
+	groups, err := scopeGroups(all, args, current)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 	// ordinary "stop what is no longer declared" rule removes it.
 	platformInScope := len(args) == 0
 	for _, a := range args {
-		if a == deploy.OrcaApp {
+		if a == manifest.ReservedGroup {
 			platformInScope = true
 		}
 	}
@@ -88,18 +88,18 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 	// A database with a `backup:` gets a periodic job, and its target is
 	// usually in a group this apply was not asked to touch, so it is looked
 	// up in every group, not only the ones in scope.
-	backups, err := collectBackups(all, apps)
+	backups, err := collectBackups(all, groups)
 	if err != nil {
 		return err
 	}
 
 	pins := newImageResolver(ctx, registry.Remote{}, current)
 
-	desired, err := buildJobs(cfg, pins, apps, backups)
+	desired, err := buildJobs(cfg, pins, groups, backups)
 	if err != nil {
 		return err
 	}
-	volumeDirs, err := declaredVolumeDirs(cfg, apps)
+	volumeDirs, err := declaredVolumeDirs(cfg, groups)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 	// submitted. Nomad blocks a task whose secret is missing, so without this
 	// the failure arrives as a two-minute health timeout naming a raft path
 	// instead of a secret.
-	toGenerate, err := preflightSecrets(ctx, cluster, apps, backups)
+	toGenerate, err := preflightSecrets(ctx, cluster, groups, backups)
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 	if err != nil {
 		return err
 	}
-	if err := checkVolumeData(apps, facts, toGenerate); err != nil {
+	if err := checkVolumeData(groups, facts, toGenerate); err != nil {
 		return err
 	}
 	if err := checkVolumePlacement(ctx, cfg, volumeDirs); err != nil {
@@ -177,7 +177,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 	if err != nil {
 		return err
 	}
-	certs := planCerts(wantedCerts(cfg, apps, platformInScope), certRecords, func(group string) bool {
+	certs := planCerts(wantedCerts(cfg, groups, platformInScope), certRecords, func(group string) bool {
 		// Every group is a full apply's to decide for, declared or not: one
 		// whose directory is gone has no use for its certificates either.
 		// A narrowed apply decides for the groups it names, likewise.
@@ -218,7 +218,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 	if bad := plan.Unplaceable(); len(bad) > 0 {
 		var names []string
 		for _, c := range bad {
-			names = append(names, c.App+"/"+c.Service)
+			names = append(names, c.Group+"/"+c.Service)
 		}
 		return fmt.Errorf("nothing changed: Nomad cannot place %s", strings.Join(names, ", "))
 	}
@@ -303,7 +303,7 @@ func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) err
 // rest.
 func splitPlatform(plan deploy.Plan) (own, rest deploy.Plan) {
 	for _, c := range plan.Changes {
-		if c.App == deploy.OrcaApp {
+		if c.Group == manifest.ReservedGroup {
 			own.Changes = append(own.Changes, c)
 		} else {
 			rest.Changes = append(rest.Changes, c)
@@ -333,9 +333,9 @@ func binaryHosts(cfg Config) []NodeConfig {
 // preflightSecrets checks that every secret the apply needs is set or about
 // to be generated, and returns the generated ones that do not exist yet. It
 // only reads: plan runs it too.
-func preflightSecrets(ctx context.Context, cluster *Cluster, apps []*manifest.Manifest, backups []backedUp) ([]generatedSecret, error) {
-	needed := neededSecrets(apps, backups)
-	generated := generatedSecrets(apps)
+func preflightSecrets(ctx context.Context, cluster *Cluster, groups []*manifest.Manifest, backups []backedUp) ([]generatedSecret, error) {
+	needed := neededSecrets(groups, backups)
+	generated := generatedSecrets(groups)
 	if len(needed) == 0 && len(generated) == 0 {
 		return nil, nil
 	}
@@ -406,7 +406,7 @@ func execute(ctx context.Context, cluster *Cluster, plan deploy.Plan) (map[strin
 		//
 		// This deletes no data. The volume stays on disk and `orca status`
 		// reports it as orphaned, so "kept" never means "invisible".
-		fmt.Printf("  stop    %s/%s ... ", c.App, c.Service)
+		fmt.Printf("  stop    %s/%s ... ", c.Group, c.Service)
 		if err := cluster.Stop(ctx, c.JobID, true); err != nil {
 			fmt.Println("FAILED")
 			errs = append(errs, err)
@@ -419,7 +419,7 @@ func execute(ctx context.Context, cluster *Cluster, plan deploy.Plan) (map[strin
 		if c.Kind == deploy.ChangeStop {
 			continue
 		}
-		fmt.Printf("  %-7s %s/%s ... ", c.Kind, c.App, c.Service)
+		fmt.Printf("  %-7s %s/%s ... ", c.Kind, c.Group, c.Service)
 		if err := cluster.Submit(ctx, c.Job, c.Plan.JobModifyIndex); err != nil {
 			fmt.Println("FAILED")
 			errs = append(errs, err)
@@ -433,12 +433,12 @@ func execute(ctx context.Context, cluster *Cluster, plan deploy.Plan) (map[strin
 }
 
 // buildJobs resolves every image to a digest and renders the jobs.
-func buildJobs(cfg Config, pins *imageResolver, apps []*manifest.Manifest, backups []backedUp) ([]*nomad.Job, error) {
+func buildJobs(cfg Config, pins *imageResolver, groups []*manifest.Manifest, backups []backedUp) ([]*nomad.Job, error) {
 	opts := deploy.Options{
-		Datacenter: Datacenter,
+		Datacenter: datacenter,
 		Ingress:    cfg.Ingress.Enabled,
 		TLS:        cfg.Ingress.TLS(),
-		DataDir:    DataDir,
+		DataDir:    dataDir,
 	}
 
 	// On one machine an internal port needs no host port at all: every
@@ -454,28 +454,28 @@ func buildJobs(cfg Config, pins *imageResolver, apps []*manifest.Manifest, backu
 	var errs []error
 
 	imagesByGroup := map[string]map[string]string{}
-	for _, m := range apps {
+	for _, m := range groups {
 		images, err := resolveImages(pins.Pin, m)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		imagesByGroup[m.App] = images
+		imagesByGroup[m.Group] = images
 
-		appJobs, err := deploy.BuildApp(m, images, opts, func(s *manifest.Service) (string, error) {
+		built, err := deploy.BuildGroup(m, images, opts, func(s *manifest.Service) (string, error) {
 			return nodeFor(cfg, s)
 		})
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		jobs = append(jobs, appJobs...)
+		jobs = append(jobs, built...)
 	}
 
 	// A database with a `backup:` gets a periodic job. Naming a target is
 	// what turns backups on; there is no separate switch to forget.
 	for _, b := range backups {
-		images, ok := imagesByGroup[b.Manifest.App]
+		images, ok := imagesByGroup[b.Manifest.Group]
 		if !ok {
 			// Its group's images failed to resolve, which is already reported.
 			continue
@@ -509,7 +509,7 @@ func declaredVolumeDirs(cfg Config, groups []*manifest.Manifest) ([]VolumeDir, e
 				continue
 			}
 			d := VolumeDir{
-				Path:  deploy.VolumePath(DataDir, m.App, s.Name),
+				Path:  deploy.VolumePath(dataDir, m.Group, s.Name),
 				Owner: deploy.VolumeOwner(s),
 				Node:  node,
 			}
@@ -570,7 +570,7 @@ func onVolumeNodes(cfg Config, fallback *Cluster, dirs []VolumeDir, fn func(*Clu
 			if !ok {
 				return fmt.Errorf("volume pinned to unknown node %q", node)
 			}
-			target = NewCluster(Node{Host: nc.Host})
+			target = newCluster(Node{Host: nc.Host})
 		}
 		if err := fn(target, list); err != nil {
 			return err
@@ -597,7 +597,7 @@ func checkVolumePlacement(ctx context.Context, cfg Config, dirs []VolumeDir) err
 
 	holders := map[string][]string{} // volume path: machines holding data there
 	for _, nc := range cfg.Nodes {
-		facts, err := NewCluster(Node{Host: nc.Host}).InspectVolumes(ctx, dirs, false)
+		facts, err := newCluster(Node{Host: nc.Host}).InspectVolumes(ctx, dirs, false)
 		if unreachable(err) {
 			fmt.Printf("warning: node %s is unreachable; volumes on it could not be checked\n", nc.Name)
 			continue
@@ -637,19 +637,19 @@ func misplacedVolumes(dirs []VolumeDir, holders map[string][]string) error {
 // database whose password was lost with the cluster's secrets, then generated
 // afresh, starts but lets nothing in. Neither is fixed by retrying, and both
 // are worse after the old version has been stopped.
-func checkVolumeData(apps []*manifest.Manifest, facts map[string]VolumeFacts, toGenerate []generatedSecret) error {
+func checkVolumeData(groups []*manifest.Manifest, facts map[string]VolumeFacts, toGenerate []generatedSecret) error {
 	var errs []error
-	for _, m := range apps {
+	for _, m := range groups {
 		for _, s := range m.Services {
 			t := s.Tmpl()
 			if t == nil || s.Volume == nil || t.Spec().VersionFile == "" {
 				continue
 			}
-			f := facts[deploy.VolumePath(DataDir, m.App, s.Name)]
+			f := facts[deploy.VolumePath(dataDir, m.Group, s.Name)]
 			if f.Version != "" && f.Version != t.Version {
 				errs = append(errs, fmt.Errorf(
 					"%s/%s: its data was written by %s %s, and %s cannot start on it; keep %s:%s, or dump the data, move the volume aside and restore into %s",
-					m.App, s.Name, t.Name, f.Version, t, t.Name, f.Version, t))
+					m.Group, s.Name, t.Name, f.Version, t, t.Name, f.Version, t))
 			}
 		}
 	}
@@ -657,7 +657,7 @@ func checkVolumeData(apps []*manifest.Manifest, facts map[string]VolumeFacts, to
 		if !g.spec.SetAtInit {
 			continue
 		}
-		if f := facts[deploy.VolumePath(DataDir, g.Group, g.service)]; f.HasData {
+		if f := facts[deploy.VolumePath(dataDir, g.Group, g.service)]; f.HasData {
 			errs = append(errs, fmt.Errorf(
 				"%s/%s is not set, but %s/%s already holds data, which accepts only the value it was created with; "+
 					"set that with `orca secret set --force %s/%s`, or remove the data to start again",
@@ -672,8 +672,8 @@ func checkVolumeData(apps []*manifest.Manifest, facts map[string]VolumeFacts, to
 // BuildPlatform renders as no job at all.
 func platformOptions(cfg Config, authHash string, statusBin *statusBinary) deploy.PlatformOptions {
 	opts := deploy.PlatformOptions{
-		Datacenter: Datacenter,
-		DataDir:    DataDir,
+		Datacenter: datacenter,
+		DataDir:    dataDir,
 		Domain:     cfg.Monitoring.Domain,
 		Images: deploy.PlatformImages{
 			CoreDNS:         images.CoreDNS,
@@ -796,7 +796,7 @@ func nodeFor(cfg Config, s *manifest.Service) (string, error) {
 func scopeGroups(all []*manifest.Manifest, names []string, current map[string]deploy.JobState) ([]*manifest.Manifest, error) {
 	var keep []string
 	for _, n := range names {
-		if n != deploy.OrcaApp && !hasGroup(all, n) && runningGroup(current, n) {
+		if n != manifest.ReservedGroup && !hasGroup(all, n) && runningGroup(current, n) {
 			continue
 		}
 		keep = append(keep, n)
@@ -809,7 +809,7 @@ func scopeGroups(all []*manifest.Manifest, names []string, current map[string]de
 
 func hasGroup(groups []*manifest.Manifest, name string) bool {
 	for _, m := range groups {
-		if m.App == name {
+		if m.Group == name {
 			return true
 		}
 	}
@@ -819,7 +819,7 @@ func hasGroup(groups []*manifest.Manifest, name string) bool {
 // runningGroup reports whether orca is running any job for the group.
 func runningGroup(current map[string]deploy.JobState, name string) bool {
 	for _, j := range current {
-		if j.App == name && !j.Stopped {
+		if j.Group == name && !j.Stopped {
 			return true
 		}
 	}

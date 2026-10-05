@@ -73,7 +73,7 @@ func (f *envFile) String() string { return f.b.String() }
 // group whenever any other moved. Services find each other by name through the
 // resolver instead.
 func renderTemplate(m *manifest.Manifest, s *manifest.Service) string {
-	f := envFile{group: m.App}
+	f := envFile{group: m.Group}
 
 	// Secrets the template owns: the author never writes these, and never
 	// sees the value. One read from a config file instead is skipped, so it
@@ -139,7 +139,7 @@ func secretFiles(m *manifest.Manifest, s *manifest.Service) []*nomad.Template {
 		}
 		out = append(out, &nomad.Template{
 			EmbeddedTmpl: ptr(fmt.Sprintf("{{ with nomadVar %q }}{{ .%s }}{{ end }}",
-				SecretPath(m.App, sec.Name), SecretItemKey)),
+				SecretPath(m.Group, sec.Name), SecretItemKey)),
 			DestPath: ptr("secrets/" + sec.File()),
 			// Read-only, and readable by whoever the image runs as. A stricter
 			// mode would have to guess that user (distroless images run as

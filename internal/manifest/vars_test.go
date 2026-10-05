@@ -27,7 +27,7 @@ func tree(t *testing.T, files map[string]string) string {
 func group(t *testing.T, groups []*Manifest, name string) *Manifest {
 	t.Helper()
 	for _, m := range groups {
-		if m.App == name {
+		if m.Group == name {
 			return m
 		}
 	}
@@ -87,7 +87,7 @@ func TestVarsFileIsNotAServiceFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(groups) != 1 || groups[0].App != "blog-prod" {
+	if len(groups) != 1 || groups[0].Group != "blog-prod" {
 		t.Errorf("groups = %v, want only blog-prod", groups)
 	}
 }

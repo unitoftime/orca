@@ -81,12 +81,12 @@ func TestCredentialHelper(t *testing.T) {
 		}
 	}
 
-	vars, err := nodeVars(Config{Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer}}},
-		NodeConfig{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer})
+	vars, err := nodeVars(Config{Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: roleServer}}},
+		NodeConfig{Host: "root@203.0.113.10", Name: "box0", Role: roleServer})
 	if err != nil {
 		t.Fatal(err)
 	}
-	script, err := RenderTemplate("templates/host/docker-credential-orca", vars)
+	script, err := renderTemplate("templates/host/docker-credential-orca", vars)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ esac
 
 	urls, _ := os.ReadFile(filepath.Join(dir, "urls"))
 	for _, u := range strings.Fields(string(urls)) {
-		if !strings.HasPrefix(u, NomadAddr+"/v1/var/orca-registry/") || strings.Count(u, "/") != 6 {
+		if !strings.HasPrefix(u, nomadAddr+"/v1/var/orca-registry/") || strings.Count(u, "/") != 6 {
 			t.Errorf("helper asked for %s", u)
 		}
 	}

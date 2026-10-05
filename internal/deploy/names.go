@@ -23,12 +23,12 @@ import (
 
 // JobID is the cluster-wide name of a service's job. Host ports are not the
 // only global namespace on the machine; job IDs are another, which is why the
-// loader checks these for collisions across apps too.
-func JobID(app, service string) string { return app + "-" + service }
+// loader checks these for collisions across groups too.
+func JobID(group, service string) string { return group + "-" + service }
 
 // CatalogName is how a service appears in Nomad's service catalog. It carries
-// the app because the catalog is one flat namespace across every app.
-func CatalogName(app, service string) string { return app + "-" + service }
+// the group because the catalog is one flat namespace across every group.
+func CatalogName(group, service string) string { return group + "-" + service }
 
 // BackupJobID is the periodic job that backs up one database.
 func BackupJobID(group, service string) string {
@@ -188,7 +188,7 @@ func DNSTag(group, service string) string {
 
 // MetricsCatalogName is the one catalog name every scrape target registers
 // under. It is filed under orca's own group, so no service of yours can take it.
-var MetricsCatalogName = CatalogName(OrcaApp, "metrics")
+var MetricsCatalogName = CatalogName(manifest.ReservedGroup, "metrics")
 
 // MetricsTagGroup and MetricsTagService carry a scrape target's group and
 // service, as <key>=<value>. The keys are the label names its series get.
@@ -203,7 +203,7 @@ func MetricsTags(group, service string) []string {
 	return []string{MetricsTagGroup + "=" + group, MetricsTagService + "=" + service}
 }
 
-// VolumeRoot is the directory every app volume lives under. Having one root
+// VolumeRoot is the directory every service volume lives under. Having one root
 // is what lets orphaned data be found by listing rather than remembered.
 func VolumeRoot(dataDir string) string {
 	return path.Join(dataDir, "volumes", "services")

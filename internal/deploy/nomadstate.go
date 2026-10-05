@@ -222,7 +222,7 @@ func JobStateFromNomad(j *nomad.Job) (JobState, bool) {
 	}
 	return JobState{
 		ID:       *j.ID,
-		App:      j.Meta[MetaApp],
+		Group:    j.Meta[MetaGroup],
 		Service:  j.Meta[MetaService],
 		Image:    j.Meta[MetaImage],
 		ImageRef: j.Meta[MetaImageRef],

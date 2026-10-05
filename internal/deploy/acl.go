@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	nomad "github.com/hashicorp/nomad/api"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // Nomad runs with its ACLs on, so nothing is answered without a token it
@@ -43,7 +44,7 @@ func ACLPolicies() []*nomad.ACLPolicy {
 			// certificate there is.
 			Name:        "orca-ingress",
 			Description: "Read the catalog and every certificate",
-			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(OrcaApp, "traefik")},
+			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(manifest.ReservedGroup, "traefik")},
 			Rules: aclRules("read",
 				aclVars{CertPrefix + "/*", "read", "list"}),
 		},
@@ -52,7 +53,7 @@ func ACLPolicies() []*nomad.ACLPolicy {
 			// its account with the authority and the checks in flight.
 			Name:        "orca-certs",
 			Description: "Issue and renew certificates",
-			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(OrcaApp, "certs")},
+			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(manifest.ReservedGroup, "certs")},
 			Rules: aclRules("",
 				aclVars{CertPrefix + "/*", "read", "write", "list"},
 				aclVars{"orca-acme/*", "read", "write", "destroy", "list"}),
@@ -61,7 +62,7 @@ func ACLPolicies() []*nomad.ACLPolicy {
 			// The status page only ever reads: jobs, allocations, machines.
 			Name:        "orca-status",
 			Description: "Read what is running and where",
-			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(OrcaApp, "status")},
+			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(manifest.ReservedGroup, "status")},
 			Rules:       aclRules("read") + "\nnode {\n  policy = \"read\"\n}\n",
 		},
 	}

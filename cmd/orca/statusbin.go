@@ -38,7 +38,7 @@ type statusBinary struct {
 }
 
 // Remote is where it lives on the machine, named for its contents.
-func (b statusBinary) Remote() string { return deploy.StatusBinaryPath(DataDir, b.Sum) }
+func (b statusBinary) Remote() string { return deploy.StatusBinaryPath(dataDir, b.Sum) }
 
 // resolveStatusBinary finds a build of orca to ship: this one, when it will
 // run on the machine as it is, or else one built from the same version.

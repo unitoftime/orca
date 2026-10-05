@@ -11,7 +11,7 @@ import (
 // must come out the other side with no placeholders left.
 func TestTemplatesFullySubstituted(t *testing.T) {
 	cfg := Config{
-		Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer}},
+		Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: roleServer}},
 	}
 	vars, err := nodeVars(cfg, cfg.Nodes[0])
 	if err != nil {
@@ -20,7 +20,7 @@ func TestTemplatesFullySubstituted(t *testing.T) {
 
 	for _, p := range hostPhases {
 		for _, name := range append([]string{p.script}, p.extraFiles...) {
-			out, err := RenderTemplate("templates/host/"+name, vars)
+			out, err := renderTemplate("templates/host/"+name, vars)
 			if err != nil {
 				t.Fatalf("render %s: %v", name, err)
 			}
@@ -33,7 +33,7 @@ func TestTemplatesFullySubstituted(t *testing.T) {
 }
 
 func TestNomadServerStanzaSingleNode(t *testing.T) {
-	cfg := Config{Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer}}}
+	cfg := Config{Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: roleServer}}}
 
 	got := nomadServerStanza(cfg, cfg.Nodes[0])
 
@@ -49,9 +49,9 @@ func TestNomadServerStanzaSingleNode(t *testing.T) {
 
 func TestNomadServerStanzaThreeNodes(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
-		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: RoleServer},
-		{Host: "root@10.0.0.2", Name: "b", PrivateIP: "10.0.0.2", Role: RoleServer},
-		{Host: "root@10.0.0.3", Name: "c", PrivateIP: "10.0.0.3", Role: RoleServer},
+		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: roleServer},
+		{Host: "root@10.0.0.2", Name: "b", PrivateIP: "10.0.0.2", Role: roleServer},
+		{Host: "root@10.0.0.3", Name: "c", PrivateIP: "10.0.0.3", Role: roleServer},
 	}}
 
 	got := nomadServerStanza(cfg, cfg.Nodes[0])
@@ -72,8 +72,8 @@ func TestNomadServerStanzaThreeNodes(t *testing.T) {
 
 func TestNomadServerStanzaClientNode(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
-		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: RoleServer},
-		{Host: "root@10.0.0.2", Name: "b", PrivateIP: "10.0.0.2", Role: RoleClient},
+		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: roleServer},
+		{Host: "root@10.0.0.2", Name: "b", PrivateIP: "10.0.0.2", Role: roleClient},
 	}}
 
 	if got := nomadServerStanza(cfg, cfg.Nodes[1]); strings.Contains(got, "enabled") {
@@ -85,14 +85,14 @@ func TestNomadServerStanzaClientNode(t *testing.T) {
 // servers are. Without it the machine never joins.
 func TestClientNodeJoinsTheServers(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
-		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: RoleServer},
-		{Host: "root@10.0.0.2", Name: "b", PrivateIP: "10.0.0.2", Role: RoleClient},
+		{Host: "root@10.0.0.1", Name: "a", PrivateIP: "10.0.0.1", Role: roleServer},
+		{Host: "root@10.0.0.2", Name: "b", PrivateIP: "10.0.0.2", Role: roleClient},
 	}}
 	vars, err := nodeVars(cfg, cfg.Nodes[1])
 	if err != nil {
 		t.Fatal(err)
 	}
-	hcl, err := RenderTemplate("templates/host/nomad.hcl", vars)
+	hcl, err := renderTemplate("templates/host/nomad.hcl", vars)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestBindIPEmptyOnSingleNode(t *testing.T) {
 	// starts resolving to a real address by accident, a single-box install
 	// silently exposes the Nomad API.
 	cfg := Config{
-		Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer}},
+		Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: roleServer}},
 	}
 	vars, err := nodeVars(cfg, cfg.Nodes[0])
 	if err != nil {

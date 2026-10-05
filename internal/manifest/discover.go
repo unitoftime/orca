@@ -142,14 +142,14 @@ func Discover(root string) ([]*Manifest, error) {
 	// deploy one directory while stopping the other's services.
 	byName := map[string]string{}
 	for _, m := range groups {
-		if prev, ok := byName[m.App]; ok {
-			errs = append(errs, fmt.Errorf("%s and %s are both the group %q; rename one", prev, m.Path, m.App))
+		if prev, ok := byName[m.Group]; ok {
+			errs = append(errs, fmt.Errorf("%s and %s are both the group %q; rename one", prev, m.Path, m.Group))
 			continue
 		}
-		byName[m.App] = m.Path
+		byName[m.Group] = m.Path
 	}
 
-	sort.Slice(groups, func(i, j int) bool { return groups[i].App < groups[j].App })
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Group < groups[j].Group })
 	return groups, errors.Join(errs...)
 }
 
@@ -183,7 +183,7 @@ func yamlFiles(dir string) ([]string, error) {
 // loadGroup reads every file in a group directory and merges their service
 // documents into one group.
 func loadGroup(name, dir string, files []string, vars Vars) (*Manifest, error) {
-	m := &Manifest{App: name, Path: dir, Vars: Vars{}}
+	m := &Manifest{Group: name, Path: dir, Vars: Vars{}}
 	used := map[string]bool{}
 	var errs []error
 
@@ -274,7 +274,7 @@ func ParseGroup(name string, data []byte, path string) (*Manifest, error) {
 		return nil, err
 	}
 
-	m := &Manifest{App: name, Path: path, Services: services}
+	m := &Manifest{Group: name, Path: path, Services: services}
 	m.normalize()
 	if err := m.Validate(); err != nil {
 		return nil, err

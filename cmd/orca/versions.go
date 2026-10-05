@@ -34,8 +34,8 @@ type Stack struct {
 	CNIPluginsSHA256 string // of cni-plugins-linux-amd64-<version>.tgz
 }
 
-// Versions is the pinned stack this build of orca installs.
-var Versions = Stack{
+// versions is the pinned stack this build of orca installs.
+var versions = Stack{
 	Nomad:       "2.0.3",
 	NomadSHA256: "8455d5691de4cb451e9443282f1c0171570b480737fc6386992638c52a4795e4",
 

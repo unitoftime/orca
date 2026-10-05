@@ -25,7 +25,7 @@ func resolveBackup(groups []*manifest.Manifest, m *manifest.Manifest, s *manifes
 
 	var target *manifest.Service
 	for _, m := range groups {
-		if m.App != group {
+		if m.Group != group {
 			continue
 		}
 		if svc, ok := m.Service(name); ok {
@@ -48,7 +48,7 @@ func resolveBackup(groups []*manifest.Manifest, m *manifest.Manifest, s *manifes
 	return deploy.BackupSpec{
 		Endpoint:        target.Endpoint,
 		Bucket:          target.Bucket,
-		Prefix:          deploy.BackupPrefix(target.Path, m.App, s.Name),
+		Prefix:          deploy.BackupPrefix(target.Path, m.Group, s.Name),
 		Region:          target.Region,
 		Schedule:        s.Backup.Schedule,
 		Keep:            s.Backup.Keep,
@@ -66,7 +66,7 @@ func describeTargets(groups []*manifest.Manifest) string {
 	for _, m := range groups {
 		for _, s := range m.Services {
 			if s.IsTarget() {
-				out = append(out, m.App+"/"+s.Name)
+				out = append(out, m.Group+"/"+s.Name)
 			}
 		}
 	}
@@ -95,7 +95,7 @@ func collectBackups(all []*manifest.Manifest, scope []*manifest.Manifest) ([]bac
 			}
 			spec, err := resolveBackup(all, m, s)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("%s/%s: %v", m.App, s.Name, err))
+				errs = append(errs, fmt.Sprintf("%s/%s: %v", m.Group, s.Name, err))
 				continue
 			}
 			out = append(out, backedUp{Manifest: m, Service: s, Spec: spec})

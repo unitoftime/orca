@@ -12,6 +12,7 @@ import (
 
 	"github.com/unitoftime/orca/internal/deploy"
 	"github.com/unitoftime/orca/internal/logsql"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // LogLine is one entry as the log store returns it.
@@ -160,13 +161,13 @@ func resolveLogTarget(cfg Config, target string) ([]logJob, error) {
 	// is included though it registers no address: it produces logs like
 	// anything else, and being unable to ask for them would be surprising.
 	for _, p := range append(deploy.OrcaServices, "vector") {
-		all = append(all, svc{deploy.OrcaApp, p, []logJob{{ID: deploy.JobID(deploy.OrcaApp, p)}}})
+		all = append(all, svc{manifest.ReservedGroup, p, []logJob{{ID: deploy.JobID(manifest.ReservedGroup, p)}}})
 	}
 	for _, m := range groups {
 		for _, s := range m.Services {
 			var jobs []logJob
-			for _, id := range deploy.ServiceJobIDs(m.App, s) {
-				if id == deploy.BackupJobID(m.App, s.Name) {
+			for _, id := range deploy.ServiceJobIDs(m.Group, s) {
+				if id == deploy.BackupJobID(m.Group, s.Name) {
 					if s.Backup != nil {
 						jobs = append(jobs, logJob{ID: id, Periodic: true})
 					}
@@ -175,7 +176,7 @@ func resolveLogTarget(cfg Config, target string) ([]logJob, error) {
 				jobs = append(jobs, logJob{ID: id})
 			}
 			if len(jobs) > 0 {
-				all = append(all, svc{m.App, s.Name, jobs})
+				all = append(all, svc{m.Group, s.Name, jobs})
 			}
 		}
 	}

@@ -10,13 +10,6 @@ import (
 	"github.com/unitoftime/orca/internal/manifest"
 )
 
-// OrcaApp is the group the jobs orca runs for you are filed under: ingress,
-// the resolver, the log and metric stores. They are ordinary Nomad jobs
-// carrying ordinary orca metadata, so plan, apply, status and the health wait
-// all work on them with no special cases. They are simply an app you did not
-// write, and they are named so you can see that.
-const OrcaApp = manifest.ReservedGroup
-
 // OrcaServices are those services that register an address.
 //
 // One list serves the resolver's name list, the log command's target list
@@ -26,8 +19,8 @@ const OrcaApp = manifest.ReservedGroup
 // to resolve or to filter logs by.
 var OrcaServices = []string{"traefik", "victorialogs", "victoriametrics", "node-exporter", "status", "certs", "dns"}
 
-// Ingress's entrypoints and certificate resolver, named once. The routes an
-// app carries in its catalog tags must name exactly what Traefik's own
+// Ingress's entrypoints and certificate resolver, named once. The routes a
+// service carries in its catalog tags must name exactly what Traefik's own
 // configuration defines, or Traefik drops the route.
 const (
 	EntryPointHTTP  = "http"
@@ -215,7 +208,7 @@ const smallJobMemoryMB = 48
 
 // platformJob builds the shared skeleton every platform job has.
 func platformJob(opts PlatformOptions, name, image string, cpu, memMB int) (*nomad.Job, *nomad.TaskGroup, *nomad.Task) {
-	id := JobID(OrcaApp, name)
+	id := JobID(manifest.ReservedGroup, name)
 
 	task := &nomad.Task{
 		Name:   name,
@@ -245,13 +238,13 @@ func platformJob(opts PlatformOptions, name, image string, cpu, memMB int) (*nom
 		Type:        ptr("service"),
 		Datacenters: []string{opts.Datacenter},
 		// Above the default 50, so a platform job wins a scheduling race
-		// against an app. Losing the log store to a busy service would take away
+		// against a service of yours. Losing the log store to a busy service would take away
 		// the thing you need to find out why.
 		Priority:   ptr(60),
 		TaskGroups: []*nomad.TaskGroup{group},
 		Meta: map[string]string{
 			MetaManaged: "true",
-			MetaApp:     OrcaApp,
+			MetaGroup:   manifest.ReservedGroup,
 			MetaService: name,
 			MetaImage:   image,
 		},
@@ -345,8 +338,8 @@ func metricsJob(opts PlatformOptions) *nomad.Job {
 	})
 
 	group.Services = []*nomad.Service{{
-		Name:      CatalogName(OrcaApp, "victoriametrics"),
-		Tags:      []string{DNSTag(OrcaApp, "victoriametrics")},
+		Name:      CatalogName(manifest.ReservedGroup, "victoriametrics"),
+		Tags:      []string{DNSTag(manifest.ReservedGroup, "victoriametrics")},
 		PortLabel: "http",
 		Provider:  "nomad",
 		Checks: []nomad.ServiceCheck{{
@@ -371,7 +364,7 @@ func scrapeConfig(opts PlatformOptions) string {
 	var b strings.Builder
 	if logs {
 		fmt.Fprintf(&b, `{{ $logs := "" }}{{ range nomadService %q }}{{ $logs = printf "%%s:%%d" .Address .Port }}{{ end }}`+"\n",
-			CatalogName(OrcaApp, "victorialogs"))
+			CatalogName(manifest.ReservedGroup, "victorialogs"))
 	}
 	b.WriteString(`global:
   scrape_interval: 30s
@@ -393,7 +386,7 @@ scrape_configs:
 	return b.String()
 }
 
-var nodeExporterName = CatalogName(OrcaApp, "node-exporter")
+var nodeExporterName = CatalogName(manifest.ReservedGroup, "node-exporter")
 
 // nomadMetrics is where Nomad serves its telemetry, and the parameter that
 // makes it Prometheus-formatted rather than JSON.
@@ -574,8 +567,8 @@ func statusJob(opts PlatformOptions) *nomad.Job {
 	}
 
 	group.Services = []*nomad.Service{{
-		Name:      CatalogName(OrcaApp, "status"),
-		Tags:      []string{DNSTag(OrcaApp, "status")},
+		Name:      CatalogName(manifest.ReservedGroup, "status"),
+		Tags:      []string{DNSTag(manifest.ReservedGroup, "status")},
 		PortLabel: "http",
 		Provider:  "nomad",
 		Checks: []nomad.ServiceCheck{{
@@ -620,8 +613,8 @@ func certsJob(opts PlatformOptions) *nomad.Job {
 	}
 
 	group.Services = []*nomad.Service{{
-		Name:      CatalogName(OrcaApp, "certs"),
-		Tags:      []string{DNSTag(OrcaApp, "certs")},
+		Name:      CatalogName(manifest.ReservedGroup, "certs"),
+		Tags:      []string{DNSTag(manifest.ReservedGroup, "certs")},
 		PortLabel: "http",
 		Provider:  "nomad",
 		Checks: []nomad.ServiceCheck{{
@@ -641,11 +634,11 @@ func statusEnv(opts PlatformOptions) string {
 	var b strings.Builder
 	if opts.Metrics != nil {
 		fmt.Fprintf(&b, "{{ range nomadService %q }}%s=http://{{ .Address }}:{{ .Port }}\n{{ end }}",
-			CatalogName(OrcaApp, "victoriametrics"), StatusEnvMetrics)
+			CatalogName(manifest.ReservedGroup, "victoriametrics"), StatusEnvMetrics)
 	}
 	if opts.Logs != nil {
 		fmt.Fprintf(&b, "{{ range nomadService %q }}%s=http://{{ .Address }}:{{ .Port }}\n{{ end }}",
-			CatalogName(OrcaApp, "victorialogs"), StatusEnvLogs)
+			CatalogName(manifest.ReservedGroup, "victorialogs"), StatusEnvLogs)
 	}
 	return b.String()
 }
@@ -668,8 +661,8 @@ func logsJob(opts PlatformOptions) *nomad.Job {
 	}
 
 	group.Services = []*nomad.Service{{
-		Name:      CatalogName(OrcaApp, "victorialogs"),
-		Tags:      []string{DNSTag(OrcaApp, "victorialogs")},
+		Name:      CatalogName(manifest.ReservedGroup, "victorialogs"),
+		Tags:      []string{DNSTag(manifest.ReservedGroup, "victorialogs")},
 		PortLabel: "http",
 		Provider:  "nomad",
 		Checks: []nomad.ServiceCheck{{
@@ -704,7 +697,7 @@ func vectorJob(opts PlatformOptions) *nomad.Job {
 	})
 
 	group.Services = []*nomad.Service{{
-		Name:      CatalogName(OrcaApp, "vector"),
+		Name:      CatalogName(manifest.ReservedGroup, "vector"),
 		Provider:  "nomad",
 		PortLabel: "",
 	}}
@@ -775,7 +768,7 @@ sinks:
       type: disk
       max_size: 268435488
       when_full: drop_newest
-`, LogsPort, CatalogName(OrcaApp, "victorialogs"))
+`, LogsPort, CatalogName(manifest.ReservedGroup, "victorialogs"))
 }
 
 func ingressJob(opts PlatformOptions) *nomad.Job {
@@ -829,8 +822,8 @@ func ingressJob(opts PlatformOptions) *nomad.Job {
 	}
 
 	group.Services = []*nomad.Service{{
-		Name:      CatalogName(OrcaApp, "traefik"),
-		Tags:      []string{DNSTag(OrcaApp, "traefik")},
+		Name:      CatalogName(manifest.ReservedGroup, "traefik"),
+		Tags:      []string{DNSTag(manifest.ReservedGroup, "traefik")},
 		PortLabel: "http",
 		Provider:  "nomad",
 		Checks: []nomad.ServiceCheck{{
@@ -944,7 +937,7 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 	if certs {
 		// A backend like any dashboard's. Its port is dynamic, so there is
 		// no address to fall back to; see the status page's.
-		boards = append(boards, dashboard{name: "certs", service: CatalogName(OrcaApp, "certs"), fallback: "http://127.0.0.1:1", internal: true})
+		boards = append(boards, dashboard{name: "certs", service: CatalogName(manifest.ReservedGroup, "certs"), fallback: "http://127.0.0.1:1", internal: true})
 	}
 
 	var b strings.Builder
@@ -1033,7 +1026,7 @@ func dashboards(opts PlatformOptions) []dashboard {
 	if opts.Status != nil {
 		boards = append(boards, dashboard{
 			name:    "status",
-			service: CatalogName(OrcaApp, "status"),
+			service: CatalogName(manifest.ReservedGroup, "status"),
 			// Its port is dynamic, so there is no address to fall back to.
 			// Nothing listens on port 1: a 502 until it registers, which is
 			// the truth.
@@ -1043,14 +1036,14 @@ func dashboards(opts PlatformOptions) []dashboard {
 	if opts.Logs != nil {
 		boards = append(boards, dashboard{
 			name:     "logs",
-			service:  CatalogName(OrcaApp, "victorialogs"),
+			service:  CatalogName(manifest.ReservedGroup, "victorialogs"),
 			fallback: fmt.Sprintf("http://127.0.0.1:%d", LogsPort),
 		})
 	}
 	if opts.Metrics != nil {
 		boards = append(boards, dashboard{
 			name:     "metrics",
-			service:  CatalogName(OrcaApp, "victoriametrics"),
+			service:  CatalogName(manifest.ReservedGroup, "victoriametrics"),
 			fallback: fmt.Sprintf("http://127.0.0.1:%d", MetricsPort),
 		})
 	}

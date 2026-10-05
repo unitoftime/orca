@@ -38,7 +38,7 @@ func writeTree(t *testing.T, files map[string]string) string {
 }
 
 func TestNodeForStatelessServiceIsUnpinned(t *testing.T) {
-	cfg := Config{Nodes: []NodeConfig{{Host: "root@a", Name: "box0", Role: RoleServer}}}
+	cfg := Config{Nodes: []NodeConfig{{Host: "root@a", Name: "box0", Role: roleServer}}}
 	m := parseManifest(t, "a", "{name: bot, image: i:1}")
 
 	got, err := nodeFor(cfg, m.Services[0])
@@ -51,7 +51,7 @@ func TestNodeForStatelessServiceIsUnpinned(t *testing.T) {
 }
 
 func TestNodeForVolumeOnOneMachineIsAutomatic(t *testing.T) {
-	cfg := Config{Nodes: []NodeConfig{{Host: "root@a", Name: "box0", Role: RoleServer}}}
+	cfg := Config{Nodes: []NodeConfig{{Host: "root@a", Name: "box0", Role: roleServer}}}
 	m := parseManifest(t, "a", "{name: db, template: postgres:17, volume: 5G}")
 
 	got, err := nodeFor(cfg, m.Services[0])
@@ -67,8 +67,8 @@ func TestNodeForVolumeOnOneMachineIsAutomatic(t *testing.T) {
 // machine it has always been on, which is the first server.
 func TestNodeForVolumeStaysOnTheFirstServer(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
-		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: RoleServer},
-		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: RoleClient},
+		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: roleServer},
+		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: roleClient},
 	}}
 	m := parseManifest(t, "a", "{name: db, template: postgres:17, volume: 5G}")
 
@@ -85,8 +85,8 @@ func TestNodeForVolumeStaysOnTheFirstServer(t *testing.T) {
 // holds nothing of orca's.
 func TestNodeForVolumeSkipsALeadingClient(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
-		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: RoleClient},
-		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: RoleServer},
+		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: roleClient},
+		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: roleServer},
 	}}
 	m := parseManifest(t, "a", "{name: db, template: postgres:17, volume: 5G}")
 
@@ -101,8 +101,8 @@ func TestNodeForVolumeSkipsALeadingClient(t *testing.T) {
 
 func TestNodeForVolumeHonoursNode(t *testing.T) {
 	cfg := Config{Nodes: []NodeConfig{
-		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: RoleServer},
-		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: RoleClient},
+		{Host: "root@a", Name: "box0", PrivateIP: "10.0.0.1", Role: roleServer},
+		{Host: "root@b", Name: "box1", PrivateIP: "10.0.0.2", Role: roleClient},
 	}}
 	m := parseManifest(t, "a", "{name: db, template: postgres:17, volume: 5G, node: box1}")
 
@@ -116,7 +116,7 @@ func TestNodeForVolumeHonoursNode(t *testing.T) {
 }
 
 func TestNodeForRejectsAnUnknownNode(t *testing.T) {
-	cfg := Config{Nodes: []NodeConfig{{Host: "root@a", Name: "box0", Role: RoleServer}}}
+	cfg := Config{Nodes: []NodeConfig{{Host: "root@a", Name: "box0", Role: roleServer}}}
 	m := parseManifest(t, "a", "{name: bot, image: i:1, node: nowhere}")
 
 	if _, err := nodeFor(cfg, m.Services[0]); err == nil {
@@ -136,7 +136,7 @@ func TestSelectGroups(t *testing.T) {
 	}
 
 	one, err := selectGroups(groups, []string{"blog"})
-	if err != nil || len(one) != 1 || one[0].App != "blog" {
+	if err != nil || len(one) != 1 || one[0].Group != "blog" {
 		t.Errorf("selecting blog gave %v, err %v", one, err)
 	}
 
@@ -157,19 +157,19 @@ func TestScopeGroupsKeepsLiveGroupsBesideDeletedOnes(t *testing.T) {
 		parseManifest(t, "blog", "{name: api, image: i:1}"),
 	}
 	current := map[string]deploy.JobState{
-		"shop-app": {ID: "shop-app", App: "shop", Service: "app"},
-		"old-bot":  {ID: "old-bot", App: "old", Service: "bot"},
+		"shop-app": {ID: "shop-app", Group: "shop", Service: "app"},
+		"old-bot":  {ID: "old-bot", Group: "old", Service: "bot"},
 	}
 
 	got, err := scopeGroups(groups, []string{"shop", "old"}, current)
-	if err != nil || len(got) != 1 || got[0].App != "shop" {
+	if err != nil || len(got) != 1 || got[0].Group != "shop" {
 		t.Fatalf("want shop deployed, got %v, %v", got, err)
 	}
 
-	desired := []*nomad.Job{{ID: ptrTo("shop-app"), Meta: map[string]string{deploy.MetaApp: "shop", deploy.MetaService: "app"}}}
+	desired := []*nomad.Job{{ID: ptrTo("shop-app"), Meta: map[string]string{deploy.MetaGroup: "shop", deploy.MetaService: "app"}}}
 	plan := deploy.BuildPlan(desired, current, nil, map[string]bool{"shop": true, "old": true})
 	for _, c := range plan.Stops() {
-		if c.App == "shop" {
+		if c.Group == "shop" {
 			t.Errorf("shop must not be stopped: %+v", c)
 		}
 	}
@@ -193,7 +193,7 @@ func TestJobIDCollisionIsCaught(t *testing.T) {
 		"blog/db-x.yaml": "{name: db-x, image: i:1}",
 	})
 
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestHostPortCollisionAcrossGroups(t *testing.T) {
 		"other/srv.yaml": "{name: srv, image: i:1, ports: {9000: tcp:7777}}",
 	})
 
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestHostPortTakenByTheMachine(t *testing.T) {
 				"cluster.yaml":    "nodes:\n  - host: root@10.0.0.1\n" + c.cluster,
 				"blog/proxy.yaml": "{name: proxy, image: i:1, ports: " + c.ports + "}",
 			})
-			cfg, err := LoadConfigFrom(root)
+			cfg, err := loadConfigFrom(root)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -266,7 +266,7 @@ func TestHostPortTakenByTheMachine(t *testing.T) {
 		"cluster.yaml":    "nodes:\n  - host: root@10.0.0.1\ningress: false\n",
 		"blog/proxy.yaml": "{name: proxy, image: i:1, ports: {8080: tcp:443, 7777: udp:443}}",
 	})
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestTwoDirectoriesCannotBeOneGroup(t *testing.T) {
 		"blog/prod/web.yaml": "{name: web, image: i:1}",
 		"blog-prod/bot.yaml": "{name: bot, image: i:1}",
 	})
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestDiscoveryFromDirectories(t *testing.T) {
 		".hidden/skip.yaml":  "{name: nope, image: i:1}",
 	})
 
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestDiscoveryFromDirectories(t *testing.T) {
 
 	got := map[string]int{}
 	for _, g := range groups {
-		got[g.App] = len(g.Services)
+		got[g.Group] = len(g.Services)
 	}
 	want := map[string]int{"blog": 2, "blog-prod": 1, "notifier": 1}
 	if len(got) != len(want) {
@@ -339,7 +339,7 @@ func TestStrayManifestAtRootIsAnError(t *testing.T) {
 		"blog/db.yaml": "{name: db, image: i:1}",
 	})
 
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestFindRootFromSubdirectory(t *testing.T) {
 		"blog/db.yaml": "{name: db, image: i:1}",
 	})
 
-	cfg, err := LoadConfigFrom(filepath.Join(root, "blog"))
+	cfg, err := loadConfigFrom(filepath.Join(root, "blog"))
 	if err != nil {
 		t.Fatalf("should find cluster.yaml by walking up: %v", err)
 	}

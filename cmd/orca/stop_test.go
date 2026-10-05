@@ -36,7 +36,7 @@ func clusterTree(t *testing.T) Config {
 		"blog/db.yaml":  "{name: db, template: postgres:17, volume: 5G}",
 		"blog/api.yaml": "{name: api, image: i:1}",
 	})
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestPurgeRefusesTheReservedGroup(t *testing.T) {
 		"cluster.yaml":  "nodes:\n  - host: root@203.0.113.10\n",
 		"shop/app.yaml": "{name: app, image: i:1}",
 	})
-	cfg, err := LoadConfig(root + "/cluster.yaml")
+	cfg, err := loadConfig(root + "/cluster.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

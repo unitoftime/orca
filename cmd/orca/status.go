@@ -14,19 +14,19 @@ import (
 	"github.com/unitoftime/orca/internal/statuspage"
 )
 
-// HealthTimeout bounds how long apply waits for services it did not change
+// healthTimeout bounds how long apply waits for services it did not change
 // to settle.
 //
 // Bounded, not infinite: a cold image pull is slow and perfectly healthy, while
 // a crash loop never resolves. Waiting forever would leave apply hanging on
 // the first crash loop it meets.
-const HealthTimeout = 2 * time.Minute
+const healthTimeout = 2 * time.Minute
 
-// RolloutTimeout bounds how long apply waits for what it submitted. Nomad
+// rolloutTimeout bounds how long apply waits for what it submitted. Nomad
 // fails a rollout that has made no progress by its deadline and rolls it
 // back, so waiting a little past that is waiting for Nomad's verdict rather
 // than giving up before Nomad has one.
-const RolloutTimeout = deploy.ProgressDeadline + time.Minute
+const rolloutTimeout = deploy.ProgressDeadline + time.Minute
 
 // healthPoll is how often the cluster is asked. Two seconds is frequent enough
 // to feel live and rare enough that an SSH round trip per poll costs nothing
@@ -55,13 +55,13 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 		}
 		deployed := map[string]bool{}
 		for _, s := range statuses {
-			deployed[s.App] = true
+			deployed[s.Group] = true
 		}
 		// A group with nothing deployed is an answer. A name that is no
 		// group at all is a typo, and "nothing deployed" would hide it.
 		var declared []*manifest.Manifest
 		for _, a := range args {
-			if deployed[a] || a == deploy.OrcaApp {
+			if deployed[a] || a == manifest.ReservedGroup {
 				continue
 			}
 			if declared == nil {
@@ -73,7 +73,7 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 				return err
 			}
 		}
-		statuses = slices.DeleteFunc(statuses, func(s deploy.ServiceStatus) bool { return !want[s.App] })
+		statuses = slices.DeleteFunc(statuses, func(s deploy.ServiceStatus) bool { return !want[s.Group] })
 	}
 
 	if len(statuses) == 0 {
@@ -113,14 +113,14 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 		fmt.Printf("remove it with: orca purge <group>\n")
 	}()
 
-	app := ""
+	group := ""
 	for _, s := range statuses {
-		if s.App != app {
-			if app != "" {
+		if s.Group != group {
+			if group != "" {
 				fmt.Println()
 			}
-			fmt.Println(s.App)
-			app = s.App
+			fmt.Println(s.Group)
+			group = s.Group
 		}
 		fmt.Println(s.Line())
 	}
@@ -146,14 +146,14 @@ func printVolumeUsage(ctx context.Context, cfg Config, cluster *Cluster, want ma
 	names := map[string]string{}
 	var scoped []*manifest.Manifest
 	for _, m := range groups {
-		if want != nil && !want[m.App] {
+		if want != nil && !want[m.Group] {
 			continue
 		}
 		scoped = append(scoped, m)
 		for _, s := range m.Services {
 			if s.Volume != nil {
-				path := deploy.VolumePath(DataDir, m.App, s.Name)
-				sizes[path], names[path] = s.Volume.Size, m.App+"/"+s.Name
+				path := deploy.VolumePath(dataDir, m.Group, s.Name)
+				sizes[path], names[path] = s.Volume.Size, m.Group+"/"+s.Name
 			}
 		}
 	}
@@ -243,9 +243,9 @@ func waitForHealth(ctx context.Context, cluster *Cluster, jobIDs []string, submi
 		want[id] = true
 	}
 
-	timeout := HealthTimeout
+	timeout := healthTimeout
 	if len(submitted) > 0 {
-		timeout = RolloutTimeout
+		timeout = rolloutTimeout
 	}
 	if verbose {
 		fmt.Printf("\nwaiting for health (up to %s)\n", timeout)
@@ -333,7 +333,7 @@ func unhealthy(want map[string]bool, settled map[string]deploy.ServiceStatus) []
 		case !ok:
 			bad = append(bad, fmt.Sprintf("%s (not found in the cluster)", id))
 		case problem(s):
-			bad = append(bad, fmt.Sprintf("%s/%s (%s)", s.App, s.Service, s.Health))
+			bad = append(bad, fmt.Sprintf("%s/%s (%s)", s.Group, s.Service, s.Health))
 		}
 	}
 	sort.Strings(bad)
@@ -351,7 +351,7 @@ func problem(s deploy.ServiceStatus) bool {
 }
 
 func report(s deploy.ServiceStatus) {
-	line := fmt.Sprintf("  %-26s %s", s.App+"/"+s.Service, s.Health)
+	line := fmt.Sprintf("  %-26s %s", s.Group+"/"+s.Service, s.Health)
 	if s.Health == deploy.HealthOK && !s.Since.IsZero() {
 		line += "  " + humanSince(s.Since)
 	}
@@ -383,12 +383,12 @@ func clusterFor(ctx context.Context, cfg Config) (*Cluster, error) {
 	case 1:
 		// One server is the only candidate, so probing it would only turn a
 		// clear failure later into a vaguer one now.
-		return NewCluster(Node{Host: servers[0].Host}), nil
+		return newCluster(Node{Host: servers[0].Host}), nil
 	}
 
 	var tried []string
 	for _, s := range servers {
-		c := NewCluster(Node{Host: s.Host})
+		c := newCluster(Node{Host: s.Host})
 		if c.Alive(ctx) {
 			return c, nil
 		}

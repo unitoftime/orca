@@ -122,7 +122,7 @@ func resolveAuthHash(current map[string]deploy.JobState, password string) (strin
 		return "", nil
 	}
 
-	if existing := current[deploy.JobID(deploy.OrcaApp, "traefik")].AuthHash; existing != "" {
+	if existing := current[deploy.JobID(manifest.ReservedGroup, "traefik")].AuthHash; existing != "" {
 		if bcrypt.CompareHashAndPassword([]byte(existing), []byte(password)) == nil {
 			return existing, nil
 		}

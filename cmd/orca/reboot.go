@@ -70,14 +70,14 @@ func cmdReboot(ctx context.Context, cfg Config, in invocation) error {
 	// The scheduler starts with the machine and restarts what was running
 	// from its own saved state; nothing has to be applied again.
 	server := node
-	if nc.Role != RoleServer {
+	if nc.Role != roleServer {
 		server = Node{Host: cfg.Servers()[0].Host}
 	}
 	if err := waitForNomad(ctx, server); err != nil {
 		return err
 	}
 	if len(cfg.Nodes) > 1 {
-		if err := NewCluster(server).WaitForNodes(ctx, len(cfg.Nodes)); err != nil {
+		if err := newCluster(server).WaitForNodes(ctx, len(cfg.Nodes)); err != nil {
 			return err
 		}
 	}

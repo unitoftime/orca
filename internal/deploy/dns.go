@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	nomad "github.com/hashicorp/nomad/api"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // Zone is the DNS suffix every orca service answers under.
@@ -53,9 +54,9 @@ func dnsJob(opts PlatformOptions) *nomad.Job {
 	)
 
 	group.Services = []*nomad.Service{{
-		Name:     CatalogName(OrcaApp, "dns"),
+		Name:     CatalogName(manifest.ReservedGroup, "dns"),
 		Provider: "nomad",
-		Tags:     []string{DNSTag(OrcaApp, "dns")},
+		Tags:     []string{DNSTag(manifest.ReservedGroup, "dns")},
 	}}
 	job.Update.HealthCheck = ptr("task_states")
 	return job

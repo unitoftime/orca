@@ -74,7 +74,7 @@ func run(ctx context.Context, line commandLine) error {
 			root = "."
 		}
 		var err error
-		if cfg, err = LoadConfigFrom(root); err != nil {
+		if cfg, err = loadConfigFrom(root); err != nil {
 			return err
 		}
 	}

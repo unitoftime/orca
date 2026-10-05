@@ -153,7 +153,7 @@ func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
 		byHost[v.Host] = append(byHost[v.Host], v.Volume)
 	}
 	for host, vols := range byHost {
-		if err := NewCluster(Node{Host: host}).DeleteVolumes(ctx, vols); err != nil {
+		if err := newCluster(Node{Host: host}).DeleteVolumes(ctx, vols); err != nil {
 			return err
 		}
 	}
@@ -173,7 +173,7 @@ func declared(cfg Config, group string) (bool, error) {
 		return false, err
 	}
 	for _, m := range groups {
-		if m.App == group {
+		if m.Group == group {
 			return true, nil
 		}
 	}
@@ -190,7 +190,7 @@ func declaredVolumes(cfg Config) (map[Volume]bool, error) {
 	for _, m := range groups {
 		for _, s := range m.Services {
 			if s.Volume != nil {
-				vols[Volume{Group: m.App, Service: s.Name}] = true
+				vols[Volume{Group: m.Group, Service: s.Name}] = true
 			}
 		}
 	}
@@ -219,7 +219,7 @@ func findOrphans(ctx context.Context, cfg Config) (orphanSet, error) {
 	}
 	var out orphanSet
 	for _, nc := range cfg.Nodes {
-		l, err := NewCluster(Node{Host: nc.Host}).ListVolumes(ctx)
+		l, err := newCluster(Node{Host: nc.Host}).ListVolumes(ctx)
 		if err != nil {
 			return orphanSet{}, fmt.Errorf("node %s: %w", nc.Name, err)
 		}
@@ -249,7 +249,7 @@ func groupJobs(ctx context.Context, cluster *Cluster, group string) ([]string, e
 	}
 	var out []string
 	for id, j := range jobs {
-		if j.App == group {
+		if j.Group == group {
 			out = append(out, id)
 		}
 	}

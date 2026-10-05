@@ -330,7 +330,7 @@ machine itself. The node can be left out when there is only one.`,
 		offline: true,
 		run: func(context.Context, Config, invocation) error {
 			version, _ := buildVersion()
-			fmt.Printf("orca %s\n  nomad  %s\n  docker %s\n", version, Versions.Nomad, Versions.Docker)
+			fmt.Printf("orca %s\n  nomad  %s\n  docker %s\n", version, versions.Nomad, versions.Docker)
 			return nil
 		},
 	},

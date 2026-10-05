@@ -85,7 +85,7 @@ func requiredSecrets(cfg Config) (map[string][]string, error) {
 		}
 		if len(names) > 0 {
 			sort.Strings(names)
-			out[m.App] = names
+			out[m.Group] = names
 		}
 	}
 	return out, nil
@@ -190,7 +190,7 @@ func secretSet(ctx context.Context, cfg Config, cluster *Cluster, ref string, fo
 				return nil
 			}
 		}
-		if group != deploy.OrcaApp {
+		if group != manifest.ReservedGroup {
 			fmt.Printf("note: no manifest references ${secret.%s} in group %q\n", name, group)
 		}
 	}
@@ -306,7 +306,7 @@ func neededSecrets(groups []*manifest.Manifest, backups []backedUp) []secretRef 
 	}
 	for _, m := range groups {
 		for _, n := range m.Secrets() {
-			add(secretRef{m.App, n})
+			add(secretRef{m.Group, n})
 		}
 	}
 	for _, b := range backups {
@@ -399,7 +399,7 @@ func generatedSecrets(groups []*manifest.Manifest) []generatedSecret {
 			}
 			for _, sec := range t.Spec().Secrets {
 				out = append(out, generatedSecret{
-					secretRef: secretRef{m.App, manifest.GeneratedSecret(s.Name, sec.Suffix)},
+					secretRef: secretRef{m.Group, manifest.GeneratedSecret(s.Name, sec.Suffix)},
 					spec:      sec,
 					service:   s.Name,
 				})

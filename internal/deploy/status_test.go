@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-func job(id, app, svc string, count int) JobState {
-	return JobState{ID: id, App: app, Service: svc, Count: count, Image: "img@sha256:abc"}
+func job(id, group, svc string, count int) JobState {
+	return JobState{ID: id, Group: group, Service: svc, Count: count, Image: "img@sha256:abc"}
 }
 
 func only(t *testing.T, got []ServiceStatus) ServiceStatus {
@@ -79,7 +79,7 @@ func TestSummarizeUnplaced(t *testing.T) {
 }
 
 func TestSummarizeStopped(t *testing.T) {
-	jobs := map[string]JobState{"a-web": {ID: "a-web", App: "a", Service: "web", Count: 1, Stopped: true}}
+	jobs := map[string]JobState{"a-web": {ID: "a-web", Group: "a", Service: "web", Count: 1, Stopped: true}}
 
 	s := only(t, Summarize(jobs, nil, nil))
 	if s.Health != HealthStopped {
@@ -147,7 +147,7 @@ func TestSummarizeIgnoresFinishedAllocs(t *testing.T) {
 	}
 }
 
-func TestSummarizeSortsByAppThenService(t *testing.T) {
+func TestSummarizeSortsByGroupThenService(t *testing.T) {
 	jobs := map[string]JobState{
 		"b-web":  job("b-web", "b", "web", 1),
 		"a-zeta": job("a-zeta", "a", "zeta", 1),
@@ -157,8 +157,8 @@ func TestSummarizeSortsByAppThenService(t *testing.T) {
 	got := Summarize(jobs, nil, nil)
 	want := []string{"a/beta", "a/zeta", "b/web"}
 	for i, w := range want {
-		if got[i].App+"/"+got[i].Service != w {
-			t.Errorf("position %d = %s/%s, want %s", i, got[i].App, got[i].Service, w)
+		if got[i].Group+"/"+got[i].Service != w {
+			t.Errorf("position %d = %s/%s, want %s", i, got[i].Group, got[i].Service, w)
 		}
 	}
 }
@@ -214,7 +214,7 @@ func TestSummarizeIgnoresDrainingAllocs(t *testing.T) {
 // backups exist to prevent.
 func TestPeriodicHealthIsItsLastRun(t *testing.T) {
 	jobs := map[string]JobState{
-		"shop-db-backup": {ID: "shop-db-backup", App: "shop", Service: "db-backup", Count: 1, Periodic: true},
+		"shop-db-backup": {ID: "shop-db-backup", Group: "shop", Service: "db-backup", Count: 1, Periodic: true},
 	}
 
 	runs := []AllocState{
@@ -236,7 +236,7 @@ func TestPeriodicHealthIsItsLastRun(t *testing.T) {
 // A completed batch run is a success, not an allocation on its way out.
 func TestPeriodicCompletedRunIsHealthy(t *testing.T) {
 	jobs := map[string]JobState{
-		"shop-db-backup": {ID: "shop-db-backup", App: "shop", Service: "db-backup", Count: 1, Periodic: true},
+		"shop-db-backup": {ID: "shop-db-backup", Group: "shop", Service: "db-backup", Count: 1, Periodic: true},
 	}
 	runs := []AllocState{
 		{JobID: "shop-db-backup/periodic-200", CreateTime: 200, ClientStatus: "failed",
@@ -254,7 +254,7 @@ func TestPeriodicCompletedRunIsHealthy(t *testing.T) {
 // Before its first run there is nothing to report, which is not a failure.
 func TestPeriodicNeverRunIsScheduled(t *testing.T) {
 	jobs := map[string]JobState{
-		"shop-db-backup": {ID: "shop-db-backup", App: "shop", Service: "db-backup", Count: 1, Periodic: true},
+		"shop-db-backup": {ID: "shop-db-backup", Group: "shop", Service: "db-backup", Count: 1, Periodic: true},
 	}
 	s := only(t, Summarize(jobs, nil, nil))
 	if s.Health != HealthScheduled {
@@ -300,7 +300,7 @@ func TestFailedTaskIsStillAFailure(t *testing.T) {
 // look at a container that is working.
 func TestRecoveredTaskOutranksAFailedDeployment(t *testing.T) {
 	jobs := map[string]JobState{
-		"orca-vector": {ID: "orca-vector", App: "orca", Service: "vector", Count: 1},
+		"orca-vector": {ID: "orca-vector", Group: "orca", Service: "vector", Count: 1},
 	}
 	allocs := []AllocState{{
 		JobID:        "orca-vector",
@@ -338,7 +338,7 @@ func TestRecoveredTaskOutranksAFailedDeployment(t *testing.T) {
 // broken; only the recovered case changes.
 func TestFailedDeploymentWithBrokenAllocsStillFails(t *testing.T) {
 	jobs := map[string]JobState{
-		"a-web": {ID: "a-web", App: "a", Service: "web", Count: 1},
+		"a-web": {ID: "a-web", Group: "a", Service: "web", Count: 1},
 	}
 	allocs := []AllocState{{
 		JobID:        "a-web",

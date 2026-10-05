@@ -46,7 +46,7 @@ func IsPeriodicChild(jobID string) bool { return strings.Contains(jobID, "/perio
 // built, and nothing has to be kept in step with the database's version by
 // hand.
 func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec BackupSpec, opts Options) (*nomad.Job, error) {
-	id := BackupJobID(m.App, s.Name)
+	id := BackupJobID(m.Group, s.Name)
 
 	// The dump is the one part that knows what kind of data this is. Stated
 	// as a switch on the template's backup kind, so a template that declares
@@ -54,16 +54,16 @@ func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec B
 	// pointed at something that is not Postgres.
 	t := s.Tmpl()
 	if t == nil {
-		return nil, fmt.Errorf("%s/%s: only a templated service can be backed up", m.App, s.Name)
+		return nil, fmt.Errorf("%s/%s: only a templated service can be backed up", m.Group, s.Name)
 	}
 	var script, env string
 	switch kind := t.Spec().Backup; kind {
 	case manifest.BackupPostgres:
-		script, env = postgresDumpScript(m.App, s.Name), dumpEnv(m.App, s.Name)
+		script, env = postgresDumpScript(m.Group, s.Name), dumpEnv(m.Group, s.Name)
 	case manifest.BackupRedis:
-		script, env = redisDumpScript(m.App, s.Name), redisDumpEnv(m.App, s.Name)
+		script, env = redisDumpScript(m.Group, s.Name), redisDumpEnv(m.Group, s.Name)
 	default:
-		return nil, fmt.Errorf("%s/%s: template %s has no backup of kind %q", m.App, s.Name, t, kind)
+		return nil, fmt.Errorf("%s/%s: template %s has no backup of kind %q", m.Group, s.Name, t, kind)
 	}
 
 	dump := &nomad.Task{
@@ -124,7 +124,7 @@ func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec B
 		// The dump reaches the database by name, like anything else.
 		group.Networks[0].DNS = &nomad.DNSConfig{
 			Servers:  []string{DNSAddress},
-			Searches: SearchDomains(m.App),
+			Searches: SearchDomains(m.Group),
 		}
 	}
 	if opts.Node != "" {
@@ -149,7 +149,7 @@ func BuildBackup(m *manifest.Manifest, s *manifest.Service, image string, spec B
 		},
 		Meta: map[string]string{
 			MetaManaged: "true",
-			MetaApp:     m.App,
+			MetaGroup:   m.Group,
 			MetaService: s.Name + "-backup",
 			MetaImage:   image,
 		},

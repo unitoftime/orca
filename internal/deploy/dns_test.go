@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 func TestDNSNames(t *testing.T) {
@@ -92,7 +94,7 @@ func TestRegistrationsCarryTheirDNSName(t *testing.T) {
 			if j.Meta[MetaService] == "node-exporter" {
 				continue
 			}
-			if want := DNSTag(OrcaApp, j.Meta[MetaService]); len(s.Tags) == 0 || s.Tags[0] != want {
+			if want := DNSTag(manifest.ReservedGroup, j.Meta[MetaService]); len(s.Tags) == 0 || s.Tags[0] != want {
 				t.Errorf("%s: tags = %v, want %s", j.Meta[MetaService], s.Tags, want)
 			}
 		}

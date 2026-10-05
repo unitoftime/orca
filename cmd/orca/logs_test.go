@@ -103,7 +103,7 @@ func logCluster(t *testing.T) Config {
 		"cluster.yaml":     "nodes:\n  - host: root@203.0.113.10\n",
 		"demo/worker.yaml": "{name: worker, image: alpine:3.20}",
 	})
-	return Config{Root: root, Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer}}}
+	return Config{Root: root, Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: roleServer}}}
 }
 
 // VictoriaLogs' live tailing endpoint refuses a query carrying _time, and
@@ -148,7 +148,7 @@ func TestLogTargetIncludesBackupRuns(t *testing.T) {
 		"shop/db.yaml":         "{name: db, template: postgres:17, volume: 1G, backup: {to: storage/offsite}}",
 		"storage/offsite.yaml": "{name: offsite, target: s3, endpoint: https://x, bucket: b}",
 	})
-	cfg := Config{Root: root, Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: RoleServer}}}
+	cfg := Config{Root: root, Nodes: []NodeConfig{{Host: "root@203.0.113.10", Name: "box0", Role: roleServer}}}
 
 	_, tail, err := buildLogQuery(cfg, logOptions{target: "shop/db"})
 	if err != nil {

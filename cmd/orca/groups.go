@@ -61,15 +61,15 @@ func checkJobIDs(groups []*manifest.Manifest) error {
 			// job's name too, so a group with a `db` template and an ordinary
 			// service called `db-backup` is refused before either is declared
 			// with a backup.
-			ids := deploy.ServiceJobIDs(m.App, s)
+			ids := deploy.ServiceJobIDs(m.Group, s)
 			for _, id := range ids {
 				if prev, exists := taken[id]; exists {
 					errs = append(errs, fmt.Errorf(
 						"job name %q is produced by both %s/%s (%s) and %s/%s (%s); rename one",
-						id, prev.group, prev.service, prev.path, m.App, s.Name, s.SourceFile()))
+						id, prev.group, prev.service, prev.path, m.Group, s.Name, s.SourceFile()))
 					continue
 				}
-				taken[id] = owner{group: m.App, service: s.Name, path: s.SourceFile()}
+				taken[id] = owner{group: m.Group, service: s.Name, path: s.SourceFile()}
 			}
 		}
 	}
@@ -106,7 +106,7 @@ func checkHostnames(groups []*manifest.Manifest, reserved map[string]string) err
 					continue
 				}
 				host := strings.ToLower(p.Domain)
-				who := fmt.Sprintf("%s/%s (%s)", m.App, s.Name, s.SourceFile())
+				who := fmt.Sprintf("%s/%s (%s)", m.Group, s.Name, s.SourceFile())
 				if prev, ok := taken[host]; ok {
 					errs = append(errs, fmt.Errorf("hostname %s is claimed by %s and %s", host, prev, who))
 					continue
@@ -117,7 +117,7 @@ func checkHostnames(groups []*manifest.Manifest, reserved map[string]string) err
 			// other: a certificate has one owner, which is what decides when
 			// it is no longer needed.
 			if s.TLS != "" {
-				who := fmt.Sprintf("%s/%s (%s)", m.App, s.Name, s.SourceFile())
+				who := fmt.Sprintf("%s/%s (%s)", m.Group, s.Name, s.SourceFile())
 				if prev, ok := taken[s.TLS]; ok {
 					errs = append(errs, fmt.Errorf("hostname %s is claimed by %s and %s", s.TLS, prev, who))
 					continue
@@ -169,16 +169,16 @@ func checkHostPorts(groups []*manifest.Manifest, reserved []machinePort) error {
 			if owner, ok := held[key]; ok {
 				errs = append(errs, fmt.Errorf(
 					"%s/%s (%s): host port %d/%s is already taken by %s; use another port, or a hostname port to go through ingress",
-					hp.App, hp.Service, m.Path, hp.Port, hp.Proto, owner))
+					hp.Group, hp.Service, m.Path, hp.Port, hp.Proto, owner))
 				continue
 			}
 			if prev, exists := taken[key]; exists {
 				errs = append(errs, fmt.Errorf(
 					"host port %d/%s is claimed by %s/%s (%s) and %s/%s (%s)",
-					hp.Port, hp.Proto, prev.group, prev.service, prev.path, hp.App, hp.Service, m.Path))
+					hp.Port, hp.Proto, prev.group, prev.service, prev.path, hp.Group, hp.Service, m.Path))
 				continue
 			}
-			taken[key] = claim{group: hp.App, service: hp.Service, path: m.Path}
+			taken[key] = claim{group: hp.Group, service: hp.Service, path: m.Path}
 		}
 	}
 	return errors.Join(errs...)
@@ -198,7 +198,7 @@ func cmdValidate(cfg Config, args []string) error {
 	}
 
 	for _, m := range groups {
-		fmt.Printf("%s (%s)\n", m.App, m.Path)
+		fmt.Printf("%s (%s)\n", m.Group, m.Path)
 		for _, s := range m.Services {
 			// A target runs no container, so the sizing columns would all read
 			// zero. What it is and where it points is the whole of it.
@@ -261,13 +261,13 @@ func selectGroups(groups []*manifest.Manifest, names []string) ([]*manifest.Mani
 
 	byName := map[string]*manifest.Manifest{}
 	for _, m := range groups {
-		byName[m.App] = m
+		byName[m.Group] = m
 	}
 
 	var out []*manifest.Manifest
 	var errs []error
 	for _, n := range names {
-		if n == deploy.OrcaApp {
+		if n == manifest.ReservedGroup {
 			// The platform is selectable but is not a directory on disk.
 			continue
 		}
@@ -284,7 +284,7 @@ func selectGroups(groups []*manifest.Manifest, names []string) ([]*manifest.Mani
 func knownGroups(groups []*manifest.Manifest) string {
 	names := make([]string, 0, len(groups))
 	for _, m := range groups {
-		names = append(names, m.App)
+		names = append(names, m.Group)
 	}
 	sort.Strings(names)
 	if len(names) == 0 {

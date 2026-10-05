@@ -106,7 +106,7 @@ func schedulerFirewall(cfg Config) deploy.Ruleset {
 // failing the apply: that is exactly when you need to deploy around it.
 //
 // The rules are derived from every group, not only the ones in scope, so a
-// narrowed apply does not close a port belonging to an app it was told to
+// narrowed apply does not close a port belonging to a group it was told to
 // leave alone. Every machine gets the same ports: an unpinned service can be
 // placed anywhere, so the union is the only set that is correct wherever it
 // lands. A port open on a machine running nothing behind it is reachable by

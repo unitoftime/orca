@@ -14,7 +14,7 @@ func TestValidationErrors(t *testing.T) {
 		wantErr string
 	}{
 		{
-			// A file is a stream of service documents with no whole-app
+			// A file is a stream of service documents with no whole-group
 			// wrapper, so `services:` is simply an unknown key.
 			"the old services wrapper",
 			"services:\n  - {name: x, image: i:1}\n",

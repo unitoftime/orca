@@ -133,11 +133,11 @@ func TestServicesAreJudged(t *testing.T) {
 	}
 	nv := &nomadView{
 		Jobs: map[string]deploy.JobState{
-			"shop-web":       {ID: "shop-web", App: "shop", Service: "web", Count: 2},
-			"shop-db":        {ID: "shop-db", App: "shop", Service: "db", Count: 1},
-			"shop-db-backup": {ID: "shop-db-backup", App: "shop", Service: "db-backup", Count: 1, Periodic: true},
-			"shop-lost":      {ID: "shop-lost", App: "shop", Service: "lost", Count: 1},
-			"orca-traefik":   {ID: "orca-traefik", App: "orca", Service: "traefik", Count: 1},
+			"shop-web":       {ID: "shop-web", Group: "shop", Service: "web", Count: 2},
+			"shop-db":        {ID: "shop-db", Group: "shop", Service: "db", Count: 1},
+			"shop-db-backup": {ID: "shop-db-backup", Group: "shop", Service: "db-backup", Count: 1, Periodic: true},
+			"shop-lost":      {ID: "shop-lost", Group: "shop", Service: "lost", Count: 1},
+			"orca-traefik":   {ID: "orca-traefik", Group: "orca", Service: "traefik", Count: 1},
 		},
 		Allocs: []deploy.AllocState{
 			run("w1", "shop-web", "box0"),

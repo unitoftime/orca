@@ -53,14 +53,14 @@ fi
 printf '%%s' "$OUT" | jq -er .SecretID > "$TOKEN.new"
 mv "$TOKEN.new" "$TOKEN"
 echo "made the cluster's token"`,
-	shQuote(TokenPath), shQuote(path.Join(DataDir, "nomad/server/acl-bootstrap-reset")))
+	shQuote(tokenPath), shQuote(path.Join(dataDir, "nomad/server/acl-bootstrap-reset")))
 
 // shareToken copies the cluster's token from one machine to others. Every
 // machine pulls images with it, and any server may be the one orca talks to.
 //
 // On stdin, so it is in no argument list on either end.
 func shareToken(ctx context.Context, from Node, to []Node) error {
-	token, err := from.RunOutput(ctx, "cat "+shQuote(TokenPath))
+	token, err := from.RunOutput(ctx, "cat "+shQuote(tokenPath))
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func shareToken(ctx context.Context, from Node, to []Node) error {
 umask 077
 mkdir -p "$(dirname %[1]s)"
 cat > %[1]s.new
-mv %[1]s.new %[1]s`, shQuote(TokenPath))
+mv %[1]s.new %[1]s`, shQuote(tokenPath))
 	for _, n := range to {
 		if _, err := n.RunStdin(ctx, script, []byte(token)); err != nil {
 			return err

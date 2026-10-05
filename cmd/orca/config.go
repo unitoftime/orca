@@ -20,13 +20,13 @@ import (
 // spec, and a data directory is better placed by mounting the disk you want at
 // this path than by teaching orca a second path to worry about.
 const (
-	// Datacenter is the Nomad datacenter every job is scheduled in.
-	Datacenter = "orca"
+	// datacenter is the Nomad datacenter every job is scheduled in.
+	datacenter = "orca"
 
-	// DataDir is where every byte orca persists on a machine lives: Docker's
+	// dataDir is where every byte orca persists on a machine lives: Docker's
 	// data-root, Nomad's state, and every volume. One path, so "how full is
 	// the box" has exactly one answer.
-	DataDir = "/var/orca"
+	dataDir = "/var/orca"
 )
 
 // Config is cluster.yaml: the machines, and the handful of cluster-wide facts
@@ -64,8 +64,8 @@ type Config struct {
 type NodeRole string
 
 const (
-	RoleServer NodeRole = "server" // runs the Nomad server (raft voter) and workloads
-	RoleClient NodeRole = "client" // runs workloads only
+	roleServer NodeRole = "server" // runs the Nomad server (raft voter) and workloads
+	roleClient NodeRole = "client" // runs workloads only
 )
 
 type NodeConfig struct {
@@ -88,20 +88,20 @@ type NodeConfig struct {
 	Role NodeRole `yaml:"role"`
 }
 
-// LoadConfigFrom finds the cluster root by walking up from dir, then reads the
+// loadConfigFrom finds the cluster root by walking up from dir, then reads the
 // cluster.yaml there. Working like git's search for .git means orca commands
 // work from anywhere inside the tree.
-func LoadConfigFrom(dir string) (Config, error) {
+func loadConfigFrom(dir string) (Config, error) {
 	root, err := manifest.FindRoot(dir)
 	if err != nil {
 		return Config{}, err
 	}
-	return LoadConfig(filepath.Join(root, manifest.ClusterFile))
+	return loadConfig(filepath.Join(root, manifest.ClusterFile))
 }
 
-// LoadConfig reads and validates a cluster.yaml. Unknown keys are rejected so a
+// loadConfig reads and validates a cluster.yaml. Unknown keys are rejected so a
 // typo never silently takes a default.
-func LoadConfig(path string) (Config, error) {
+func loadConfig(path string) (Config, error) {
 	var cfg Config
 
 	data, err := os.ReadFile(path)
@@ -112,7 +112,7 @@ func LoadConfig(path string) (Config, error) {
 	// Seeded before decoding: an absent capability key never reaches its
 	// unmarshaler at all, so without this a config that mentions none of them
 	// would come back with everything switched off.
-	cfg.Firewall, cfg.DNS, cfg.Ingress, cfg.Monitoring = DefaultCapabilities()
+	cfg.Firewall, cfg.DNS, cfg.Ingress, cfg.Monitoring = defaultCapabilities()
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -142,9 +142,9 @@ func (c *Config) applyDefaults() {
 		}
 		if n.Role == "" {
 			if i == 0 {
-				n.Role = RoleServer
+				n.Role = roleServer
 			} else {
-				n.Role = RoleClient
+				n.Role = roleClient
 			}
 		}
 	}
@@ -183,16 +183,16 @@ func (c Config) validate() error {
 		seenName[n.Name] = n.Host
 
 		switch n.Role {
-		case RoleServer:
+		case roleServer:
 			servers++
-		case RoleClient:
+		case roleClient:
 		default:
-			return fmt.Errorf("node %q: role must be %q or %q, got %q", n.Name, RoleServer, RoleClient, n.Role)
+			return fmt.Errorf("node %q: role must be %q or %q, got %q", n.Name, roleServer, roleClient, n.Role)
 		}
 	}
 
 	if servers == 0 {
-		return fmt.Errorf("no node has role %q; at least one is required", RoleServer)
+		return fmt.Errorf("no node has role %q; at least one is required", roleServer)
 	}
 	// Raft tolerates (n-1)/2 failures, so an even count buys nothing over the
 	// odd number below it while adding a machine that can break.
@@ -304,7 +304,7 @@ func (c Config) MultiNode() bool { return len(c.Nodes) > 1 }
 func (c Config) Servers() []NodeConfig {
 	var out []NodeConfig
 	for _, n := range c.Nodes {
-		if n.Role == RoleServer {
+		if n.Role == roleServer {
 			out = append(out, n)
 		}
 	}

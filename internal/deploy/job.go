@@ -61,7 +61,7 @@ const CanaryTag = "orca-canary"
 // jobs are mine" answerable, so orca never touches a job someone else created.
 const (
 	MetaManaged = "orca.managed"
-	MetaApp     = "orca.app"
+	MetaGroup   = "orca.group"
 	MetaService = "orca.service"
 	MetaImage   = "orca.image"
 
@@ -121,7 +121,7 @@ type Options struct {
 // digest-pinned; resolving it is apply's job, not this function's, so the
 // jobspec is a pure function of its inputs and can be tested without a network.
 func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options) (*nomad.Job, error) {
-	id := JobID(m.App, s.Name)
+	id := JobID(m.Group, s.Name)
 
 	ports, portLabel, allocAddressed := buildPorts(s, opts)
 
@@ -136,7 +136,7 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		// configures.
 		network.DNS = &nomad.DNSConfig{
 			Servers:  []string{DNSAddress},
-			Searches: SearchDomains(m.App),
+			Searches: SearchDomains(m.Group),
 		}
 	}
 	for _, p := range ports {
@@ -179,7 +179,7 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 
 		// The secret path prefix every templated file interpolates, so a
 		// template's body names its own secrets without knowing the group.
-		prefix := SecretPath(m.App, s.Name)
+		prefix := SecretPath(m.Group, s.Name)
 
 		if len(spec.Entrypoint) > 0 {
 			task.Config["entrypoint"] = spec.Entrypoint
@@ -252,10 +252,10 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 	}
 
 	if s.Volume != nil {
-		hostPath := VolumePath(opts.DataDir, m.App, s.Name)
+		hostPath := VolumePath(opts.DataDir, m.Group, s.Name)
 		// A bind mount rather than a Nomad host volume, because a host volume
 		// has to be declared in the client config, which would mean
-		// re-bootstrapping the machine every time an app grows a volume.
+		// re-bootstrapping the machine every time a service grows a volume.
 		// Nomad's dynamic host volumes are the eventual upgrade; this keeps the
 		// same node-pinning property in the meantime.
 		task.Config["volumes"] = []string{hostPath + ":" + s.Volume.Mount}
@@ -297,7 +297,7 @@ func Build(m *manifest.Manifest, s *manifest.Service, image string, opts Options
 		TaskGroups:  []*nomad.TaskGroup{group},
 		Meta: map[string]string{
 			MetaManaged:  "true",
-			MetaApp:      m.App,
+			MetaGroup:    m.Group,
 			MetaService:  s.Name,
 			MetaImage:    image,
 			MetaImageRef: s.ResolvedImage(),
@@ -354,7 +354,7 @@ func blueGreen(s *manifest.Service, ports []portSpec, group *nomad.TaskGroup) bo
 // it does its work once and exits, and it runs again on every deploy, which is
 // why everything it does has to be idempotent.
 func initTask(m *manifest.Manifest, s *manifest.Service, image string, spec manifest.TemplateSpec, prefix string) *nomad.Task {
-	bucket := BucketName(m.App, s.Name)
+	bucket := BucketName(m.Group, s.Name)
 
 	initImage := spec.Init.Image
 	if initImage == "" {
@@ -492,10 +492,10 @@ func buildService(m *manifest.Manifest, s *manifest.Service, portLabel string, a
 	}
 
 	svc := &nomad.Service{
-		Name:      CatalogName(m.App, s.Name),
+		Name:      CatalogName(m.Group, s.Name),
 		PortLabel: portLabel,
 		Provider:  "nomad",
-		Tags:      append([]string{DNSTag(m.App, s.Name)}, traefikTags(m, s, opts)...),
+		Tags:      append([]string{DNSTag(m.Group, s.Name)}, traefikTags(m, s, opts)...),
 	}
 
 	if allocAddressed {
@@ -531,7 +531,7 @@ func metricsService(m *manifest.Manifest, s *manifest.Service, opts Options) *no
 	svc := &nomad.Service{
 		Name:     MetricsCatalogName,
 		Provider: "nomad",
-		Tags:     MetricsTags(m.App, s.Name),
+		Tags:     MetricsTags(m.Group, s.Name),
 	}
 
 	// Addressed the way buildPorts published it: on one machine by the
@@ -564,7 +564,7 @@ func traefikTags(m *manifest.Manifest, s *manifest.Service, opts Options) []stri
 		}
 		host := ex.Domain
 
-		router := CatalogName(m.App, s.Name)
+		router := CatalogName(m.Group, s.Name)
 		tags := []string{
 			"traefik.enable=true",
 			fmt.Sprintf("traefik.http.routers.%s.rule=Host(`%s`)", router, host),

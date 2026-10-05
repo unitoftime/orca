@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // Summary is everything the page and `orca top` show, judged once, here, so
@@ -428,7 +429,7 @@ func place(byName map[string]*Machine, nv *nomadView, mv *metricsView) {
 		p := placed[k]
 		if p == nil {
 			job := nv.Jobs[jobID]
-			p = &Placed{Group: job.App, Name: job.Service, Platform: job.App == deploy.OrcaApp}
+			p = &Placed{Group: job.Group, Name: job.Service, Platform: job.Group == manifest.ReservedGroup}
 			if p.Name == "" {
 				p.Name = jobID
 			}
@@ -589,10 +590,10 @@ func buildServices(nv *nomadView, mv *metricsView) []Service {
 			}
 		}
 		svc := Service{
-			Group:    st.App,
+			Group:    st.Group,
 			Name:     st.Service,
 			JobID:    st.JobID,
-			Platform: st.App == deploy.OrcaApp,
+			Platform: st.Group == manifest.ReservedGroup,
 			Health:   string(st.Health),
 			Level:    healthLevel(st.Health),
 			Running:  st.Running,
@@ -621,13 +622,13 @@ func buildServices(nv *nomadView, mv *metricsView) []Service {
 			t := b.Since
 			bk.Since = &t
 		}
-		parent := deploy.JobID(b.App, strings.TrimSuffix(b.Service, "-backup"))
-		if i, ok := index[parent]; ok && b.JobID == deploy.BackupJobID(b.App, strings.TrimSuffix(b.Service, "-backup")) {
+		parent := deploy.JobID(b.Group, strings.TrimSuffix(b.Service, "-backup"))
+		if i, ok := index[parent]; ok && b.JobID == deploy.BackupJobID(b.Group, strings.TrimSuffix(b.Service, "-backup")) {
 			out[i].Backup = bk
 			continue
 		}
 		out = append(out, Service{
-			Group: b.App, Name: b.Service, JobID: b.JobID, Platform: b.App == deploy.OrcaApp, Periodic: true,
+			Group: b.Group, Name: b.Service, JobID: b.JobID, Platform: b.Group == manifest.ReservedGroup, Periodic: true,
 			Health: bk.Health, Level: bk.Level, Running: b.Running, Desired: b.Desired,
 			Restarts: b.Restarts, Since: bk.Since, Message: b.Message,
 		})

@@ -35,7 +35,7 @@ type certRequest struct {
 }
 
 // ingressOwner is who the dashboards' certificates are asked for by.
-var ingressOwner = secretRef{deploy.OrcaApp, "traefik"}
+var ingressOwner = secretRef{manifest.ReservedGroup, "traefik"}
 
 // wantedCerts is every certificate these groups' services ask for, and with
 // ownJobs, the ones orca's dashboards are published under.
@@ -47,7 +47,7 @@ func wantedCerts(cfg Config, groups []*manifest.Manifest, ownJobs bool) []certRe
 	var out []certRequest
 	for _, m := range groups {
 		for _, s := range m.Services {
-			owner := secretRef{m.App, s.Name}
+			owner := secretRef{m.Group, s.Name}
 			if s.TLS != "" {
 				out = append(out, certRequest{Host: s.TLS, Owner: owner, Required: true})
 			}
@@ -145,7 +145,7 @@ func checkCertsPossible(cfg Config, p certPlan, current map[string]deploy.JobSta
 	// includes them deploys it. A cluster last applied by an orca from before
 	// there was one has none, and an ingress that does not know to serve
 	// what it issues.
-	if _, running := current[deploy.JobID(deploy.OrcaApp, "certs")]; !running && !platformInScope {
+	if _, running := current[deploy.JobID(manifest.ReservedGroup, "certs")]; !running && !platformInScope {
 		return fmt.Errorf("%s needs a certificate, and the cluster's certificate job is not running yet; "+
 			"run `orca apply` without a group once to deploy it", first.Host)
 	}

@@ -59,7 +59,7 @@ ports:
 	if *job.ID != "blog-api" {
 		t.Errorf("job ID = %q, want blog-api", *job.ID)
 	}
-	if job.Meta[MetaManaged] != "true" || job.Meta[MetaApp] != "blog" || job.Meta[MetaService] != "api" {
+	if job.Meta[MetaManaged] != "true" || job.Meta[MetaGroup] != "blog" || job.Meta[MetaService] != "api" {
 		t.Errorf("meta = %v", job.Meta)
 	}
 
@@ -296,7 +296,7 @@ func TestIngressOffRefusesRoutedPorts(t *testing.T) {
 	opts := defaultOpts()
 	opts.Ingress = false
 	m := parse(t, "{name: web, image: i:1, ports: {8080: errors.example.org}}")
-	_, err := BuildApp(m, map[string]string{"web": "i@sha256:1"}, opts, func(*manifest.Service) (string, error) { return "", nil })
+	_, err := BuildGroup(m, map[string]string{"web": "i@sha256:1"}, opts, func(*manifest.Service) (string, error) { return "", nil })
 	if err == nil || !strings.Contains(err.Error(), "switched off") {
 		t.Errorf("want a refusal naming ingress, got %v", err)
 	}
@@ -370,7 +370,7 @@ func TestUpdateHealthCheckMatchesWhetherChecksExist(t *testing.T) {
 func TestHostnamesOnAnyDomain(t *testing.T) {
 	for _, host := range []string{"shop.example.com", "example.org", "api.other.net"} {
 		m := parse(t, "{name: web, image: i:1, ports: {8080: "+host+"}}")
-		jobs, err := BuildApp(m, map[string]string{"web": "i@sha256:x"}, defaultOpts(), func(*manifest.Service) (string, error) { return "", nil })
+		jobs, err := BuildGroup(m, map[string]string{"web": "i@sha256:x"}, defaultOpts(), func(*manifest.Service) (string, error) { return "", nil })
 		if err != nil {
 			t.Fatalf("%s: %v", host, err)
 		}

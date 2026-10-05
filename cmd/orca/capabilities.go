@@ -136,21 +136,21 @@ type MetricsConfig struct {
 // knowing what your services are doing should be a rounding error next to the
 // workloads, not a second tenant.
 const (
-	DefaultLogRetention    = "14d"
-	DefaultLogDisk         = "10G"
-	DefaultMetricRetention = "30d"
-	DefaultMetricMinFree   = "2G"
+	defaultLogRetention    = "14d"
+	defaultLogDisk         = "10G"
+	defaultMetricRetention = "30d"
+	defaultMetricMinFree   = "2G"
 )
 
-// DefaultCapabilities is what a cluster.yaml that mentions none of them gets.
-func DefaultCapabilities() (FirewallConfig, DNSConfig, IngressConfig, MonitoringConfig) {
+// defaultCapabilities is what a cluster.yaml that mentions none of them gets.
+func defaultCapabilities() (FirewallConfig, DNSConfig, IngressConfig, MonitoringConfig) {
 	return FirewallConfig{Enabled: true},
 		DNSConfig{Enabled: true},
 		IngressConfig{Enabled: true},
 		MonitoringConfig{
 			Enabled: true,
-			Logs:    LogsConfig{Enabled: true, Retention: DefaultLogRetention, Disk: DefaultLogDisk},
-			Metrics: MetricsConfig{Enabled: true, Retention: DefaultMetricRetention, MinFree: DefaultMetricMinFree},
+			Logs:    LogsConfig{Enabled: true, Retention: defaultLogRetention, Disk: defaultLogDisk},
+			Metrics: MetricsConfig{Enabled: true, Retention: defaultMetricRetention, MinFree: defaultMetricMinFree},
 			Status:  StatusConfig{Enabled: true},
 		}
 }
@@ -265,7 +265,7 @@ func (c *MonitoringConfig) UnmarshalYAML(node *yaml.Node) error {
 	// absent `logs:` inside a present `monitoring:` never reaches the halves'
 	// unmarshalers, so without this "monitoring: {metrics: false}" would come
 	// back with logs switched off too.
-	_, _, _, d := DefaultCapabilities()
+	_, _, _, d := defaultCapabilities()
 	out := plainMonitoring{Logs: d.Logs, Metrics: d.Metrics, Status: d.Status}
 
 	on, err := decodeToggle(node, "monitoring", []string{"logs", "metrics", "status", "domain", "node"}, &out)
@@ -333,7 +333,7 @@ func (c *MetricsConfig) UnmarshalYAML(node *yaml.Node) error {
 
 // applyDefaults fills unset settings for whatever is enabled.
 func (m *MonitoringConfig) applyDefaults() {
-	_, _, _, d := DefaultCapabilities()
+	_, _, _, d := defaultCapabilities()
 	if m.Logs.Retention == "" {
 		m.Logs.Retention = d.Logs.Retention
 	}

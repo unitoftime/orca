@@ -41,8 +41,8 @@ func findDatabase(cfg Config, ref string) (*manifest.Manifest, *manifest.Service
 			if s.Backup == nil {
 				continue
 			}
-			known = append(known, m.App+"/"+s.Name)
-			if m.App == group && s.Name == name {
+			known = append(known, m.Group+"/"+s.Name)
+			if m.Group == group && s.Name == name {
 				spec, err := resolveBackup(groups, m, s)
 				return m, s, spec, err
 			}
@@ -116,7 +116,7 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation)
 	switch kind {
 	case manifest.BackupRedis:
 		fmt.Printf("%s is stopped while its data is replaced by the backup's, then started again.\n", rest[0])
-		fmt.Printf("The data it holds now is kept under %s-<time>.\n", PreRestorePrefix(m.App, s.Name))
+		fmt.Printf("The data it holds now is kept under %s-<time>.\n", preRestorePrefix(m.Group, s.Name))
 	default:
 		fmt.Printf("Each database in it is restored beside the one it replaces, then swapped in, ending connections to it.\n")
 		fmt.Printf("What each held before is kept on the server as <name>%s<time>.\n", deploy.PreRestoreSuffix)
@@ -142,9 +142,9 @@ func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation)
 			return err
 		}
 		node, _ := cfg.FindNode(nodeName)
-		return NewCluster(Node{Host: node.Host}).RestoreRedis(ctx, spec, m.App, s.Name, name, s.ResolvedImage())
+		return newCluster(Node{Host: node.Host}).RestoreRedis(ctx, spec, m.Group, s.Name, name, s.ResolvedImage())
 	}
-	return cluster.RestoreBackup(ctx, spec, m.App, s.Name, name, s.ResolvedImage())
+	return cluster.RestoreBackup(ctx, spec, m.Group, s.Name, name, s.ResolvedImage())
 }
 
 // backupName is the shape a backup file has: <group>-<service>-<stamp>.<ext>,

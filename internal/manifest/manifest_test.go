@@ -40,8 +40,8 @@ func TestParseFullExample(t *testing.T) {
 		t.Fatalf("the full example must parse: %v", err)
 	}
 
-	if m.App != "blog" || len(m.Services) != 3 {
-		t.Fatalf("app = %q with %d services", m.App, len(m.Services))
+	if m.Group != "blog" || len(m.Services) != 3 {
+		t.Fatalf("group = %q with %d services", m.Group, len(m.Services))
 	}
 
 	db, _ := m.Service("db")
@@ -154,9 +154,9 @@ ports:
 	got := m.HostPorts()
 	// Sorted by port then protocol, and a hostname port claims no host port at all.
 	want := []HostPort{
-		{Port: 7777, Proto: "tcp", App: "blog", Service: "api"},
-		{Port: 7777, Proto: "udp", App: "blog", Service: "api"},
-		{Port: 7778, Proto: "tcp", App: "blog", Service: "dev"},
+		{Port: 7777, Proto: "tcp", Group: "blog", Service: "api"},
+		{Port: 7777, Proto: "udp", Group: "blog", Service: "api"},
+		{Port: 7778, Proto: "tcp", Group: "blog", Service: "dev"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("HostPorts() = %+v, want %+v", got, want)

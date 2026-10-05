@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	// dnsLabel is the shape of an app or service name: it becomes a DNS label
+	// dnsLabel is the shape of a group or service name: it becomes a DNS label
 	// in a generated hostname and a Nomad job/group name, so the strictest
 	// consumer sets the rule.
 	dnsLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
@@ -61,8 +61,8 @@ func (m *Manifest) Validate() error {
 
 	// The group name comes from the directory, so a name that cannot be used
 	// is a directory that needs renaming.
-	if !IsDNSLabel(m.App) {
-		e.addf("group name %q must be lowercase letters, digits and dashes (a DNS label); rename the directory", m.App)
+	if !IsDNSLabel(m.Group) {
+		e.addf("group name %q must be lowercase letters, digits and dashes (a DNS label); rename the directory", m.Group)
 	}
 	// Reserved rather than merged: orca files its own jobs under this name, so
 	// a directory of it would put your services in the same namespace, and a
@@ -70,9 +70,9 @@ func (m *Manifest) Validate() error {
 	//
 	// The prefix too: jobs are named <group>-<service>, so a group orca-node
 	// with a service exporter would be orca's own node exporter.
-	if m.App == ReservedGroup || strings.HasPrefix(m.App, ReservedGroup+"-") {
+	if m.Group == ReservedGroup || strings.HasPrefix(m.Group, ReservedGroup+"-") {
 		e.addf("group name %q is reserved: %s and every name starting %s- belong to the jobs orca runs for you (%s/traefik, %s/dns, ...); rename the directory",
-			m.App, ReservedGroup, ReservedGroup, ReservedGroup, ReservedGroup)
+			m.Group, ReservedGroup, ReservedGroup, ReservedGroup, ReservedGroup)
 	}
 
 	if len(m.Services) == 0 {
@@ -103,7 +103,7 @@ func (m *Manifest) Validate() error {
 		}
 		se := &errList{prefix: fmt.Sprintf("%s: %s: ", where, what)}
 
-		validateName(se, m.App, s, seen)
+		validateName(se, m.Group, s, seen)
 		validateSource(se, s)
 		validateBackup(se, s)
 

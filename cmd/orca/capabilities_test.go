@@ -9,7 +9,7 @@ import (
 // never called for an absent key, so this is the case that would silently
 // disable everything if the defaults were not seeded first.
 func TestCapabilityDefaultsWhenAbsent(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, "nodes:\n  - host: root@10.0.0.1\n"))
+	cfg, err := loadConfig(writeConfig(t, "nodes:\n  - host: root@10.0.0.1\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,13 +19,13 @@ func TestCapabilityDefaultsWhenAbsent(t *testing.T) {
 	if !cfg.Monitoring.Logs.Enabled || !cfg.Monitoring.Metrics.Enabled || !cfg.Monitoring.Status.Enabled {
 		t.Errorf("monitoring should default on, got %+v", cfg.Monitoring)
 	}
-	if cfg.Monitoring.Logs.Disk != DefaultLogDisk || cfg.Monitoring.Logs.Retention != DefaultLogRetention {
+	if cfg.Monitoring.Logs.Disk != defaultLogDisk || cfg.Monitoring.Logs.Retention != defaultLogRetention {
 		t.Errorf("log defaults not applied: %+v", cfg.Monitoring.Logs)
 	}
 }
 
 func TestCapabilityDisable(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 ingress: false
 nodes:
   - host: root@10.0.0.1
@@ -44,7 +44,7 @@ nodes:
 
 // Settings are written as a mapping, and a capability with settings is on.
 func TestCapabilitySettings(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 monitoring:
   domain: example.com
   logs:
@@ -73,7 +73,7 @@ nodes:
 		t.Errorf("monitoring domain = %q", cfg.Monitoring.Domain)
 	}
 	// An unmentioned setting keeps its default rather than becoming zero.
-	if cfg.Monitoring.Metrics.Retention != DefaultMetricRetention {
+	if cfg.Monitoring.Metrics.Retention != defaultMetricRetention {
 		t.Errorf("metrics retention = %q, want the default", cfg.Monitoring.Metrics.Retention)
 	}
 }
@@ -81,7 +81,7 @@ nodes:
 // Monitoring has two halves and they are separately disablable: wanting logs
 // without metrics on a small machine is an ordinary thing to want.
 func TestMonitoringHalvesAreIndependent(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 monitoring:
   metrics: false
 nodes:
@@ -98,7 +98,7 @@ nodes:
 	if !cfg.Monitoring.Logs.Enabled {
 		t.Error("logs should stay on when only metrics was disabled")
 	}
-	if cfg.Monitoring.Logs.Retention != DefaultLogRetention {
+	if cfg.Monitoring.Logs.Retention != defaultLogRetention {
 		t.Errorf("logs retention = %q, want the default", cfg.Monitoring.Logs.Retention)
 	}
 }
@@ -106,7 +106,7 @@ nodes:
 // Turning the whole capability off takes both halves with it, so everything
 // downstream asks one question instead of two.
 func TestMonitoringFalseDisablesBoth(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 monitoring: false
 nodes:
   - host: root@10.0.0.1
@@ -122,7 +122,7 @@ nodes:
 // The status page has only an off switch, and turning it off leaves the
 // stores it reads alone.
 func TestMonitoringStatusSwitch(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 monitoring:
   status: false
 nodes:
@@ -143,7 +143,7 @@ nodes:
 		}
 	}
 
-	if _, err := LoadConfig(writeConfig(t, `
+	if _, err := loadConfig(writeConfig(t, `
 monitoring:
   status:
     port: 80
@@ -156,7 +156,7 @@ nodes:
 
 // The status job runs the build apply ships, found on the machine by its hash.
 func TestStatusJobRunsTheShippedBuild(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, "nodes:\n  - host: root@10.0.0.1\n"))
+	cfg, err := loadConfig(writeConfig(t, "nodes:\n  - host: root@10.0.0.1\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestStatusJobRunsTheShippedBuild(t *testing.T) {
 // A typo inside a capability must not silently take a default: yaml.Node.Decode
 // drops the parent decoder's strictness, so it is enforced by hand.
 func TestCapabilityRejectsUnknownFields(t *testing.T) {
-	_, err := LoadConfig(writeConfig(t, `
+	_, err := loadConfig(writeConfig(t, `
 monitoring:
   logs:
     retentionn: 7d
@@ -202,7 +202,7 @@ func TestOldTopLevelSettingsAreRefused(t *testing.T) {
 		"backups:\n  bucket: b\nnodes:\n  - host: root@10.0.0.1\n",
 		"platform:\n  ingress: false\nnodes:\n  - host: root@10.0.0.1\n",
 	} {
-		if _, err := LoadConfig(writeConfig(t, body)); err == nil {
+		if _, err := loadConfig(writeConfig(t, body)); err == nil {
 			t.Errorf("a config still using the old shape should be refused:\n%s", body)
 		}
 	}
@@ -211,7 +211,7 @@ func TestOldTopLevelSettingsAreRefused(t *testing.T) {
 // A bad size is reported when the config is read, not as a container that
 // exits 2 on the machine with its usage text and no error.
 func TestCapabilityRejectsBadSize(t *testing.T) {
-	_, err := LoadConfig(writeConfig(t, `
+	_, err := loadConfig(writeConfig(t, `
 monitoring:
   logs:
     disk: loads
@@ -229,7 +229,7 @@ nodes:
 // A disabled capability produces no job at all, which is how the ordinary
 // "stop what is no longer declared" rule removes it from a running cluster.
 func TestDisabledCapabilityProducesNoJobs(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 ingress: false
 monitoring:
   metrics: false
@@ -270,7 +270,7 @@ func TestIngressHTTPS(t *testing.T) {
 		{"ingress:\n  https: false\n", false},
 		{"ingress: false\n", false},
 	} {
-		cfg, err := LoadConfig(writeConfig(t, c.yaml+"nodes:\n  - host: root@10.0.0.1\n"))
+		cfg, err := loadConfig(writeConfig(t, c.yaml+"nodes:\n  - host: root@10.0.0.1\n"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -283,7 +283,7 @@ func TestIngressHTTPS(t *testing.T) {
 // ingress.domain moved to monitoring.domain. A cluster.yaml that still has it
 // is told where it went, not just that the field is unknown.
 func TestIngressDomainSaysWhereItMoved(t *testing.T) {
-	_, err := LoadConfig(writeConfig(t, `
+	_, err := loadConfig(writeConfig(t, `
 ingress:
   domain: example.com
 nodes:
@@ -298,7 +298,7 @@ nodes:
 // One left in cluster.yaml is refused rather than ignored, since ignoring it
 // would look like it worked, and says what to do instead.
 func TestIngressAdminPasswordIsRefused(t *testing.T) {
-	_, err := LoadConfig(writeConfig(t, `
+	_, err := loadConfig(writeConfig(t, `
 ingress:
   admin_password: hunter2
 nodes:

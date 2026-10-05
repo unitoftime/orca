@@ -30,7 +30,7 @@ var hostPhases = []phase{
 // remoteStageDir is where a machine's setup scripts are put to be run as
 // root. Under the data directory and not /tmp, where another user of the
 // machine could have put something by that name first.
-const remoteStageDir = DataDir + "/bootstrap"
+const remoteStageDir = dataDir + "/bootstrap"
 
 // cmdBootstrap brings one node (or every node, if ref is empty) to a ready
 // state: packages, docker, nomad, running and joined.
@@ -61,7 +61,7 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string) error {
 		return fmt.Errorf("no server node to wait on")
 	}
 	first := Node{Host: servers[0].Host}
-	cluster := NewCluster(first)
+	cluster := newCluster(first)
 
 	fmt.Fprintf(os.Stderr, "\n=== cluster ===\n")
 	var list StepList
@@ -124,7 +124,7 @@ func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig) error {
 		}
 	}
 	for name := range files {
-		rendered, err := RenderTemplate("templates/host/"+name, vars)
+		rendered, err := renderTemplate("templates/host/"+name, vars)
 		if err != nil {
 			return err
 		}
@@ -175,22 +175,22 @@ func authorizeKey(ctx context.Context, node Node) error {
 // nodeVars builds the {{KEY}} substitutions for one node's scripts.
 func nodeVars(cfg Config, nc NodeConfig) (map[string]string, error) {
 	return map[string]string{
-		"NOMAD_VERSION":       Versions.Nomad,
-		"DOCKER_VERSION":      Versions.Docker,
-		"CNI_VERSION":         Versions.CNIPlugins,
-		"NOMAD_SHA256":        Versions.NomadSHA256,
-		"DOCKER_SHA256":       Versions.DockerSHA256,
-		"CNI_SHA256":          Versions.CNIPluginsSHA256,
-		"DATACENTER":          Datacenter,
+		"NOMAD_VERSION":       versions.Nomad,
+		"DOCKER_VERSION":      versions.Docker,
+		"CNI_VERSION":         versions.CNIPlugins,
+		"NOMAD_SHA256":        versions.NomadSHA256,
+		"DOCKER_SHA256":       versions.DockerSHA256,
+		"CNI_SHA256":          versions.CNIPluginsSHA256,
+		"DATACENTER":          datacenter,
 		"NODE_NAME":           nc.Name,
-		"DATA_DIR":            DataDir,
+		"DATA_DIR":            dataDir,
 		"BIND_IP":             nc.PrivateIP, // empty on a single machine: binds loopback
 		"ROLE":                string(nc.Role),
 		"SERVER_COUNT":        fmt.Sprint(len(cfg.Servers())),
 		"NOMAD_SERVER_STANZA": nomadServerStanza(cfg, nc),
 		"NOMAD_CLIENT_JOIN":   nomadClientJoin(cfg, nc),
-		"NOMAD_ADDR":          NomadAddr,
-		"TOKEN_PATH":          TokenPath,
+		"NOMAD_ADDR":          nomadAddr,
+		"TOKEN_PATH":          tokenPath,
 		"REGISTRY_PREFIX":     deploy.RegistryPrefix,
 	}, nil
 }
@@ -199,7 +199,7 @@ func nodeVars(cfg Config, nc NodeConfig) (map[string]string, error) {
 // node is a pure client. retry_join is omitted on a single-node cluster because
 // there are no peers to join: the one server bootstraps itself.
 func nomadServerStanza(cfg Config, nc NodeConfig) string {
-	if nc.Role != RoleServer {
+	if nc.Role != roleServer {
 		return "# client-only node: no server stanza"
 	}
 
@@ -234,7 +234,7 @@ func nomadServerStanza(cfg Config, nc NodeConfig) string {
 // other way to learn where the cluster is: without this, a client node would
 // start, never join, and bootstrap's wait for every machine would time out.
 func nomadClientJoin(cfg Config, nc NodeConfig) string {
-	if nc.Role == RoleServer {
+	if nc.Role == roleServer {
 		return "  # runs a server: its client joins it locally"
 	}
 	var servers []string
@@ -256,7 +256,7 @@ func waitForNomad(ctx context.Context, node Node) error {
 	// its stdin is not a terminal, which over SSH it never is, and the API then
 	// rejects the request as "Invalid method".
 	const script = `for i in $(seq 1 30); do
-  LEADER=$(curl -sf --max-time 5 ` + NomadAddr + `/v1/status/leader 2>/dev/null || true)
+  LEADER=$(curl -sf --max-time 5 ` + nomadAddr + `/v1/status/leader 2>/dev/null || true)
   case "$LEADER" in
     *:*) echo "nomad leader: $LEADER"; exit 0 ;;
   esac

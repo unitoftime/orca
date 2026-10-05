@@ -44,17 +44,17 @@ type Cluster struct {
 	apiErr error
 }
 
-func NewCluster(n Node) *Cluster { return &Cluster{node: n, http: n.HTTPClient()} }
+func newCluster(n Node) *Cluster { return &Cluster{node: n, http: n.HTTPClient()} }
 
-// NomadAddr is where Nomad's HTTP API answers on the machine. It is always
+// nomadAddr is where Nomad's HTTP API answers on the machine. It is always
 // loopback: orca reaches it from the machine itself rather than connecting to
 // a listener, so this does not change when a second machine gives bind_addr a
 // real IP.
-const NomadAddr = "http://127.0.0.1:4646"
+const nomadAddr = "http://127.0.0.1:4646"
 
-// TokenPath is where each machine keeps the token Nomad's API is asked with:
+// tokenPath is where each machine keeps the token Nomad's API is asked with:
 // a file only root can read, written by bootstrap.
-const TokenPath = "/etc/orca/nomad.token"
+const tokenPath = "/etc/orca/nomad.token"
 
 // requestTimeout bounds one request to Nomad. None of them wait on anything:
 // what takes time (a deploy becoming healthy) is watched by asking again.
@@ -65,7 +65,7 @@ func (c *Cluster) client(ctx context.Context) (*nomad.Client, error) {
 	c.once.Do(func() {
 		// Read with a command of its own, which also opens the shared SSH
 		// connection the requests then ride.
-		token, err := c.node.RunOutput(ctx, "cat "+TokenPath)
+		token, err := c.node.RunOutput(ctx, "cat "+tokenPath)
 		if unreachable(err) {
 			c.apiErr = err
 			return
@@ -77,7 +77,7 @@ func (c *Cluster) client(ctx context.Context) (*nomad.Client, error) {
 		api := *c.http
 		api.Timeout = requestTimeout
 		c.api, c.apiErr = nomad.NewClient(&nomad.Config{
-			Address:    NomadAddr,
+			Address:    nomadAddr,
 			SecretID:   strings.TrimSpace(token),
 			HttpClient: &api,
 		})
@@ -569,7 +569,7 @@ func (c *Cluster) serviceAddr(ctx context.Context, name string) (string, bool, e
 	if err != nil {
 		return "", false, err
 	}
-	regs, _, err := api.Services().Get(deploy.CatalogName(deploy.OrcaApp, name), (&nomad.QueryOptions{}).WithContext(ctx))
+	regs, _, err := api.Services().Get(deploy.CatalogName(manifest.ReservedGroup, name), (&nomad.QueryOptions{}).WithContext(ctx))
 	if err != nil {
 		return "", false, err
 	}
@@ -701,16 +701,16 @@ func (c *Cluster) TailLogs(ctx context.Context, query string, fn func([]byte)) e
 	return nil
 }
 
-// Volume identifies one app volume on disk.
+// Volume identifies one service's volume on disk.
 type Volume struct {
 	Group   string
 	Service string
 }
 
 // Path is where the volume lives on its machine.
-func (v Volume) Path() string { return deploy.VolumePath(DataDir, v.Group, v.Service) }
+func (v Volume) Path() string { return deploy.VolumePath(dataDir, v.Group, v.Service) }
 
-// VolumeListing is every app volume one machine holds.
+// VolumeListing is every service volume one machine holds.
 type VolumeListing struct {
 	Volumes []Volume
 }
@@ -724,7 +724,7 @@ func (c *Cluster) ListVolumes(ctx context.Context) (VolumeListing, error) {
 	script := fmt.Sprintf(`set -e
 if [ -d %[1]s ]; then
   cd %[1]s && find . -mindepth 2 -maxdepth 2 -type d | sed 's|^\./||'
-fi`, shQuote(deploy.VolumeRoot(DataDir)))
+fi`, shQuote(deploy.VolumeRoot(dataDir)))
 
 	out, err := c.node.RunOutput(ctx, script)
 	if err != nil {
@@ -796,7 +796,7 @@ func deleteVolumesScript(vols []Volume) (string, error) {
 		groups[v.Group] = true
 	}
 	for g := range groups {
-		fmt.Fprintf(&b, "rmdir --ignore-fail-on-non-empty %s\n", shQuote(path.Join(deploy.VolumeRoot(DataDir), g)))
+		fmt.Fprintf(&b, "rmdir --ignore-fail-on-non-empty %s\n", shQuote(path.Join(deploy.VolumeRoot(dataDir), g)))
 	}
 	return b.String(), nil
 }
@@ -808,9 +808,9 @@ func deleteVolumesScript(vols []Volume) (string, error) {
 //
 // The token goes to curl on its stdin, not in its arguments: an argument list
 // is visible in the process table for as long as the command runs.
-const hostNomad = `NOMAD_TOKEN=$(cat ` + TokenPath + `)
+const hostNomad = `NOMAD_TOKEN=$(cat ` + tokenPath + `)
 export NOMAD_TOKEN
-nomad_get() { printf 'X-Nomad-Token: %s\n' "$NOMAD_TOKEN" | curl -sf --max-time 10 -H @- "` + NomadAddr + `$1"; }
+nomad_get() { printf 'X-Nomad-Token: %s\n' "$NOMAD_TOKEN" | curl -sf --max-time 10 -H @- "` + nomadAddr + `$1"; }
 `
 
 // rcloneEnvScript writes the S3 credentials to a private file on the machine
@@ -1101,12 +1101,12 @@ func (c *Cluster) RestoreRedis(ctx context.Context, spec deploy.BackupSpec, grou
 	return nil
 }
 
-// PreRestorePrefix is where a restore leaves the data it replaced, suffixed
+// preRestorePrefix is where a restore leaves the data it replaced, suffixed
 // with the time of the restore. Outside the volume root, so it is never
 // mistaken for a volume of its own. It is kept rather than deleted, because
 // deleting data is purge's job and nothing else's.
-func PreRestorePrefix(group, service string) string {
-	return path.Join(DataDir, "pre-restore", group+"-"+service)
+func preRestorePrefix(group, service string) string {
+	return path.Join(dataDir, "pre-restore", group+"-"+service)
 }
 
 // redisRestoreScript builds the Redis restore, separately from running it, for
@@ -1213,6 +1213,6 @@ echo "restored $NAME ($KEYS keys); the data it replaced is at $KEEP"`,
 		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(spec.Prefix),
 		shQuote(image), shQuote(name),
 		shQuote(deploy.JobID(group, service)),
-		shQuote(deploy.VolumePath(DataDir, group, service)),
-		shQuote(PreRestorePrefix(group, service)))
+		shQuote(deploy.VolumePath(dataDir, group, service)),
+		shQuote(preRestorePrefix(group, service)))
 }

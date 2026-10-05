@@ -83,7 +83,7 @@ func registryLogin(ctx context.Context, cfg Config, host, username string) error
 	// to be found as "unauthorized" at the next deploy.
 	var stale []string
 	for _, nc := range cfg.Nodes {
-		ok, err := NewCluster(Node{Host: nc.Host}).HasCredentialHelper(ctx)
+		ok, err := newCluster(Node{Host: nc.Host}).HasCredentialHelper(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not check %s for the credential helper: %v\n", nc.Name, err)
 			continue

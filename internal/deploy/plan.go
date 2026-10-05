@@ -13,7 +13,7 @@ import (
 // JobState is what the cluster currently knows about one orca-managed job.
 type JobState struct {
 	ID      string
-	App     string
+	Group   string
 	Service string
 	Image   string
 	Stopped bool
@@ -61,7 +61,7 @@ const (
 type Change struct {
 	Kind    ChangeKind
 	JobID   string
-	App     string
+	Group   string
 	Service string
 
 	OldImage string
@@ -119,14 +119,14 @@ func (p Plan) String() string {
 	for _, c := range work {
 		switch c.Kind {
 		case ChangeCreate:
-			fmt.Fprintf(&b, "  create  %s/%s  %s\n", c.App, c.Service, c.NewImage)
+			fmt.Fprintf(&b, "  create  %s/%s  %s\n", c.Group, c.Service, c.NewImage)
 		case ChangeStop:
-			fmt.Fprintf(&b, "  stop    %s/%s  (no longer declared)\n", c.App, c.Service)
+			fmt.Fprintf(&b, "  stop    %s/%s  (no longer declared)\n", c.Group, c.Service)
 		case ChangeUpdate:
 			if c.OldImage != c.NewImage {
-				fmt.Fprintf(&b, "  update  %s/%s  %s -> %s\n", c.App, c.Service, shortImage(c.OldImage), shortImage(c.NewImage))
+				fmt.Fprintf(&b, "  update  %s/%s  %s -> %s\n", c.Group, c.Service, shortImage(c.OldImage), shortImage(c.NewImage))
 			} else {
-				fmt.Fprintf(&b, "  update  %s/%s  %s\n", c.App, c.Service, c.Plan.describe())
+				fmt.Fprintf(&b, "  update  %s/%s  %s\n", c.Group, c.Service, c.Plan.describe())
 			}
 		}
 		if c.Plan.Unplaceable != "" {
@@ -149,10 +149,10 @@ func shortImage(ref string) string {
 	return repo + "@" + digest
 }
 
-// BuildApp renders every service of one group into a job. images maps a service
+// BuildGroup renders every service of one group into a job. images maps a service
 // name to its already-resolved, digest-pinned image; nodeFor decides placement
 // and may return "" to leave it to Nomad.
-func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, nodeFor func(*manifest.Service) (string, error)) ([]*nomad.Job, error) {
+func BuildGroup(m *manifest.Manifest, images map[string]string, opts Options, nodeFor func(*manifest.Service) (string, error)) ([]*nomad.Job, error) {
 	var jobs []*nomad.Job
 	var errs []error
 
@@ -204,9 +204,9 @@ func BuildApp(m *manifest.Manifest, images map[string]string, opts Options, node
 // such as a new field in a newer client library, and it knows which changes
 // replace allocations and which it applies in place.
 //
-// scope names the apps this apply covers, and a nil scope covers everything.
+// scope names the groups this apply covers, and a nil scope covers everything.
 // A job outside the scope is left alone entirely. That is what makes
-// `orca apply blog` safe to run when other apps exist, and it is the reason
+// `orca apply blog` safe to run when other groups exist, and it is the reason
 // scope is an explicit argument rather than being inferred from the desired
 // set.
 //
@@ -226,7 +226,7 @@ func BuildPlan(desired []*nomad.Job, current map[string]JobState, plans map[stri
 
 		c := Change{
 			JobID:    id,
-			App:      job.Meta[MetaApp],
+			Group:    job.Meta[MetaGroup],
 			Service:  job.Meta[MetaService],
 			NewImage: job.Meta[MetaImage],
 			Job:      job,
@@ -259,13 +259,13 @@ func BuildPlan(desired []*nomad.Job, current map[string]JobState, plans map[stri
 		if seen[id] || cur.Stopped {
 			continue
 		}
-		if scope != nil && !scope[cur.App] {
+		if scope != nil && !scope[cur.Group] {
 			continue
 		}
 		plan.Changes = append(plan.Changes, Change{
 			Kind:     ChangeStop,
 			JobID:    id,
-			App:      cur.App,
+			Group:    cur.Group,
 			Service:  cur.Service,
 			OldImage: cur.Image,
 		})
@@ -299,15 +299,15 @@ func (p Plan) VanishedGroups() []string {
 	stopping := map[string]bool{}
 	for _, c := range p.Changes {
 		if c.Kind == ChangeStop {
-			stopping[c.App] = true
+			stopping[c.Group] = true
 		} else {
-			declared[c.App] = true
+			declared[c.Group] = true
 		}
 	}
 	var out []string
-	for app := range stopping {
-		if !declared[app] {
-			out = append(out, app)
+	for group := range stopping {
+		if !declared[group] {
+			out = append(out, group)
 		}
 	}
 	sort.Strings(out)

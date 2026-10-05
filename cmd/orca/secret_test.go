@@ -145,7 +145,7 @@ func TestGeneratedSecretsAreGuarded(t *testing.T) {
 		"cluster.yaml": "nodes:\n  - host: root@10.0.0.1\n",
 		"shop/db.yaml": "{name: db, template: postgres:17, volume: 1G}",
 	})
-	cfg, err := LoadConfigFrom(root)
+	cfg, err := loadConfigFrom(root)
 	if err != nil {
 		t.Fatal(err)
 	}

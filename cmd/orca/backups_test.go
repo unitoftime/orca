@@ -11,7 +11,7 @@ func groupsFrom(t *testing.T, files map[string]string) []*manifest.Manifest {
 	t.Helper()
 	files["cluster.yaml"] = "nodes:\n  - host: root@203.0.113.10\n"
 	root := writeTree(t, files)
-	cfg, err := LoadConfig(root + "/cluster.yaml")
+	cfg, err := loadConfig(root + "/cluster.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestTargetCredentialsAreRequiredSecrets(t *testing.T) {
 
 	var got []string
 	for _, m := range groups {
-		if m.App == "storage" {
+		if m.Group == "storage" {
 			got = m.Secrets()
 		}
 	}

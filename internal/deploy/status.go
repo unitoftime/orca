@@ -83,7 +83,7 @@ const (
 // ServiceStatus is one service's worth of "is it actually working".
 type ServiceStatus struct {
 	JobID   string
-	App     string
+	Group   string
 	Service string
 	Image   string
 
@@ -136,7 +136,7 @@ func Summarize(jobs map[string]JobState, allocs []AllocState, deployments []Depl
 	for id, job := range jobs {
 		s := ServiceStatus{
 			JobID:   id,
-			App:     job.App,
+			Group:   job.Group,
 			Service: job.Service,
 			Image:   job.Image,
 			Desired: job.Count,
@@ -157,8 +157,8 @@ func Summarize(jobs map[string]JobState, allocs []AllocState, deployments []Depl
 	}
 
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].App != out[j].App {
-			return out[i].App < out[j].App
+		if out[i].Group != out[j].Group {
+			return out[i].Group < out[j].Group
 		}
 		return out[i].Service < out[j].Service
 	})

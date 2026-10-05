@@ -15,7 +15,7 @@ func jobsFor(t *testing.T, body string, images map[string]string) []*nomad.Job {
 func jobsForIn(t *testing.T, group, body string, images map[string]string) []*nomad.Job {
 	t.Helper()
 	m := parseIn(t, group, body)
-	jobs, err := BuildApp(m, images, defaultOpts(), func(*manifest.Service) (string, error) { return "box0", nil })
+	jobs, err := BuildGroup(m, images, defaultOpts(), func(*manifest.Service) (string, error) { return "box0", nil })
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -35,7 +35,7 @@ func state(jobs []*nomad.Job) map[string]JobState {
 	for _, j := range jobs {
 		out[*j.ID] = JobState{
 			ID:      *j.ID,
-			App:     j.Meta[MetaApp],
+			Group:   j.Meta[MetaGroup],
 			Service: j.Meta[MetaService],
 			Image:   j.Meta[MetaImage],
 		}
@@ -53,7 +53,7 @@ func TestPlanCreatesWhenNothingIsRunning(t *testing.T) {
 	}
 	for _, c := range plan.Work() {
 		if c.Kind != ChangeCreate {
-			t.Errorf("%s/%s = %s, want create", c.App, c.Service, c.Kind)
+			t.Errorf("%s/%s = %s, want create", c.Group, c.Service, c.Kind)
 		}
 	}
 }
@@ -165,8 +165,8 @@ image: ghcr.io/x/blog:1.4
 }
 
 // `orca apply blog` must not touch anything else. Without the scope check, an
-// app absent from the desired set would look undeclared and get stopped.
-func TestPlanLeavesOtherAppsAlone(t *testing.T) {
+// group absent from the desired set would look undeclared and get stopped.
+func TestPlanLeavesOtherGroupsAlone(t *testing.T) {
 	blog := jobsFor(t, twoServices, map[string]string{"api": "a@sha256:1", "web": "b@sha256:2"})
 	other := jobsForIn(t, "bot", "{name: bot, image: c:1}", map[string]string{"bot": "c@sha256:3"})
 
@@ -176,8 +176,8 @@ func TestPlanLeavesOtherAppsAlone(t *testing.T) {
 	plan := BuildPlan(nil, current, nil, map[string]bool{"blog": true})
 
 	for _, c := range plan.Work() {
-		if c.App != "blog" {
-			t.Errorf("plan touched %s/%s, which is outside the scope", c.App, c.Service)
+		if c.Group != "blog" {
+			t.Errorf("plan touched %s/%s, which is outside the scope", c.Group, c.Service)
 		}
 	}
 	if len(plan.Work()) != 2 {
@@ -210,13 +210,13 @@ func TestPlanRecreatesAStoppedJob(t *testing.T) {
 // never contain.
 func TestNilScopeStopsGroupsThatNoLongerExist(t *testing.T) {
 	current := map[string]JobState{
-		"gone-web":  {ID: "gone-web", App: "gone", Service: "web"},
-		"shop-app":  {ID: "shop-app", App: "shop", Service: "app"},
-		"old-store": {ID: "old-store", App: "old", Service: "store"},
+		"gone-web":  {ID: "gone-web", Group: "gone", Service: "web"},
+		"shop-app":  {ID: "shop-app", Group: "shop", Service: "app"},
+		"old-store": {ID: "old-store", Group: "old", Service: "store"},
 	}
 	desired := []*nomad.Job{{
 		ID:   ptr("shop-app"),
-		Meta: map[string]string{MetaApp: "shop", MetaService: "app"},
+		Meta: map[string]string{MetaGroup: "shop", MetaService: "app"},
 	}}
 
 	plan := BuildPlan(desired, current, unchanged(desired), nil)
@@ -241,8 +241,8 @@ func TestNilScopeStopsGroupsThatNoLongerExist(t *testing.T) {
 // This is the property the nil case must not cost.
 func TestNamedScopeLeavesOtherGroupsAlone(t *testing.T) {
 	current := map[string]JobState{
-		"gone-web": {ID: "gone-web", App: "gone", Service: "web"},
-		"shop-app": {ID: "shop-app", App: "shop", Service: "app"},
+		"gone-web": {ID: "gone-web", Group: "gone", Service: "web"},
+		"shop-app": {ID: "shop-app", Group: "shop", Service: "app"},
 	}
 
 	plan := BuildPlan(nil, current, nil, map[string]bool{"shop": true})
@@ -267,8 +267,8 @@ func TestNamedScopeLeavesOtherGroupsAlone(t *testing.T) {
 // Naming a group whose directory is gone is how you remove it by name.
 func TestNamedScopeCanStopADeletedGroup(t *testing.T) {
 	current := map[string]JobState{
-		"gone-web": {ID: "gone-web", App: "gone", Service: "web"},
-		"shop-app": {ID: "shop-app", App: "shop", Service: "app"},
+		"gone-web": {ID: "gone-web", Group: "gone", Service: "web"},
+		"shop-app": {ID: "shop-app", Group: "shop", Service: "app"},
 	}
 
 	plan := BuildPlan(nil, current, nil, map[string]bool{"gone": true})
@@ -292,11 +292,11 @@ func TestNamedScopeCanStopADeletedGroup(t *testing.T) {
 // only the second kind is worth interrupting someone for.
 func TestVanishedGroupsNamesOnlyWholeGroups(t *testing.T) {
 	plan := Plan{Changes: []Change{
-		{Kind: ChangeStop, App: "shop", Service: "worker"},
-		{Kind: ChangeNone, App: "shop", Service: "app"},
-		{Kind: ChangeStop, App: "files", Service: "store"},
-		{Kind: ChangeStop, App: "demo", Service: "whoami"},
-		{Kind: ChangeUpdate, App: "orca", Service: "dns"},
+		{Kind: ChangeStop, Group: "shop", Service: "worker"},
+		{Kind: ChangeNone, Group: "shop", Service: "app"},
+		{Kind: ChangeStop, Group: "files", Service: "store"},
+		{Kind: ChangeStop, Group: "demo", Service: "whoami"},
+		{Kind: ChangeUpdate, Group: "orca", Service: "dns"},
 	}}
 
 	got := plan.VanishedGroups()

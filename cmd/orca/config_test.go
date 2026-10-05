@@ -17,7 +17,7 @@ func writeConfig(t *testing.T, body string) string {
 }
 
 func TestLoadConfigDefaults(t *testing.T) {
-	cfg, err := LoadConfig(writeConfig(t, `
+	cfg, err := loadConfig(writeConfig(t, `
 nodes:
   - host: root@203.0.113.10
 `))
@@ -30,15 +30,15 @@ nodes:
 	if got := cfg.Nodes[0].Name; got != "203-0-113-10" {
 		t.Errorf("derived name = %q, want %q", got, "203-0-113-10")
 	}
-	if got := cfg.Nodes[0].Role; got != RoleServer {
-		t.Errorf("first node role = %q, want %q", got, RoleServer)
+	if got := cfg.Nodes[0].Role; got != roleServer {
+		t.Errorf("first node role = %q, want %q", got, roleServer)
 	}
 }
 
 func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
 	// A typo must fail loudly rather than silently taking a default. That is
 	// the whole reason the decoder runs in strict mode.
-	_, err := LoadConfig(writeConfig(t, `
+	_, err := loadConfig(writeConfig(t, `
 datadir: /srv/orca
 nodes:
   - host: root@203.0.113.10
@@ -97,7 +97,7 @@ func TestValidate(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := LoadConfig(writeConfig(t, tc.body))
+			_, err := loadConfig(writeConfig(t, tc.body))
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
 			}
@@ -111,7 +111,7 @@ func TestValidate(t *testing.T) {
 func TestSingleNodeOmitsIP(t *testing.T) {
 	// The single-machine case must work with nothing but an SSH address: no
 	// hand-measured IPs, no interface names.
-	cfg, err := LoadConfig(writeConfig(t, "nodes:\n  - host: root@203.0.113.10\n"))
+	cfg, err := loadConfig(writeConfig(t, "nodes:\n  - host: root@203.0.113.10\n"))
 	if err != nil {
 		t.Fatalf("a one-node config with no ip should be valid: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestIngressAndMonitoringPlacement(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, err := LoadConfig(writeConfig(t, threeMachines+tt.extra))
+			cfg, err := loadConfig(writeConfig(t, threeMachines+tt.extra))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +167,7 @@ func TestIngressAndMonitoringPlacement(t *testing.T) {
 
 func TestPlacementRejectsAnUnknownNode(t *testing.T) {
 	for _, extra := range []string{"ingress:\n  node: box9\n", "monitoring:\n  node: box9\n"} {
-		_, err := LoadConfig(writeConfig(t, threeMachines+extra))
+		_, err := loadConfig(writeConfig(t, threeMachines+extra))
 		if err == nil || !strings.Contains(err.Error(), `"box9"`) {
 			t.Errorf("%q: want an error naming box9, got %v", extra, err)
 		}
