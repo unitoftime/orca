@@ -117,8 +117,12 @@ type Placed struct {
 	CPU    float64 `json:"cpu"`
 	Memory int64   `json:"memory"`
 
-	// MemoryUsed is what they use now, when the metric store knows.
-	MemoryUsed *int64 `json:"memoryUsed,omitempty"`
+	// MemoryUsed is what they hold now that the kernel cannot take back, and
+	// MemoryCache what it is caching for them and gives up first, when the
+	// metric store knows. Both count against the limit; only the first is
+	// what gets a service killed, except that shared memory is in the second.
+	MemoryUsed  *int64 `json:"memoryUsed,omitempty"`
+	MemoryCache *int64 `json:"memoryCache,omitempty"`
 }
 
 // Gauge is a percentage and what it means.
@@ -185,8 +189,8 @@ type Service struct {
 	// declared and be fine. The machine's CPU is what says the box is full.
 	CPUCores *float64 `json:"cpuCores,omitempty"`
 
-	// Memory against its limit, which is a hard one: at 100% the kernel
-	// kills it.
+	// Memory that cannot be reclaimed against its limit, which is a hard
+	// one: at 100% the kernel kills it.
 	Memory *Usage `json:"memory,omitempty"`
 
 	// Backup is a database's backup job, by its last run.
@@ -295,6 +299,7 @@ type metricsView struct {
 	// Per allocation, summed over its tasks.
 	AllocCPUPercent map[string]float64
 	AllocMemUsed    map[string]float64
+	AllocMemCache   map[string]float64
 	AllocMemLimit   map[string]float64
 
 	Stores map[string]*storeMetrics // "logs", "metrics"
@@ -439,13 +444,8 @@ func place(byName map[string]*Machine, nv *nomadView, mv *metricsView) {
 		p.CPU += float64(a.CPUMHz) / deploy.MHzPerVCPU
 		p.Memory += a.MemoryMB << 20
 		if mv != nil {
-			if used, ok := mv.AllocMemUsed[a.ID]; ok {
-				u := int64(used)
-				if p.MemoryUsed != nil {
-					u += *p.MemoryUsed
-				}
-				p.MemoryUsed = &u
-			}
+			p.MemoryUsed = addKnown(p.MemoryUsed, mv.AllocMemUsed, a.ID)
+			p.MemoryCache = addKnown(p.MemoryCache, mv.AllocMemCache, a.ID)
 		}
 	}
 
@@ -504,6 +504,20 @@ func fillMachine(m *Machine, mm *machineMetrics) {
 		}
 	}
 	m.CPUHistory, m.MemoryHistory = mm.CPUHistory, mm.MemoryHist
+}
+
+// addKnown adds one allocation's sample to a total that stays nil until an
+// allocation has reported: unknown, which is not the same as zero.
+func addKnown(total *int64, byAlloc map[string]float64, allocID string) *int64 {
+	v, ok := byAlloc[allocID]
+	if !ok {
+		return total
+	}
+	sum := int64(v)
+	if total != nil {
+		sum += *total
+	}
+	return &sum
 }
 
 func usage(used, total float64) *Usage {

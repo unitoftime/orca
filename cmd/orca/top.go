@@ -264,11 +264,14 @@ func renderMachine(w io.Writer, p palette, m statuspage.Machine) {
 			if pl.Platform {
 				name = p.dim(name)
 			}
-			used := "-"
+			used, cache := "-", ""
 			if pl.MemoryUsed != nil {
 				used = statuspage.BytesHuman(*pl.MemoryUsed) + " in use"
 			}
-			pt.row(name, fmt.Sprintf("%.1f vCPU", pl.CPU), statuspage.BytesHuman(pl.Memory)+" claimed", p.dim(used))
+			if pl.MemoryCache != nil {
+				cache = statuspage.BytesHuman(*pl.MemoryCache) + " cache"
+			}
+			pt.row(name, fmt.Sprintf("%.1f vCPU", pl.CPU), statuspage.BytesHuman(pl.Memory)+" claimed", p.dim(used), p.dim(cache))
 		}
 		pt.write(w, "    ")
 	}
@@ -317,7 +320,7 @@ func renderServices(w io.Writer, p palette, services []statuspage.Service, now t
 			s.Node, cpu, mem, strings.Join(notes, "  "))
 	}
 	t.write(w, "  ")
-	fmt.Fprintln(w, p.dim("  cpu is in cores; memory is against each service's limit"))
+	fmt.Fprintln(w, p.dim("  cpu is in cores; memory is what is in use, cache aside, against each service's limit"))
 }
 
 func pct(v float64) string { return fmt.Sprintf("%3.0f%%", v) }

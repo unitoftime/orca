@@ -57,8 +57,19 @@ const (
 	qMetricsFloor = `max(vm_free_disk_space_limit_bytes)`
 	qMetricsRO    = `max(vm_storage_is_read_only)`
 
-	qAllocCPU      = `sum by (alloc_id) (nomad_client_allocs_cpu_total_percent)`
-	qAllocMem      = `sum by (alloc_id) (nomad_client_allocs_memory_usage)`
+	qAllocCPU = `sum by (alloc_id) (nomad_client_allocs_cpu_total_percent)`
+
+	// An allocation's usage counts the files the kernel is caching for it,
+	// its own binary included, and the limit counts them too. But the kernel
+	// gives those up before it kills anything, so a small service with a
+	// large binary sits at its limit from the moment it starts on a cold
+	// machine and is in no danger. What is judged is what cannot be given up.
+	//
+	// The cache is still asked for and shown beside it, because shared memory
+	// is counted as cache and cannot be given up either: a database's shared
+	// buffers are in that figure and nowhere else.
+	qAllocMem      = `sum by (alloc_id) (nomad_client_allocs_memory_usage - nomad_client_allocs_memory_cache)`
+	qAllocMemCache = `sum by (alloc_id) (nomad_client_allocs_memory_cache)`
 	qAllocMemLimit = `sum by (alloc_id) (nomad_client_allocs_memory_allocated)`
 )
 
@@ -186,7 +197,7 @@ func fetchMetrics(ctx context.Context, c *metricsClient, now time.Time) (*metric
 	instant := []string{
 		qUp, qCPU, qCores, qLoad1, qMemTotal, qMemAvail, qSwapTotal, qSwapFree, qUptime, qReboot,
 		qFSSize, qFSAvail, qFSFiles, qFSFilesFree, qRx, qTx,
-		qAllocCPU, qAllocMem, qAllocMemLimit,
+		qAllocCPU, qAllocMem, qAllocMemCache, qAllocMemLimit,
 		qLogsUsed, qLogsCap, qLogsFree, qLogsRO, qMetricsUsed, qMetricsFree, qMetricsFloor, qMetricsRO,
 	}
 	ranged := []string{qCPU, qMemPercent}
@@ -245,6 +256,7 @@ func assembleMetrics(results map[string][]sample, history map[string][]series) *
 		Machines:        map[string]*machineMetrics{},
 		AllocCPUPercent: byLabel(results[qAllocCPU], "alloc_id"),
 		AllocMemUsed:    byLabel(results[qAllocMem], "alloc_id"),
+		AllocMemCache:   byLabel(results[qAllocMemCache], "alloc_id"),
 		AllocMemLimit:   byLabel(results[qAllocMemLimit], "alloc_id"),
 	}
 	machine := func(name string) *machineMetrics {

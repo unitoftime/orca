@@ -404,12 +404,15 @@ function placed(m) {
     h("table", {},
       h("thead", {}, h("tr", {},
         h("th", {}, "Placed here"), h("th", { class: "num" }, "vCPU"),
-        h("th", { class: "num" }, "Claimed"), h("th", { class: "num" }, "In use"))),
+        h("th", { class: "num" }, "Claimed"),
+        h("th", { class: "num", title: "Memory that cannot be reclaimed" }, "In use"),
+        h("th", { class: "num", title: "Files the kernel is caching for it, given up before anything is killed, and shared memory, which is not" }, "Cache"))),
       h("tbody", {}, m.placed.map((p) => h("tr", {},
         h("td", { title: name(p), class: p.platform ? "dim" : "" }, name(p)),
         h("td", { class: "num" }, p.cpu.toFixed(1)),
         h("td", { class: "num" }, bytes(p.memory)),
-        h("td", { class: "num dim" }, p.memoryUsed != null ? bytes(p.memoryUsed) : "–"))))));
+        h("td", { class: "num dim" }, p.memoryUsed != null ? bytes(p.memoryUsed) : "–"),
+        h("td", { class: "num dim" }, p.memoryCache != null ? bytes(p.memoryCache) : "–"))))));
 }
 
 // The last hour. CPU and memory are both shares of the same machine, so they
@@ -542,7 +545,7 @@ function renderServices(services) {
       h("th", {}, "Group"), h("th", {}, "Service"), h("th", {}, "Status"), h("th", { class: "num" }, "Running"),
       h("th", { class: "hide-narrow" }, "Node"), h("th", { class: "num hide-narrow" }, "Up"),
       h("th", { class: "num hide-narrow", title: "CPU in use, in cores" }, "CPU (cores)"),
-      h("th", { title: "Memory in use, against the service's limit" }, "Memory of limit"),
+      h("th", { title: "Memory in use, cache aside, against the service's limit" }, "Memory of limit"),
       h("th", { class: "num hide-narrow" }, "Restarts"), h("th", { class: "hide-narrow" }, "Backup"),
       h("th", { class: "hide-narrow fill" }, "Detail"))));
   const body = h("tbody", {});
