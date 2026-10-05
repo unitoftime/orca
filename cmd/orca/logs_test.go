@@ -10,6 +10,15 @@ import (
 // `orca logs worker tick -n 3` would search for the literal "tick -n 3" and
 // silently find nothing, which is indistinguishable from a service that said
 // nothing.
+// parseLogArgs reads `orca logs <args>` the way main does.
+func parseLogArgs(args []string) (logOptions, error) {
+	line, err := parseCommandLine(append([]string{"logs"}, args...))
+	if err != nil {
+		return logOptions{}, err
+	}
+	return logOptionsFrom(line.in)
+}
+
 func TestParseLogArgsFlagsAfterPositional(t *testing.T) {
 	opts, err := parseLogArgs([]string{"worker", "tick", "-n", "3"})
 	if err != nil {

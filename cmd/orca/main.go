@@ -2,87 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
 )
-
-const usage = `orca — deploy things onto bare metal you own
-
-Usage:
-  orca <command> [args]
-
-orca works on the directory tree rooted at the nearest cluster.yaml, the way
-git works on the tree rooted at the nearest .git. Each directory beside it is
-a group of services; the directory is the group's name.
-
-  infra/
-    cluster.yaml      the machines, and cluster-wide settings
-    blog/             group "blog"
-      db.yaml
-      web.yaml
-    notifier/         group "notifier"
-      notifier.yaml
-
-Commands:
-  bootstrap [node]   Bring a machine to a ready state: packages, docker, nomad.
-                     Runs against every node in the config unless one is named.
-                     A machine that does not accept your SSH key yet is given
-                     it first, which asks for its password once.
-  validate [group..] Parse and check the manifests without touching a machine.
-  plan [group...]    Show what apply would change. Changes nothing.
-  apply [group...]   Converge the cluster to the manifests. With no argument,
-                     everything; named groups narrow the scope and anything
-                     outside it is left alone. Stopping a service the manifests
-                     no longer declare asks first; --yes skips the question.
-  status [group...]  Show what is actually running, and whether it is healthy.
-  top                Every node, store and service with its status: each node's
-                     CPU, memory, disks and network, and what each service is
-                     using. What status.<domain> shows, read over SSH. Flags:
-                     -w refresh, --json
-  password           The dashboards' password (user "admin"), generated for the
-                     cluster at bootstrap.
-  password set       Change it. Read from stdin, or prompted; takes effect at
-                     the next apply.
-  stop <group>       Stop a group's services, keeping its data. The manifests
-                     are unchanged, so the next apply brings it back.
-  purge <group>      Delete a group AND its data. Irreversible; only works on
-                     a group the manifests no longer declare.
-  logs [target]      Query the log store. A target is a group, a service, or
-                     <group>/<service>; extra words are searched for.
-                     Flags: -f follow, --since 30m, -n 200
-  db list <g>/<s>    List the backups held for a database.
-  db restore <g>/<s> Restore a database from a backup (newest by default).
-  secret set <g>/<n> Set a secret. The value is read from stdin, or prompted.
-  secret list        Every secret the manifests reference, and whether it is set.
-  secret rm <g>/<n>  Remove a secret. A secret orca generated for a template
-                     is refused by set and rm unless --force is given.
-  secret export [f]  Write every secret the cluster holds to a file (or
-                     stdout), encrypted to a passphrase; --plain for plaintext.
-  secret import <f>  Apply a file's secrets to the cluster. Shows what would
-                     be added or changed and asks; --yes skips the question.
-                     Never removes anything.
-  secret edit [f]    Open the cluster's secrets in $EDITOR and apply what
-                     changed. With a file, edit the file instead, creating it
-                     if need be, and touch no cluster.
-  registry login <h> Give the cluster credentials to pull private images from a
-                     registry (ghcr.io, docker.io, ...). Prompts for the
-                     username unless -u is given; the token is read from
-                     stdin, or prompted.
-  registry list      The registries the cluster has credentials for.
-  registry logout <h> Remove a registry's credentials.
-  nodes              List the machines in the config.
-  reboot [node]      Restart a machine and wait for it to be back. For the
-                     "reboot required" an installed update leaves; orca never
-                     reboots one itself. Asks first; --yes skips the question.
-  version            Print orca's version and the stack it installs.
-
-Flags:
-  -C <dir>           Directory to search upward from (default ".")
-`
 
 // build names this build where Go has not recorded it: only in the one orca
 // builds for the machines, from a copy of its source that has no history.
@@ -113,14 +39,17 @@ func buildVersion() (version string, published bool) {
 }
 
 func main() {
-	rootDir := flag.String("C", ".", "directory to search upward from for cluster.yaml")
-	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
-	flag.Parse()
-
-	args := flag.Args()
-	if len(args) == 0 {
-		flag.Usage()
+	line, err := parseCommandLine(os.Args[1:])
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "orca: %v\n", strings.TrimPrefix(err.Error(), errUsage.Error()+": "))
 		os.Exit(2)
+	case line.help && line.cmd == nil:
+		fmt.Print(usage())
+		return
+	case line.help:
+		fmt.Print(line.cmd.usage())
+		return
 	}
 
 	// Ctrl-C cancels the in-flight ssh command rather than orphaning it. A
@@ -129,124 +58,37 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
-	if err := run(ctx, args, *rootDir); err != nil {
+	if err := run(ctx, line); err != nil {
 		fmt.Fprintf(os.Stderr, "\norca: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, args []string, rootDir string) error {
-	cmd, rest := args[0], args[1:]
-
-	// Go's flag package stops at the first non-flag argument, so a global flag
-	// written after the command is not parsed; it arrives here as a
-	// positional. Silently ignored, `orca validate -C infra` would search the
-	// working directory instead and report that there is no cluster.yaml in
-	// it: an error about the wrong thing entirely.
-	for _, a := range rest {
-		if a == "-C" {
-			return fmt.Errorf("%s is a global flag and has to come before the command: orca %s ... %s", a, a, cmd)
-		}
-	}
-
-	// The cluster config is loaded on demand, not up front, so `version` works
-	// before there is one. `validate` needs it to find the tree's root, but
-	// touches no machine.
+// run does what a command line asks. The cluster config is loaded only for a
+// command that needs one, so `version` works before there is a cluster.yaml.
+func run(ctx context.Context, line commandLine) error {
 	var cfg Config
-	loaded := false
-	needConfig := func() error {
-		if loaded {
-			return nil
+	if !line.cmd.offline {
+		root := line.root
+		if root == "" {
+			root = "."
 		}
-		c, err := LoadConfigFrom(rootDir)
-		if err != nil {
+		var err error
+		if cfg, err = LoadConfigFrom(root); err != nil {
 			return err
 		}
-		cfg, loaded = c, true
-		return nil
 	}
+	return line.cmd.run(ctx, cfg, line.in)
+}
 
-	switch cmd {
-	case "version":
-		version, _ := buildVersion()
-		fmt.Printf("orca %s\n  nomad  %s\n  docker %s\n", version, Versions.Nomad, Versions.Docker)
-		return nil
-
-	case "validate":
-		if err := needConfig(); err != nil {
-			return err
+// cmdNodes lists the machines in cluster.yaml.
+func cmdNodes(cfg Config) error {
+	for _, n := range cfg.Nodes {
+		ip := n.PrivateIP
+		if ip == "" {
+			ip = "(loopback: single machine)"
 		}
-		return cmdValidate(cfg, rest)
-
-	case "serve-status":
-		// What the status job runs on the machine, where there is no
-		// cluster.yaml; not listed in the usage.
-		return cmdServeStatus(ctx, rest)
-
-	case "serve-certs":
-		// What the certificate job runs on the machine; not listed either.
-		return cmdServeCerts(ctx, rest)
+		fmt.Printf("%-16s %-24s %-8s %s\n", n.Name, n.Host, n.Role, ip)
 	}
-
-	if err := needConfig(); err != nil {
-		return err
-	}
-
-	switch cmd {
-	case "bootstrap":
-		ref := ""
-		if len(rest) > 0 {
-			ref = rest[0]
-		}
-		return cmdBootstrap(ctx, cfg, ref)
-
-	case "apply":
-		return cmdApply(ctx, cfg, rest, false)
-
-	case "plan":
-		return cmdApply(ctx, cfg, rest, true)
-
-	case "stop":
-		return cmdStop(ctx, cfg, rest)
-
-	case "reboot":
-		return cmdReboot(ctx, cfg, rest)
-
-	case "purge":
-		return cmdPurge(ctx, cfg, rest)
-
-	case "logs":
-		return cmdLogs(ctx, cfg, rest)
-
-	case "db":
-		return cmdDB(ctx, cfg, rest)
-
-	case "secret":
-		return cmdSecret(ctx, cfg, rest)
-
-	case "registry":
-		return cmdRegistry(ctx, cfg, rest)
-
-	case "status":
-		return cmdStatus(ctx, cfg, rest)
-
-	case "top":
-		return cmdTop(ctx, cfg, rest)
-
-	case "password":
-		return cmdPassword(ctx, cfg, rest)
-
-	case "nodes":
-		for _, n := range cfg.Nodes {
-			ip := n.PrivateIP
-			if ip == "" {
-				ip = "(loopback: single machine)"
-			}
-			fmt.Printf("%-16s %-24s %-8s %s\n", n.Name, n.Host, n.Role, ip)
-		}
-		return nil
-
-	default:
-		return fmt.Errorf("unknown command %q (try: orca -h)", cmd)
-	}
+	return nil
 }

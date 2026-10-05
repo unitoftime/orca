@@ -18,29 +18,21 @@ import (
 // "reboot required" by `orca top` and the status page, until someone decides
 // when everything on that machine can go away for a minute. This is how they
 // say so.
-func cmdReboot(ctx context.Context, cfg Config, args []string) error {
-	yes := false
-	var rest []string
-	for _, a := range args {
-		if a == "--yes" || a == "-y" {
-			yes = true
-			continue
-		}
-		rest = append(rest, a)
-	}
+func cmdReboot(ctx context.Context, cfg Config, in invocation) error {
+	yes := in.Has(flagYes)
 
 	var nc NodeConfig
-	switch {
-	case len(rest) == 1:
-		n, ok := cfg.FindNode(rest[0])
+	switch ref := in.Arg(0); {
+	case ref != "":
+		n, ok := cfg.FindNode(ref)
 		if !ok {
-			return fmt.Errorf("no machine named %q; the machines are: %s", rest[0], nodeNames(cfg))
+			return fmt.Errorf("no machine named %q; the machines are: %s", ref, nodeNames(cfg))
 		}
 		nc = n
-	case len(rest) == 0 && len(cfg.Nodes) == 1:
+	case len(cfg.Nodes) == 1:
 		nc = cfg.Nodes[0]
 	default:
-		return fmt.Errorf("usage: orca reboot <node> [--yes]; the machines are: %s", nodeNames(cfg))
+		return fmt.Errorf("say which machine to reboot; the machines are: %s", nodeNames(cfg))
 	}
 	node := Node{Host: nc.Host}
 

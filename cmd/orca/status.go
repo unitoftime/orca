@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -52,13 +53,27 @@ func cmdStatus(ctx context.Context, cfg Config, args []string) error {
 		for _, a := range args {
 			want[a] = true
 		}
-		var filtered []deploy.ServiceStatus
+		deployed := map[string]bool{}
 		for _, s := range statuses {
-			if want[s.App] {
-				filtered = append(filtered, s)
+			deployed[s.App] = true
+		}
+		// A group with nothing deployed is an answer. A name that is no
+		// group at all is a typo, and "nothing deployed" would hide it.
+		var declared []*manifest.Manifest
+		for _, a := range args {
+			if deployed[a] || a == deploy.OrcaApp {
+				continue
+			}
+			if declared == nil {
+				if declared, err = loadGroups(cfg); err != nil {
+					return err
+				}
+			}
+			if _, err := selectGroups(declared, []string{a}); err != nil {
+				return err
 			}
 		}
-		statuses = filtered
+		statuses = slices.DeleteFunc(statuses, func(s deploy.ServiceStatus) bool { return !want[s.App] })
 	}
 
 	if len(statuses) == 0 {

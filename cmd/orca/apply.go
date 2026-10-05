@@ -22,17 +22,8 @@ import (
 // cmdApply converges the cluster to the manifests. With no argument it applies
 // every app in cluster.yaml; named apps narrow the scope, and anything outside
 // that scope is left completely alone.
-func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) error {
-	yes := false
-	var names []string
-	for _, a := range args {
-		if a == "--yes" || a == "-y" {
-			yes = true
-			continue
-		}
-		names = append(names, a)
-	}
-	args = names
+func cmdApply(ctx context.Context, cfg Config, in invocation, planOnly bool) error {
+	yes, args := in.Has(flagYes), in.args
 
 	// Every group, kept alongside the scoped set: a backup names its target
 	// by <group>/<service>, and that target is usually in a group this apply

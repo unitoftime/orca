@@ -47,16 +47,24 @@ func TestCheckRegistries(t *testing.T) {
 }
 
 func TestParseLoginArgs(t *testing.T) {
-	host, user, err := parseLoginArgs([]string{"GHCR.io", "-u", "you"})
+	parse := func(args ...string) (string, string, error) {
+		line, err := parseCommandLine(append([]string{"registry", "login"}, args...))
+		if err != nil {
+			return "", "", err
+		}
+		return loginArgs(line.in)
+	}
+
+	host, user, err := parse("GHCR.io", "-u", "you")
 	if err != nil || host != "ghcr.io" || user != "you" {
 		t.Errorf("got %q %q %v", host, user, err)
 	}
-	host, user, err = parseLoginArgs([]string{"--username=you", "index.docker.io"})
+	host, user, err = parse("--username=you", "index.docker.io")
 	if err != nil || host != "docker.io" || user != "you" {
 		t.Errorf("got %q %q %v", host, user, err)
 	}
 	for _, bad := range [][]string{nil, {"-u"}, {"ghcr.io", "extra"}, {"ghcr.io", "-p", "x"}, {"ghcr.io/you/app"}} {
-		if _, _, err := parseLoginArgs(bad); err == nil {
+		if _, _, err := parse(bad...); err == nil {
 			t.Errorf("%q: want an error", bad)
 		}
 	}

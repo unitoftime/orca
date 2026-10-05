@@ -18,12 +18,7 @@ import (
 // now, without editing files and waiting for an apply. Because the manifests
 // are unchanged, the next apply brings it back, which is said out loud rather
 // than left to be discovered.
-func cmdStop(ctx context.Context, cfg Config, args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: orca stop <group>")
-	}
-	group := args[0]
-
+func cmdStop(ctx context.Context, cfg Config, group string) error {
 	cluster, err := clusterFor(ctx, cfg)
 	if err != nil {
 		return err
@@ -60,20 +55,8 @@ func cmdStop(ctx context.Context, cfg Config, args []string) error {
 // group, so the only way to reach it is to have already deleted the
 // directory, which makes an accidental purge take two deliberate steps rather
 // than one mistyped word.
-func cmdPurge(ctx context.Context, cfg Config, args []string) error {
-	yes := false
-	var names []string
-	for _, a := range args {
-		if a == "--yes" || a == "-y" {
-			yes = true
-			continue
-		}
-		names = append(names, a)
-	}
-	if len(names) != 1 {
-		return fmt.Errorf("usage: orca purge <group> [--yes]")
-	}
-	group := names[0]
+func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
+	yes, group := in.Has(flagYes), in.Arg(0)
 
 	// The reserved group is never "declared" (it has no directory), so the
 	// rule below cannot protect it, and without this `orca purge orca` would

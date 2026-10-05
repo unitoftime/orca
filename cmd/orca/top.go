@@ -28,18 +28,8 @@ const topInterval = 5 * time.Second
 // It reads the status page's own summary over SSH rather than working the
 // numbers out itself, so the terminal and the page are one judgement and
 // cannot disagree.
-func cmdTop(ctx context.Context, cfg Config, args []string) error {
-	watch, asJSON := false, false
-	for _, a := range args {
-		switch a {
-		case "-w", "--watch":
-			watch = true
-		case "--json":
-			asJSON = true
-		default:
-			return fmt.Errorf("orca top takes no arguments but -w (refresh every %s) and --json, got %q", topInterval, a)
-		}
-	}
+func cmdTop(ctx context.Context, cfg Config, in invocation) error {
+	watch, asJSON := in.Has(flagWatch), in.Has(flagJSON)
 	if watch && asJSON {
 		return fmt.Errorf("-w and --json do not go together: --json is for reading once")
 	}

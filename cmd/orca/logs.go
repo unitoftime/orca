@@ -24,8 +24,8 @@ type LogLine = logsql.Line
 // to another machine still has its history. It also goes over SSH rather than
 // through ingress, so reading logs does not depend on the front door being up,
 // and a broken front door is exactly when you want them.
-func cmdLogs(ctx context.Context, cfg Config, args []string) error {
-	opts, err := parseLogArgs(args)
+func cmdLogs(ctx context.Context, cfg Config, in invocation) error {
+	opts, err := logOptionsFrom(in)
 	if err != nil {
 		return err
 	}
@@ -99,52 +99,20 @@ type logOptions struct {
 	follow bool
 }
 
-func parseLogArgs(args []string) (logOptions, error) {
-	opts := logOptions{since: "1h", limit: 200}
-
-	// Flags are recognised wherever they appear, and everything else is
-	// positional. Stopping at the first positional argument would fold the
-	// rest of the line into the search, so `orca logs worker tick -n 3` would
-	// search for the literal "tick -n 3" and silently find nothing.
-	var positional []string
-
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "-f", "--follow":
-			opts.follow = true
-		case "--since":
-			if i+1 >= len(args) {
-				return opts, fmt.Errorf("--since needs a duration, e.g. --since 30m")
-			}
-			i++
-			opts.since = args[i]
-			if !logsql.ValidDuration(opts.since) {
-				return opts, fmt.Errorf("--since %q is not a duration; write e.g. 30m, 24h, 7d or 1h30m", opts.since)
-			}
-		case "-n", "--lines":
-			if i+1 >= len(args) {
-				return opts, fmt.Errorf("%s needs a number of lines", a)
-			}
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n < 1 {
-				return opts, fmt.Errorf("%s %q is not a positive number", a, args[i])
-			}
-			opts.limit = n
-		default:
-			if strings.HasPrefix(a, "-") {
-				return opts, fmt.Errorf("unknown flag %q", a)
-			}
-			positional = append(positional, a)
-		}
+// logOptionsFrom reads what `orca logs` was asked for.
+func logOptionsFrom(in invocation) (logOptions, error) {
+	opts := logOptions{since: in.Value(flagSince), follow: in.Has(flagFollow), target: in.Arg(0)}
+	if !logsql.ValidDuration(opts.since) {
+		return opts, fmt.Errorf("--since %q is not a duration; write e.g. 30m, 24h, 7d or 1h30m", opts.since)
 	}
-
-	if len(positional) > 0 {
-		opts.target = positional[0]
+	n, err := strconv.Atoi(in.Value(flagLines))
+	if err != nil || n < 1 {
+		return opts, fmt.Errorf("-n %q is not a positive number", in.Value(flagLines))
 	}
-	if len(positional) > 1 {
+	opts.limit = n
+	if len(in.args) > 1 {
 		// The common case is looking for a word, not writing a query language.
-		opts.grep = strings.Join(positional[1:], " ")
+		opts.grep = strings.Join(in.args[1:], " ")
 	}
 	return opts, nil
 }

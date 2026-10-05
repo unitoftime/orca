@@ -12,33 +12,11 @@ import (
 	"github.com/unitoftime/orca/pkg/manifest"
 )
 
-// cmdDB implements `orca db list|restore`.
+// `orca db list` and `orca db restore`.
 //
-// A backup nobody has restored is a hope, not a backup — so restoring is a
+// A backup nobody has restored is a hope, not a backup, so restoring is a
 // first-class command rather than a runbook, and it runs the same way every
 // time.
-func cmdDB(ctx context.Context, cfg Config, args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: orca db list|restore <group>/<service>")
-	}
-
-	cluster, err := clusterFor(ctx, cfg)
-	if err != nil {
-		return err
-	}
-
-	switch args[0] {
-	case "list":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: orca db list <group>/<service>")
-		}
-		return dbList(ctx, cfg, cluster, args[1])
-	case "restore":
-		return dbRestore(ctx, cfg, cluster, args[1:])
-	default:
-		return fmt.Errorf("unknown db command %q (list, restore)", args[0])
-	}
-}
 
 // findDatabase resolves "<group>/<service>" to a database that is actually
 // backed up, and to the target its backups go to.
@@ -101,19 +79,8 @@ func dbList(ctx context.Context, cfg Config, cluster *Cluster, ref string) error
 	return nil
 }
 
-func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, args []string) error {
-	yes := false
-	var rest []string
-	for _, a := range args {
-		if a == "--yes" || a == "-y" {
-			yes = true
-			continue
-		}
-		rest = append(rest, a)
-	}
-	if len(rest) < 1 || len(rest) > 2 {
-		return fmt.Errorf("usage: orca db restore <group>/<service> [backup] [--yes]")
-	}
+func dbRestore(ctx context.Context, cfg Config, cluster *Cluster, in invocation) error {
+	yes, rest := in.Has(flagYes), in.args
 
 	m, s, spec, err := findDatabase(cfg, rest[0])
 	if err != nil {

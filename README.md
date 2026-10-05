@@ -619,28 +619,37 @@ orca plan [group...]                show what apply would change
 orca apply [group...] [--yes]       make the server match the files
 orca status [group...]              what is running, and whether it is healthy
 orca top [-w] [--json]              machines and services at a glance
-orca logs [target] [words] [-f] [--since 30m] [-n 200]
+orca logs [target] [words...] [-f] [--since 1h] [-n 200]
+                                    read or search a service's logs
 orca stop <group>                   stop a group, keeping its data
 orca purge <group> [--yes]          delete a removed group and its data
 orca secret set <group>/<name> [--force]
-orca secret list
+                                    set a secret, read from stdin or prompted
+orca secret list                    the secrets referenced, and which are missing
 orca secret rm <group>/<name> [--force]
+                                    remove a secret
 orca secret export [file] [--plain]
+                                    write the cluster's secrets to a file
 orca secret import <file> [--yes] [--force]
+                                    put a file's secrets on the cluster
 orca secret edit [file] [--plain] [--force]
+                                    edit the cluster's or a file's secrets
 orca registry login <host> [-u <user>]
-orca registry list
-orca registry logout <host>
-orca db list <group>/<service>
+                                    log the cluster in to a private registry
+orca registry list                  the registries the cluster has a login for
+orca registry logout <host>         remove a registry's login
+orca db list <group>/<service>      a database's backups, oldest first
 orca db restore <group>/<service> [backup] [--yes]
+                                    restore a backup, the newest by default
 orca password                       the dashboards' password
-orca password set                   change it
+orca password set                   change the dashboards' password
 orca nodes                          list the machines
 orca reboot [node] [--yes]          restart a machine and wait for it
 orca version                        orca's version and what it installs
 
-A flag that goes before the command:
+Flags that go anywhere on the line:
   -C <dir>          look for cluster.yaml starting here
+  -h                what a command does and takes
 ```
 
 ## Learn more

@@ -70,7 +70,7 @@ func TestPurgeFailsClosedWhenManifestsDoNotLoad(t *testing.T) {
 	if _, err := declaredVolumes(cfg); err == nil {
 		t.Fatal("declaredVolumes must report that it cannot tell")
 	}
-	err := cmdPurge(context.Background(), cfg, []string{"blog", "--yes"})
+	err := cmdPurge(context.Background(), cfg, invoke(t, "purge", "blog", "--yes"))
 	if err == nil || !strings.Contains(err.Error(), "do not load") {
 		t.Fatalf("purge must refuse while the manifests do not load, got %v", err)
 	}
@@ -168,7 +168,7 @@ func TestPurgeRefusesTheReservedGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = cmdPurge(context.Background(), cfg, []string{manifest.ReservedGroup, "--yes"})
+	err = cmdPurge(context.Background(), cfg, invoke(t, "purge", manifest.ReservedGroup, "--yes"))
 	if err == nil {
 		t.Fatal("purging the reserved group should be refused")
 	}

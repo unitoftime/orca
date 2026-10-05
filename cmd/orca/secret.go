@@ -17,7 +17,7 @@ import (
 	"golang.org/x/term"
 )
 
-// cmdSecret implements `orca secret set|list|rm|export|import|edit`.
+// `orca secret set`, `list`, `rm`, `export`, `import` and `edit`.
 //
 // Secrets live in Nomad's variable store on the cluster, and that is the only
 // copy anything running reads. A deploy does not need secret values, because
@@ -27,68 +27,6 @@ import (
 // The trade is that a rebuilt cluster has none. `export` writes them all to
 // one file, encrypted to a passphrase, and `import` puts them back; see
 // Bundle. The file is a copy to keep, never something apply reads.
-func cmdSecret(ctx context.Context, cfg Config, args []string) error {
-	var force, yes, plain bool
-	var rest []string
-	for _, a := range args {
-		switch a {
-		case "--force":
-			force = true
-		case "--yes", "-y":
-			yes = true
-		case "--plain":
-			plain = true
-		default:
-			rest = append(rest, a)
-		}
-	}
-	args = rest
-	if len(args) == 0 {
-		return fmt.Errorf("usage: orca secret set|list|rm|export|import|edit")
-	}
-
-	// Editing a file is the one command here that touches no cluster.
-	if args[0] == "edit" && len(args) == 2 {
-		return secretEditFile(args[1], plain)
-	}
-
-	cluster, err := clusterFor(ctx, cfg)
-	if err != nil {
-		return err
-	}
-
-	switch args[0] {
-	case "export":
-		if len(args) > 2 {
-			return fmt.Errorf("usage: orca secret export [<file>] [--plain]")
-		}
-		return secretExport(ctx, cluster, append(args, "")[1], plain)
-	case "import":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: orca secret import <file> [--yes] [--force]")
-		}
-		return secretImport(ctx, cfg, cluster, args[1], yes, force)
-	case "edit":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: orca secret edit [<file>] [--plain] [--force]")
-		}
-		return secretEditCluster(ctx, cfg, cluster, force)
-	case "list":
-		return secretList(ctx, cfg, cluster)
-	case "set":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: orca secret set <group>/<name> [--force]")
-		}
-		return secretSet(ctx, cfg, cluster, args[1], force)
-	case "rm":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: orca secret rm <group>/<name> [--force]")
-		}
-		return secretRemove(ctx, cfg, cluster, args[1], force)
-	default:
-		return fmt.Errorf("unknown secret command %q (set, list, rm, export, import, edit)", args[0])
-	}
-}
 
 // secretNamePattern is what a group or secret name may contain.
 //

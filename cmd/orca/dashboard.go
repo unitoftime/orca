@@ -53,25 +53,8 @@ func ensureAdminPassword(ctx context.Context, cluster *Cluster) (string, error) 
 	return v, nil
 }
 
-// cmdPassword implements `orca password` and `orca password set`.
-func cmdPassword(ctx context.Context, cfg Config, args []string) error {
-	set := false
-	switch {
-	case len(args) == 0:
-	case len(args) == 1 && args[0] == "set":
-		set = true
-	default:
-		return fmt.Errorf("usage: orca password [set]")
-	}
-
-	cluster, err := clusterFor(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	if set {
-		return passwordSet(ctx, cluster)
-	}
-
+// passwordShow prints the dashboards' password.
+func passwordShow(ctx context.Context, cfg Config, cluster *Cluster) error {
 	password, ok, err := cluster.AdminPassword(ctx)
 	if err != nil {
 		return err

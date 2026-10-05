@@ -15,8 +15,8 @@ import (
 	"golang.org/x/term"
 )
 
-// cmdRegistry implements `orca registry login|list|logout`: the credentials
-// the cluster's machines pull private images with.
+// `orca registry login`, `list` and `logout`: the credentials the cluster's
+// machines pull private images with.
 //
 // They are the cluster's, not yours. apply resolves digests with your own
 // docker credentials, but the pull happens on the machine, which has none of
@@ -28,58 +28,12 @@ import (
 // through a credential helper bootstrap installs on every machine, so they are
 // never written into a job spec or a container's environment, and changing
 // them redeploys nothing.
-func cmdRegistry(ctx context.Context, cfg Config, args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: orca registry login|list|logout [<host>]")
-	}
 
-	switch args[0] {
-	case "login":
-		host, username, err := parseLoginArgs(args[1:])
-		if err != nil {
-			return err
-		}
-		return registryLogin(ctx, cfg, host, username)
-	case "list":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: orca registry list")
-		}
-		return registryList(ctx, cfg)
-	case "logout":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: orca registry logout <host>")
-		}
-		return registryLogout(ctx, cfg, args[1])
-	default:
-		return fmt.Errorf("unknown registry command %q (login, list, logout)", args[0])
-	}
-}
-
-func parseLoginArgs(args []string) (host, username string, err error) {
-	const usage = "usage: orca registry login <host> [-u <username>]"
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; {
-		case a == "-u" || a == "--username":
-			if i+1 >= len(args) {
-				return "", "", errors.New(usage)
-			}
-			i++
-			username = args[i]
-		case strings.HasPrefix(a, "--username="):
-			username = strings.TrimPrefix(a, "--username=")
-		case strings.HasPrefix(a, "-"):
-			return "", "", fmt.Errorf("unknown flag %q\n%s", a, usage)
-		case host == "":
-			host = a
-		default:
-			return "", "", errors.New(usage)
-		}
-	}
-	if host == "" {
-		return "", "", errors.New(usage)
-	}
-	host, err = registry.Host(host)
-	return host, username, err
+// loginArgs reads which registry `orca registry login` was given, and the
+// username if it was.
+func loginArgs(in invocation) (host, username string, err error) {
+	host, err = registry.Host(in.Arg(0))
+	return host, in.Value(flagUser), err
 }
 
 func registryLogin(ctx context.Context, cfg Config, host, username string) error {
