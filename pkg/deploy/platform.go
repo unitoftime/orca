@@ -206,6 +206,13 @@ func BuildPlatform(opts PlatformOptions) []*nomad.Job {
 	return jobs
 }
 
+// smallJobMemoryMB is what each of orca's small jobs claims: the resolver, the
+// host metrics exporter, the status page and the certificate job. Each sits
+// between 10 and 20M in use, so this is a few times that. It is kept small
+// because a claim is a reservation as well as a cap: on a 4G machine four of
+// these at a generous size were memory nothing else could be given.
+const smallJobMemoryMB = 48
+
 // platformJob builds the shared skeleton every platform job has.
 func platformJob(opts PlatformOptions, name, image string, cpu, memMB int) (*nomad.Job, *nomad.TaskGroup, *nomad.Task) {
 	id := JobID(OrcaApp, name)
@@ -457,7 +464,7 @@ const NodeTag = "node=${node.unique.name}"
 // is why it is part of the platform rather than something a manifest could
 // declare.
 func nodeExporterJob(opts PlatformOptions) *nomad.Job {
-	job, group, task := platformJob(opts, "node-exporter", opts.Images.NodeExporter, 100, 128)
+	job, group, task := platformJob(opts, "node-exporter", opts.Images.NodeExporter, 100, smallJobMemoryMB)
 
 	job.Type = ptr("system")
 
@@ -526,7 +533,7 @@ func nodeMountExclude(dataDir string) string {
 // through the catalog by ingress and by `orca top`, so it takes no number a
 // service might want.
 func statusJob(opts PlatformOptions) *nomad.Job {
-	job, group, task := platformJob(opts, "status", opts.Status.Image, 100, 128)
+	job, group, task := platformJob(opts, "status", opts.Status.Image, 100, smallJobMemoryMB)
 	// With the stores, which it reads, and on the machine apply ships orca's
 	// binary to (see statusbin.go).
 	pinTo(group, opts.MonitoringNode)
@@ -584,7 +591,7 @@ func statusJob(opts PlatformOptions) *nomad.Job {
 // ingress is what forwards the authority's checks to it and what it checks
 // its own route through. It keeps nothing on disk.
 func certsJob(opts PlatformOptions) *nomad.Job {
-	job, group, task := platformJob(opts, "certs", opts.Certs.Image, 100, 64)
+	job, group, task := platformJob(opts, "certs", opts.Certs.Image, 100, smallJobMemoryMB)
 	pinTo(group, opts.IngressNode)
 
 	group.Networks = []*nomad.NetworkResource{{

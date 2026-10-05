@@ -25,7 +25,7 @@ const DNSAddress = "172.26.64.1"
 // the machine itself uses, which it reads from the host's resolver
 // configuration.
 func dnsJob(opts PlatformOptions) *nomad.Job {
-	job, group, task := platformJob(opts, "dns", opts.Images.CoreDNS, 100, 128)
+	job, group, task := platformJob(opts, "dns", opts.Images.CoreDNS, 100, smallJobMemoryMB)
 
 	// A system job: every machine needs a resolver it can reach locally, and
 	// an allocation cannot use one across a network it may not be able to
