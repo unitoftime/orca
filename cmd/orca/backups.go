@@ -17,7 +17,7 @@ import (
 // it is usually in another group, and a group is validated on its own. This is
 // the same split as `node:`, which is checked for shape in the manifest and for
 // existence by apply.
-func resolveBackup(groups []*manifest.Manifest, s *manifest.Service) (deploy.BackupSpec, error) {
+func resolveBackup(groups []*manifest.Manifest, m *manifest.Manifest, s *manifest.Service) (deploy.BackupSpec, error) {
 	group, name, err := manifest.TargetRef(s.Backup.To)
 	if err != nil {
 		return deploy.BackupSpec{}, err
@@ -48,6 +48,7 @@ func resolveBackup(groups []*manifest.Manifest, s *manifest.Service) (deploy.Bac
 	return deploy.BackupSpec{
 		Endpoint:        target.Endpoint,
 		Bucket:          target.Bucket,
+		Prefix:          deploy.BackupPrefix(target.Path, m.App, s.Name),
 		Region:          target.Region,
 		Schedule:        s.Backup.Schedule,
 		Keep:            s.Backup.Keep,
@@ -84,8 +85,7 @@ type backedUp struct {
 	Spec     deploy.BackupSpec
 }
 
-// cluster is the cluster's name, which places the backups in the bucket.
-func collectBackups(cluster string, all []*manifest.Manifest, scope []*manifest.Manifest) ([]backedUp, error) {
+func collectBackups(all []*manifest.Manifest, scope []*manifest.Manifest) ([]backedUp, error) {
 	var out []backedUp
 	var errs []string
 	for _, m := range scope {
@@ -93,12 +93,11 @@ func collectBackups(cluster string, all []*manifest.Manifest, scope []*manifest.
 			if s.Backup == nil {
 				continue
 			}
-			spec, err := resolveBackup(all, s)
+			spec, err := resolveBackup(all, m, s)
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("%s/%s: %v", m.App, s.Name, err))
 				continue
 			}
-			spec.Prefix = deploy.BackupPrefix(cluster, m.App, s.Name)
 			out = append(out, backedUp{Manifest: m, Service: s, Spec: spec})
 		}
 	}

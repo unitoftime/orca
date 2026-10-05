@@ -83,9 +83,14 @@ type Service struct {
 	Template string `yaml:"template,omitempty"`
 	Target   string `yaml:"target,omitempty"`
 
-	// Endpoint, Bucket and Region belong to a Target and to nothing else.
+	// Endpoint, Bucket, Path and Region belong to a Target and to nothing
+	// else. Path is a folder in the bucket to keep everything under, which
+	// is what lets two clusters share a bucket: without one, both would keep
+	// a database of the same name in the same place, each pruning and
+	// restoring the other's backups.
 	Endpoint string `yaml:"endpoint,omitempty"`
 	Bucket   string `yaml:"bucket,omitempty"`
+	Path     string `yaml:"path,omitempty"`
 	Region   string `yaml:"region,omitempty"`
 
 	// Backup is where this service's dumps go. Only a templated service whose

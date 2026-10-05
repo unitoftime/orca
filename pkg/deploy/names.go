@@ -36,12 +36,12 @@ func BackupJobID(group, service string) string {
 }
 
 // BackupPrefix is where one database's backups live in the bucket: under the
-// cluster's name when it has one, so clusters sharing a bucket keep apart.
-func BackupPrefix(cluster, group, service string) string {
-	if cluster == "" {
+// target's path when it has one, so clusters sharing a bucket keep apart.
+func BackupPrefix(path, group, service string) string {
+	if path == "" {
 		return group + "/" + service
 	}
-	return cluster + "/" + group + "/" + service
+	return path + "/" + group + "/" + service
 }
 
 // PreRestoreSuffix marks the copy a Postgres restore keeps of a database it

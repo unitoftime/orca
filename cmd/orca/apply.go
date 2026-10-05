@@ -97,7 +97,7 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 	// A database with a `backup:` gets a periodic job, and its target is
 	// usually in a group this apply was not asked to touch, so it is looked
 	// up in every group, not only the ones in scope.
-	backups, err := collectBackups(cfg.Name, all, apps)
+	backups, err := collectBackups(all, apps)
 	if err != nil {
 		return err
 	}

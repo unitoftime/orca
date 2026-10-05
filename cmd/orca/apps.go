@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 
@@ -203,7 +204,7 @@ func cmdValidate(cfg Config, args []string) error {
 			// zero. What it is and where it points is the whole of it.
 			if s.IsTarget() {
 				fmt.Printf("  %-14s %-34s -> %s/%s\n",
-					s.Name, s.Target+" target", s.Endpoint, s.Bucket)
+					s.Name, s.Target+" target", s.Endpoint, path.Join(s.Bucket, s.Path))
 				continue
 			}
 

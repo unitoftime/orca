@@ -457,6 +457,13 @@ func validateTarget(e *errList, s *Service) {
 	if s.Bucket == "" {
 		e.addf("target needs a bucket")
 	}
+	// Strict, because it becomes part of a path in a command on the machine.
+	for _, part := range strings.Split(s.Path, "/") {
+		if s.Path != "" && !IsDNSLabel(part) {
+			e.addf("path %q must be folder names of lowercase letters, digits and dashes, separated by /", s.Path)
+			break
+		}
+	}
 
 	var set []string
 	if s.CPU != 0 {
@@ -509,6 +516,9 @@ func validateBackup(e *errList, s *Service) {
 		}
 		if s.Bucket != "" {
 			stray = append(stray, "bucket")
+		}
+		if s.Path != "" {
+			stray = append(stray, "path")
 		}
 		if s.Region != "" {
 			stray = append(stray, "region")

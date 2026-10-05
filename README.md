@@ -392,8 +392,17 @@ it in only once it has loaded, ending connections to the old one. A restore
 that fails leaves everything as it was. What each database held before is kept
 on the server as `<name>_before_restore_<time>`; drop it when you are sure.
 
-Backups go to the top of the bucket. To share one bucket between clusters, give
-each a `name:` in `cluster.yaml`, and its backups go under `<name>/` instead.
+Backups go to the top of the bucket, under `<group>/<service>/`. To share one
+bucket between clusters, give each cluster's target a `path:`, a folder in the
+bucket to keep everything under:
+
+```yaml
+bucket: orca-backups
+path: prod                  # backups go under prod/<group>/<service>/
+```
+
+Without one, two clusters with a database of the same name would keep it in
+the same place, each pruning and restoring the other's backups.
 
 ### Redis
 
@@ -501,8 +510,6 @@ directory is gone, and asks you to type the group's name.
 Everything is on by default. Turn a piece off with `false`, or adjust it:
 
 ```yaml
-name: prod                    # optional; keeps backups apart in a shared bucket
-
 nodes:
   - host: root@203.0.113.10
 

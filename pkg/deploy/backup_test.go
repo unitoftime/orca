@@ -159,14 +159,14 @@ func TestPeriodicChildrenAreRecognised(t *testing.T) {
 	}
 }
 
-// Two clusters sharing a bucket keep apart by their names; one without a
-// name keeps its backups where they always were.
+// Two clusters sharing a bucket keep apart by their targets' paths; a target
+// without one keeps its backups at the top of the bucket.
 func TestBackupPrefixIsPerDatabase(t *testing.T) {
 	if got := BackupPrefix("", "shop", "db"); got != "shop/db" {
 		t.Errorf("BackupPrefix = %q, want shop/db", got)
 	}
-	if got := BackupPrefix("prod", "shop", "db"); got != "prod/shop/db" {
-		t.Errorf("BackupPrefix = %q, want prod/shop/db", got)
+	if got := BackupPrefix("clusters/prod", "shop", "db"); got != "clusters/prod/shop/db" {
+		t.Errorf("BackupPrefix = %q, want clusters/prod/shop/db", got)
 	}
 }
 

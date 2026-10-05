@@ -65,8 +65,7 @@ func findDatabase(cfg Config, ref string) (*manifest.Manifest, *manifest.Service
 			}
 			known = append(known, m.App+"/"+s.Name)
 			if m.App == group && s.Name == name {
-				spec, err := resolveBackup(groups, s)
-				spec.Prefix = deploy.BackupPrefix(cfg.Name, m.App, s.Name)
+				spec, err := resolveBackup(groups, m, s)
 				return m, s, spec, err
 			}
 		}

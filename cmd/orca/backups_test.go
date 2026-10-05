@@ -45,16 +45,17 @@ backup:
 	})
 
 	var db *manifest.Service
+	var dbGroup *manifest.Manifest
 	for _, m := range groups {
 		if s, ok := m.Service("db"); ok {
-			db = s
+			db, dbGroup = s, m
 		}
 	}
 	if db == nil {
 		t.Fatal("no db service")
 	}
 
-	spec, err := resolveBackup(groups, db)
+	spec, err := resolveBackup(groups, dbGroup, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +129,7 @@ func TestBackupReferenceErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			groups := groupsFrom(t, tt.files)
-			_, err := collectBackups("", groups, groups)
+			_, err := collectBackups(groups, groups)
 			if err == nil {
 				t.Fatalf("expected an error containing %q", tt.wantErr)
 			}
