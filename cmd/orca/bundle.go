@@ -11,8 +11,8 @@ import (
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/registry"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/registry"
 	"gopkg.in/yaml.v3"
 )
 

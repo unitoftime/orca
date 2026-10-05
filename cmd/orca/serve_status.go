@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/statuspage"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/statuspage"
 )
 
 // cmdServeStatus runs the status page. It is what the status job runs on the

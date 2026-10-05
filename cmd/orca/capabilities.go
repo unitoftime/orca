@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 	"gopkg.in/yaml.v3"
 )
 

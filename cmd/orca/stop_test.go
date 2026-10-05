@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // The guard in front of a recursive delete. These inputs cannot occur in

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // FirewallPorts is what the machine is allowed to answer on its public

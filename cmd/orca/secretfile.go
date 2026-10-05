@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 	"golang.org/x/term"
 )
 

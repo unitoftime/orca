@@ -11,7 +11,7 @@ import (
 	"time"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 // applyLockTTL is how long the apply lock outlives the last renewal. An apply

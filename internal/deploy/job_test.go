@@ -6,7 +6,7 @@ import (
 	"time"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 func parse(t *testing.T, body string) *manifest.Manifest {

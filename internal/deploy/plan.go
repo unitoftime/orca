@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // JobState is what the cluster currently knows about one orca-managed job.

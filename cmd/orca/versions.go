@@ -3,7 +3,7 @@ package main
 // Stack pins the exact version of every third-party binary orca installs on
 // a node: bump a field, rebuild orca, re-run `orca bootstrap`, and the node
 // converges. The container images orca runs are pinned the same way, in
-// pkg/images.
+// internal/images.
 //
 // Versions live in code rather than cluster.yaml on purpose: they travel with the
 // binary and an upgrade is a reviewable commit, not a per-box config edit.

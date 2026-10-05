@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/logsql"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/logsql"
 )
 
 // LogLine is one entry as the log store returns it.

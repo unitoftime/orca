@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 // fetchNomad reads the same state `orca status` reads, through the same

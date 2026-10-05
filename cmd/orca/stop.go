@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // cmdStop takes a group down without deleting anything it wrote.

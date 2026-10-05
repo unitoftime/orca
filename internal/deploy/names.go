@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // Every name orca derives from a group and a service lives in this file.

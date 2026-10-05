@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 // A job waited on that never shows up is a failure, not a pass.

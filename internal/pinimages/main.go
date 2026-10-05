@@ -1,4 +1,4 @@
-// Command pinimages resolves every image in pkg/images to the digest its tag
+// Command pinimages resolves every image in internal/images to the digest its tag
 // points at now, and rewrites the file with them. `make pin-images` runs it.
 package main
 
@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/registry"
+	"github.com/unitoftime/orca/internal/registry"
 )
 
-const path = "pkg/images/images.go"
+const path = "internal/images/images.go"
 
 // imageConst is one image constant: `Name = "repo:tag"`, with or without a
 // digest after the tag.

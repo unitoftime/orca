@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 func rules(t *testing.T, ports FirewallPorts) string {

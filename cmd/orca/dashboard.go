@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
 	"golang.org/x/crypto/bcrypt"
 )
 

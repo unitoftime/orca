@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // OrcaApp is the group the jobs orca runs for you are filed under: ingress,

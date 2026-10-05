@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 func hostileSpec() deploy.BackupSpec {

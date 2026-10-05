@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unitoftime/orca/pkg/images"
+	"github.com/unitoftime/orca/internal/images"
 	"gopkg.in/yaml.v3"
 )
 

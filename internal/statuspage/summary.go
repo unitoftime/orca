@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 // Summary is everything the page and `orca top` show, judged once, here, so

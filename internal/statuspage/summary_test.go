@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 var now = time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)

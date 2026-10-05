@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/images"
+	"github.com/unitoftime/orca/internal/images"
 )
 
 // Template is a known-good piece of infrastructure orca operates for you,
@@ -98,7 +98,7 @@ type TemplateSpec struct {
 
 // TemplateVersion is one version a template offers: the name an author
 // writes after the colon, and the image that runs. Images come from
-// pkg/images, pinned to a digest, so a database is never restarted because a
+// internal/images, pinned to a digest, so a database is never restarted because a
 // tag moved upstream.
 type TemplateVersion struct {
 	Name  string

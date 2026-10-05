@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/logsql"
+	"github.com/unitoftime/orca/internal/logsql"
 )
 
 // LogLine is one line as the log drawer shows it.

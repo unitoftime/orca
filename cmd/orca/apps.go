@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // loadGroups discovers and validates every group under the cluster root, then

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 func backupSpecFixture() BackupSpec {

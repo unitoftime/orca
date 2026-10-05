@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // BackupSpec is where backups go. Any S3-compatible store: R2, Backblaze,

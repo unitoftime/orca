@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/registry"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/registry"
 	"golang.org/x/term"
 )
 

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 // An exported file is what a cluster is rebuilt from, so what comes back out

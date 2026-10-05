@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 	"gopkg.in/yaml.v3"
 )
 

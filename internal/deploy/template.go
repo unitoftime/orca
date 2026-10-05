@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // envFile builds a Nomad template that renders a task's environment for

@@ -21,9 +21,9 @@ import (
 	"time"
 
 	nomad "github.com/hashicorp/nomad/api"
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/manifest"
-	"github.com/unitoftime/orca/pkg/statuspage"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
+	"github.com/unitoftime/orca/internal/statuspage"
 )
 
 // Cluster is Nomad's API on one of the cluster's servers, reached over SSH.

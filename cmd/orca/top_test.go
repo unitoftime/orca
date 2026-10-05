@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/statuspage"
+	"github.com/unitoftime/orca/internal/statuspage"
 )
 
 func topFixture(now time.Time) statuspage.Summary {

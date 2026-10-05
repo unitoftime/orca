@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/manifest"
-	"github.com/unitoftime/orca/pkg/statuspage"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/manifest"
+	"github.com/unitoftime/orca/internal/statuspage"
 )
 
 // HealthTimeout bounds how long apply waits for services it did not change

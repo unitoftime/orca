@@ -15,7 +15,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/deploy"
+	"github.com/unitoftime/orca/internal/deploy"
 )
 
 // The status page is orca itself, run on the machine as `orca serve-status`,

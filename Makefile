@@ -19,7 +19,7 @@ vet:
 	go vet ./...
 
 # Re-resolves every image orca chooses itself to the digest its tag points at
-# now. See pkg/images.
+# now. See internal/images.
 pin-images:
 	go run ./internal/pinimages
 

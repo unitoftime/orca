@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/registry"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/registry"
 )
 
 func TestCheckRegistries(t *testing.T) {

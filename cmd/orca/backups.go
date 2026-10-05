@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/unitoftime/orca/pkg/deploy"
-	"github.com/unitoftime/orca/pkg/images"
-	"github.com/unitoftime/orca/pkg/manifest"
+	"github.com/unitoftime/orca/internal/deploy"
+	"github.com/unitoftime/orca/internal/images"
+	"github.com/unitoftime/orca/internal/manifest"
 )
 
 // resolveBackup turns a service's `backup:` policy into the spec that builds
