@@ -78,13 +78,16 @@ func controlPath() string {
 // being fed input. Without it the remote command inherits orca's own stdin, and
 // a tool that reads stdin when it is not a terminal will block forever waiting
 // for input that is never coming.
+//
+// The host comes after "--", so it is only ever a host: a cluster.yaml cannot
+// spell one that ssh reads as an option.
 func sshArgs(host, cmd string) []string {
-	return append(append([]string{"-n"}, sshOptions()...), host, cmd)
+	return append(append([]string{"-n"}, sshOptions()...), "--", host, cmd)
 }
 
 // sshArgsStdin is the same without -n, for commands that are piped input.
 func sshArgsStdin(host, cmd string) []string {
-	return append(sshOptions(), host, cmd)
+	return append(sshOptions(), "--", host, cmd)
 }
 
 // unreachable reports an ssh that failed to reach its machine at all, as
@@ -115,7 +118,7 @@ func rsyncSSH() string {
 func (n Node) KeyLogin(ctx context.Context) bool {
 	return exec.CommandContext(ctx, "ssh", "-n",
 		"-o", "BatchMode=yes", "-o", "ControlPath=none", "-o", "ConnectTimeout=10",
-		n.Host, "true").Run() == nil
+		"--", n.Host, "true").Run() == nil
 }
 
 // Run executes a command on the remote host, streaming output to the step log.

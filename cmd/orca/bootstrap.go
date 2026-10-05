@@ -27,7 +27,10 @@ var hostPhases = []phase{
 	{name: "nomad", script: "nomad.sh", extraFiles: []string{"nomad.hcl", "docker-credential-orca"}},
 }
 
-const remoteStageDir = "/tmp/orca-bootstrap"
+// remoteStageDir is where a machine's setup scripts are put to be run as
+// root. Under the data directory and not /tmp, where another user of the
+// machine could have put something by that name first.
+const remoteStageDir = DataDir + "/bootstrap"
 
 // cmdBootstrap brings one node (or every node, if ref is empty) to a ready
 // state: packages, docker, nomad, running and joined.
@@ -57,20 +60,40 @@ func cmdBootstrap(ctx context.Context, cfg Config, ref string) error {
 	if len(servers) == 0 {
 		return fmt.Errorf("no server node to wait on")
 	}
+	first := Node{Host: servers[0].Host}
+	cluster := NewCluster(first)
+
 	fmt.Fprintf(os.Stderr, "\n=== cluster ===\n")
 	var list StepList
 	list.Add("Wait for Nomad to elect a leader", func(ctx context.Context) error {
-		return waitForNomad(ctx, Node{Host: servers[0].Host})
+		return waitForNomad(ctx, first)
 	})
+	// Nomad answers nothing but "who leads" until there is a token to ask
+	// with, so this comes before anything that asks it more.
+	list.AddRun(first, "Make the cluster's token", mintTokenScript)
+	var others []Node
+	for _, nc := range nodes {
+		if nc.Host != first.Host {
+			others = append(others, Node{Host: nc.Host})
+		}
+	}
+	if len(others) > 0 {
+		list.Add("Give the token to every machine", func(ctx context.Context) error {
+			return shareToken(ctx, first, others)
+		})
+	}
+	// Before the first apply, so the first job deployed is already allowed
+	// what it needs and nothing more.
+	list.Add("Write the access policies", cluster.WritePolicies)
 	if len(cfg.Nodes) > 1 {
 		list.Add("Wait for every machine to join", func(ctx context.Context) error {
-			return waitForNodes(ctx, Node{Host: servers[0].Host}, len(cfg.Nodes))
+			return cluster.WaitForNodes(ctx, len(cfg.Nodes))
 		})
 	}
 	// Made once, here, so the dashboards are behind a password from the first
 	// apply without your choosing one. Run again, it keeps the one there.
 	list.Add("Generate the dashboard password", func(ctx context.Context) error {
-		_, err := ensureAdminPassword(ctx, NewCluster(Node{Host: servers[0].Host}))
+		_, err := ensureAdminPassword(ctx, cluster)
 		return err
 	})
 	return list.Run(ctx)
@@ -122,6 +145,14 @@ func bootstrapNode(ctx context.Context, cfg Config, nc NodeConfig) error {
 	list.AddRun(node, "Make scripts executable", "chmod +x "+remoteStageDir+"/*.sh")
 
 	for _, p := range hostPhases {
+		if p.script == "nomad.sh" {
+			// Before Nomad starts, so there is no moment at which it is up
+			// and answering the rest of the private network.
+			list.Add("Close the scheduler to all but the cluster", func(ctx context.Context) error {
+				_, err := node.InstallRuleset(ctx, schedulerFirewall(cfg), nc.PrivateIP)
+				return err
+			})
+		}
 		list.AddRun(node, "Run "+p.script, fmt.Sprintf("cd %s && ./%s", remoteStageDir, p.script))
 	}
 
@@ -159,6 +190,7 @@ func nodeVars(cfg Config, nc NodeConfig) (map[string]string, error) {
 		"NOMAD_SERVER_STANZA": nomadServerStanza(cfg, nc),
 		"NOMAD_CLIENT_JOIN":   nomadClientJoin(cfg, nc),
 		"NOMAD_ADDR":          NomadAddr,
+		"TOKEN_PATH":          TokenPath,
 		"REGISTRY_PREFIX":     deploy.RegistryPrefix,
 	}, nil
 }
@@ -214,24 +246,6 @@ func nomadClientJoin(cfg Config, nc NodeConfig) string {
     retry_max      = 0
     retry_interval = "15s"
   }`, strings.Join(servers, ", "))
-}
-
-// waitForNodes blocks until every machine has registered as a client. A server
-// that has formed raft still has no capacity until its clients check in, so
-// without this a multi-machine bootstrap can finish while workloads have
-// nowhere to run.
-func waitForNodes(ctx context.Context, node Node, want int) error {
-	script := fmt.Sprintf(`for i in $(seq 1 30); do
-  N=$(curl -sf --max-time 5 %s/v1/nodes 2>/dev/null | jq '[.[] | select(.Status == "ready")] | length' 2>/dev/null || echo 0)
-  if [ "$N" -ge %d ]; then
-    echo "$N of %d machines ready"
-    exit 0
-  fi
-  sleep 2
-done
-echo "only $N of %d machines became ready within 60s" >&2
-exit 1`, NomadAddr, want, want, want)
-	return node.Run(ctx, script)
 }
 
 // waitForNomad blocks until the agent answers and reports a leader. Without the

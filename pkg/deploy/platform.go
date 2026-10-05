@@ -529,11 +529,12 @@ func nodeMountExclude(dataDir string) string {
 //
 // Host networking, because it reads Nomad's API, which answers on loopback
 // and which the firewall deliberately keeps every container on the bridge
-// away from. It only ever reads. A dynamic port on the internal network, found
-// through the catalog by ingress and by `orca top`, so it takes no number a
-// service might want.
+// away from. It only ever reads, and its identity is allowed nothing else. A
+// dynamic port on the internal network, found through the catalog by ingress
+// and by `orca top`, so it takes no number a service might want.
 func statusJob(opts PlatformOptions) *nomad.Job {
 	job, group, task := platformJob(opts, "status", opts.Status.Image, 100, smallJobMemoryMB)
+	exposeIdentity(task)
 	// With the stores, which it reads, and on the machine apply ships orca's
 	// binary to (see statusbin.go).
 	pinTo(group, opts.MonitoringNode)
@@ -592,6 +593,7 @@ func statusJob(opts PlatformOptions) *nomad.Job {
 // its own route through. It keeps nothing on disk.
 func certsJob(opts PlatformOptions) *nomad.Job {
 	job, group, task := platformJob(opts, "certs", opts.Certs.Image, 100, smallJobMemoryMB)
+	exposeIdentity(task)
 	pinTo(group, opts.IngressNode)
 
 	group.Networks = []*nomad.NetworkResource{{
@@ -794,11 +796,14 @@ func ingressJob(opts PlatformOptions) *nomad.Job {
 		},
 	}}
 	task.Config["network_mode"] = "host"
-	task.Config["args"] = []string{"--configFile=/local/traefik.yml"}
+	task.Config["args"] = []string{"--configFile=/secrets/traefik.yml"}
 
+	// In the task's private tmpfs: it holds the token ingress reads the
+	// catalog with.
+	exposeIdentity(task)
 	task.Templates = append(task.Templates, &nomad.Template{
 		EmbeddedTmpl: ptr(traefikConfig(opts)),
-		DestPath:     ptr("local/traefik.yml"),
+		DestPath:     ptr("secrets/traefik.yml"),
 		ChangeMode:   ptr("restart"),
 	})
 
@@ -873,14 +878,16 @@ entryPoints:
 
 	// watch: routes follow Nomad's event stream instead of a poll every 15s,
 	// so a copy leaving the catalog stops getting requests within DrainDelay.
+	// The token is the task's own identity, which Nomad renders in here.
 	fmt.Fprintf(&b, `
 providers:
   nomad:
     exposedByDefault: false
     watch: true
     endpoint:
-      address: http://127.0.0.1:4646
-`)
+      address: http://127.0.0.1:%d
+      token: {{ env "NOMAD_TOKEN" | toJSON }}
+`, NomadHTTPPort)
 
 	if traefikDynamicConfig(opts) != "" {
 		// Watched, so a changed route reaches Traefik without a restart.
@@ -924,9 +931,9 @@ type dashboard struct {
 // and metrics explorable in a browser without running Grafana. The status
 // page shows what Nomad has placed where.
 //
-// Nomad's own UI is deliberately not among them. Its UI is its API, and
-// Nomad runs without ACLs, so publishing it would put "run any container,
-// privileged, on every machine" behind one shared password. It stays
+// Nomad's own UI is deliberately not among them. Its UI is its API, and the
+// token that opens it can run any container, privileged, on every machine:
+// not something to put on the internet behind a login page. It stays
 // reachable over an SSH tunnel.
 func traefikDynamicConfig(opts PlatformOptions) string {
 	boards := dashboards(opts)

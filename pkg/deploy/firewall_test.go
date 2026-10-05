@@ -9,7 +9,7 @@ import (
 
 func rules(t *testing.T, ports FirewallPorts) string {
 	t.Helper()
-	return Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad", Public: &ports})
+	return InboundFirewall(InboundSpec{PublicIface: "eth0", SSHPorts: "22", Ports: ports}).Rules
 }
 
 // A firewall that can lock you out of the machine it protects is a worse
@@ -18,7 +18,7 @@ func rules(t *testing.T, ports FirewallPorts) string {
 func TestSSHAndEstablishedComeFirst(t *testing.T) {
 	out := rules(t, FirewallPorts{})
 
-	ssh := strings.Index(out, "tcp dport 22 accept")
+	ssh := strings.Index(out, "tcp dport { 22 } accept")
 	established := strings.Index(out, "ct state established,related accept")
 	drop := strings.Index(out, "\n    drop\n")
 
@@ -66,18 +66,33 @@ func TestNoDeclaredPortsStillWorks(t *testing.T) {
 // The one hole the binding rules cannot close: above one machine the scheduler
 // binds the private network, which a container reaches through the bridge.
 func TestContainersCannotReachTheScheduler(t *testing.T) {
-	out := rules(t, FirewallPorts{})
+	out := SchedulerFirewall("nomad", nil).Rules
 	if !strings.Contains(out, `iifname "nomad" tcp dport { 4646, 4647, 4648 } drop`) {
 		t.Errorf("containers must not reach the scheduler:\n%s", out)
 	}
 }
 
-// Traffic from the bridge and the private network is not this chain's
-// business, or the cluster could not talk to itself.
-func TestOnlyPublicTrafficIsFiltered(t *testing.T) {
+// Traffic from the bridge is not this chain's business, or a machine's
+// containers could not talk to each other.
+func TestOnlyOutsideTrafficIsFiltered(t *testing.T) {
 	out := rules(t, FirewallPorts{})
 	if !strings.Contains(out, `iifname != "eth0" accept`) {
 		t.Errorf("internal traffic must pass:\n%s", out)
+	}
+}
+
+// Above one machine an internal port is published on the private network,
+// which is rarely only the cluster's. The cluster's machines pass, and
+// everything else there is outside.
+func TestPrivateNetworkAnswersOnlyTheCluster(t *testing.T) {
+	out := InboundFirewall(InboundSpec{PublicIface: "eth0", PrivateIface: "ens10", SSHPorts: "22",
+		Peers: []string{"10.0.0.1", "10.0.0.2"}}).Rules
+
+	outside := strings.Index(out, `iifname != { "eth0", "ens10" } accept`)
+	peers := strings.Index(out, `iifname "ens10" ip saddr { 10.0.0.1, 10.0.0.2 } accept`)
+	drop := strings.Index(out, "\n    drop\n")
+	if outside < 0 || peers < outside || drop < peers {
+		t.Errorf("the private interface should pass the cluster's machines and filter the rest:\n%s", out)
 	}
 }
 
@@ -126,7 +141,7 @@ func TestIngressPortsOnlyWhenIngressRuns(t *testing.T) {
 // A container reaching another machine's scheduler is routed through forward,
 // never input. Guarding only input would leave every other machine's Nomad open.
 func TestSchedulerIsClosedToContainersOnBothPaths(t *testing.T) {
-	rules := Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad", Public: &FirewallPorts{}})
+	rules := SchedulerFirewall("nomad", nil).Rules
 	for _, hook := range []string{"hook input", "hook forward"} {
 		i := strings.Index(rules, hook)
 		if i < 0 {
@@ -140,22 +155,17 @@ func TestSchedulerIsClosedToContainersOnBothPaths(t *testing.T) {
 	}
 }
 
-// The scheduler has no ACLs, so the private network reaching it is root on
-// every machine. It answers the cluster's machines, and with the public
-// filtering switched off it still does.
+// The ports Nomad's machines talk to each other on ask for no token, so the
+// private network reaching them could join the cluster. They answer the
+// cluster's machines, and that does not depend on the inbound rules at all.
 func TestSchedulerAnswersOnlyTheCluster(t *testing.T) {
-	multi := Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad", Public: &FirewallPorts{},
-		Peers: []string{"10.0.0.1", "10.0.0.2"}})
+	multi := SchedulerFirewall("nomad", []string{"10.0.0.1", "10.0.0.2"}).Rules
 	if !strings.Contains(multi, `iifname != "lo" ip saddr != { 10.0.0.1, 10.0.0.2 } tcp dport { 4646, 4647, 4648 } drop`) {
 		t.Errorf("the scheduler should refuse all but the cluster's machines:\n%s", multi)
 	}
 
-	off := Firewall(FirewallSpec{PublicIface: "eth0", BridgeIface: "nomad"})
-	if strings.Contains(off, "chain public") {
-		t.Errorf("firewall: false leaves the public interface alone:\n%s", off)
-	}
-	if !strings.Contains(off, `iifname "nomad" tcp dport { 4646, 4647, 4648 } drop`) ||
-		!strings.Contains(off, `iifname != "lo" tcp dport { 4646, 4647, 4648 } drop`) {
-		t.Errorf("the scheduler must stay closed with the public filtering off:\n%s", off)
+	off := NoInboundFirewall().Rules
+	if strings.Contains(off, "chain") {
+		t.Errorf("firewall: false leaves what the machine answers alone:\n%s", off)
 	}
 }

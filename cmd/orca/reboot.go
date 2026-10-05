@@ -85,7 +85,7 @@ func cmdReboot(ctx context.Context, cfg Config, args []string) error {
 		return err
 	}
 	if len(cfg.Nodes) > 1 {
-		if err := waitForNodes(ctx, server, len(cfg.Nodes)); err != nil {
+		if err := NewCluster(server).WaitForNodes(ctx, len(cfg.Nodes)); err != nil {
 			return err
 		}
 	}

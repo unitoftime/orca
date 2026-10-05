@@ -94,8 +94,13 @@ func cmdPassword(ctx context.Context, cfg Config, args []string) error {
 	return nil
 }
 
-// minPasswordLength is the shortest dashboard password passwordSet accepts.
-const minPasswordLength = 16
+// minPasswordLength is the shortest dashboard password passwordSet accepts,
+// and maxPasswordLength the longest: bcrypt, which ingress checks it with,
+// refuses anything longer, and every apply after it would fail on that.
+const (
+	minPasswordLength = 16
+	maxPasswordLength = 72
+)
 
 // passwordSet replaces the password with one you give it, read the way a
 // secret is: prompted, or piped, never an argument.
@@ -106,8 +111,8 @@ func passwordSet(ctx context.Context, cluster *Cluster) error {
 	}
 	// One shared password stands between the internet and every log line
 	// and metric, and nothing limits how fast it can be guessed.
-	if len(value) < minPasswordLength {
-		return fmt.Errorf("the password must be at least %d characters; nothing changed", minPasswordLength)
+	if len(value) < minPasswordLength || len(value) > maxPasswordLength {
+		return fmt.Errorf("the password must be %d to %d characters; nothing changed", minPasswordLength, maxPasswordLength)
 	}
 	if err := cluster.PutAdminPassword(ctx, value); err != nil {
 		return err

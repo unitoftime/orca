@@ -15,7 +15,8 @@ is no isolation between services.
 You need:
 
 - **A server** running Debian or Ubuntu on x86-64 that you can SSH into as
-  root. orca installs everything else on it (Docker, Nomad).
+  root. orca installs everything else on it (Docker, Nomad). Its SSH server
+  must allow TCP forwarding, which it does unless someone turned it off.
 - **On your own machine:** Go 1.26 or newer, `ssh` and `rsync`.
 - **A domain** pointing at the server, for HTTPS. No domain? Use your server's
   IP with dashes under sslip.io, such as `203-0-113-10.sslip.io`. Every name
@@ -64,7 +65,9 @@ orca apply
 ```
 
 On a server that does not accept your SSH key yet, `bootstrap` copies it over
-first, asking for the server's password once.
+first, asking for the server's password once. It leaves the server's SSH
+settings alone, so logging in with that password still works afterwards;
+turn that off yourself if you do not want it.
 
 `bootstrap` updates the OS, turns on automatic security updates, and installs
 Docker and Nomad. It is safe to run again; that is also how you upgrade orca on
@@ -493,12 +496,13 @@ The status page also shows what is placed on each machine, and how much of
 its CPU and memory those services have claimed. Nomad places by claims, not
 by use, so that is what decides whether the next service fits.
 
-Nomad's own UI is not published: without ACLs, its API can run anything on
+Nomad's own UI is not published: the token that opens it can run anything on
 every machine. Reach it over an SSH tunnel instead:
-`ssh -L 4646:127.0.0.1:4646 root@<server>`, then open http://localhost:4646.
+`ssh -L 4646:127.0.0.1:4646 root@<server>`, then open http://localhost:4646
+and sign in with the token in `/etc/orca/nomad.token` on the server.
 
 `orca password set` changes the password at the next apply; it takes one of
-16 characters or more.
+16 to 72 characters.
 
 ## Removing things
 
@@ -561,7 +565,9 @@ nodes:
 ```
 
 - The machines need a private network between them (your provider's, or
-  Tailscale or WireGuard), and every node needs a `private_ip`.
+  Tailscale or WireGuard), and every node needs a `private_ip`. Anything else
+  on that network is treated like the internet: it reaches SSH and the ports
+  your files publish, and nothing more.
 - Servers (`role: server`, the default) must be an odd number: 1, 3 or 5.
 - HTTPS (ingress) and monitoring run on the first server. Use `node:` under
   `ingress` or `monitoring` to move them. Your DNS points at the ingress

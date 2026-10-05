@@ -136,9 +136,10 @@ systemctl restart orca-bridge
 ip -brief addr show nomad
 
 echo "=== 8. Installing the firewall unit ==="
-# The ruleset itself is written by `orca apply`, because what is open is
-# derived from the manifests. This unit only re-applies whatever was last
-# written, so the rules survive a reboot. With no ruleset yet it does nothing.
+# The rulesets themselves are written by orca: the scheduler's by bootstrap,
+# and what is open from outside by `orca apply`, because that is derived from
+# the manifests. This unit only re-applies whatever was last written, so the
+# rules survive a reboot. With none yet it does nothing.
 cat > /etc/systemd/system/orca-firewall.service <<'EOF'
 [Unit]
 Description=orca firewall
@@ -150,7 +151,7 @@ Before=network.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c '[ -f /etc/orca/firewall.nft ] && exec /usr/sbin/nft -f /etc/orca/firewall.nft || exit 0'
+ExecStart=/bin/sh -c 'for f in /etc/orca/*.nft; do [ -f "$f" ] && /usr/sbin/nft -f "$f"; done; exit 0'
 
 [Install]
 WantedBy=multi-user.target

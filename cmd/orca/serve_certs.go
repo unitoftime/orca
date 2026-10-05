@@ -7,7 +7,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -18,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	nomad "github.com/hashicorp/nomad/api"
 	"github.com/unitoftime/orca/pkg/deploy"
 	"golang.org/x/crypto/acme"
 )
@@ -45,7 +45,16 @@ func cmdServeCerts(ctx context.Context, args []string) error {
 		return err
 	}
 
-	store := varStore{addr: *nomadAddr, http: &http.Client{Timeout: 15 * time.Second}}
+	// The token is the job's own identity, from its environment: see
+	// deploy.ACLPolicies for what it is allowed.
+	cfg := nomad.DefaultConfig()
+	cfg.Address = *nomadAddr
+	cfg.HttpClient = &http.Client{Timeout: 15 * time.Second}
+	api, err := nomad.NewClient(cfg)
+	if err != nil {
+		return err
+	}
+	store := varStore{api: api}
 	issuer := &acmeIssuer{store: store, directory: *directory, email: *email, ingress: *ingress}
 	certs := &certReconciler{store: store, issue: issuer.issue, authority: *directory, state: map[string]*certAttempts{}}
 
@@ -160,19 +169,19 @@ func (c *certReconciler) reconcile(ctx context.Context, now time.Time) error {
 		return err
 	}
 	seen := map[string]bool{}
-	for _, meta := range records {
-		seen[meta.Path] = true
-		rec, ok, err := c.store.get(ctx, meta.Path)
+	for _, path := range records {
+		seen[path] = true
+		rec, ok, err := c.store.get(ctx, path)
 		if err != nil || !ok {
 			continue
 		}
 
 		// A record with no error on it is either fresh or was asked for
 		// again, and both mean now: apply is waiting on it.
-		st := c.state[meta.Path]
+		st := c.state[path]
 		if rec.Items[deploy.CertErrorKey] == "" {
 			st = nil
-			delete(c.state, meta.Path)
+			delete(c.state, path)
 		} else if st == nil {
 			// Failed before a restart. Not known how often, so start over,
 			// and soon if the failure was one the authority never saw.
@@ -180,7 +189,7 @@ func (c *certReconciler) reconcile(ctx context.Context, now time.Time) error {
 			if strings.Contains(rec.Items[deploy.CertErrorKey], errNotRouted.Error()) {
 				st = &certAttempts{nextTry: now.Add(certRouteRetry)}
 			}
-			c.state[meta.Path] = st
+			c.state[path] = st
 		}
 		// One with no authority recorded was put there by an import, and is
 		// taken as it is.
@@ -200,7 +209,7 @@ func (c *certReconciler) reconcile(ctx context.Context, now time.Time) error {
 }
 
 // attempt issues one record's certificate and writes the outcome back to it.
-func (c *certReconciler) attempt(ctx context.Context, rec storedVar, now time.Time) {
+func (c *certReconciler) attempt(ctx context.Context, rec nomad.Variable, now time.Time) {
 	host := rec.Items[deploy.CertNameKey]
 	fmt.Printf("%s: requesting a certificate\n", host)
 
@@ -242,7 +251,7 @@ func (c *certReconciler) attempt(ctx context.Context, rec storedVar, now time.Ti
 	// again and written once more; a record that is gone is left gone.
 	for range 2 {
 		update(rec.Items)
-		written, werr := c.store.put(ctx, rec)
+		written, werr := c.store.putChecked(ctx, rec)
 		if werr != nil {
 			fmt.Printf("%s: storing the outcome: %v\n", host, werr)
 			return
@@ -362,12 +371,12 @@ func (a *acmeIssuer) authorize(ctx context.Context, client *acme.Client, host, u
 		return err
 	}
 
-	token := storedVar{Path: deploy.ACMETokenPrefix + "/" + challenge.Token, Items: map[string]string{deploy.ACMETokenKey: answer}}
-	if _, err := a.store.put(ctx, token); err != nil {
+	tokenPath := deploy.ACMETokenPrefix + "/" + challenge.Token
+	if err := a.store.put(ctx, tokenPath, map[string]string{deploy.ACMETokenKey: answer}); err != nil {
 		return err
 	}
 	// Not ctx: the token is removed even when the attempt was cancelled.
-	defer a.store.delete(context.WithoutCancel(ctx), token.Path)
+	defer a.store.delete(context.WithoutCancel(ctx), tokenPath)
 
 	// Checked from here before the authority is asked to. A failed check of
 	// theirs counts against a small hourly allowance, and theirs cannot say
@@ -445,8 +454,8 @@ func (a *acmeIssuer) account(ctx context.Context) (*acme.Client, error) {
 		}
 		// Created, never replaced: another copy may have made one a moment
 		// ago, and that one is then the account's.
-		v = storedVar{Path: deploy.ACMEAccountPath, Items: map[string]string{deploy.ACMEAccountKey: string(keyPEM)}}
-		if _, err := a.store.put(ctx, v); err != nil {
+		v = nomad.Variable{Path: deploy.ACMEAccountPath, Items: map[string]string{deploy.ACMEAccountKey: string(keyPEM)}}
+		if _, err := a.store.putChecked(ctx, v); err != nil {
 			return nil, err
 		}
 		if v, _, err = a.store.get(ctx, deploy.ACMEAccountPath); err != nil {
@@ -480,79 +489,4 @@ func encodeECKey(key *ecdsa.PrivateKey) ([]byte, error) {
 		return nil, err
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}), nil
-}
-
-// varStore is Nomad's variable store, read and written over its API from on
-// the machine. The CLI's own access (see Cluster) goes over SSH instead,
-// because the CLI is not on the machine.
-type varStore struct {
-	addr string
-	http *http.Client
-}
-
-// storedVar is one variable. ModifyIndex is what the store had when it was
-// read: zero for one that has not been.
-type storedVar struct {
-	Path        string
-	Items       map[string]string
-	ModifyIndex uint64
-}
-
-// list returns the variables under a prefix, without their items.
-func (s varStore) list(ctx context.Context, prefix string) ([]storedVar, error) {
-	var out []storedVar
-	_, err := s.do(ctx, http.MethodGet, "/v1/vars?prefix="+prefix, nil, &out)
-	return out, err
-}
-
-// get reads one variable, and whether it exists.
-func (s varStore) get(ctx context.Context, path string) (storedVar, bool, error) {
-	var out storedVar
-	code, err := s.do(ctx, http.MethodGet, "/v1/var/"+path, nil, &out)
-	return out, code == http.StatusOK, err
-}
-
-// put writes a variable only if it is unchanged since it was read (or, for
-// one never read, only if it does not exist), and reports whether it wrote.
-func (s varStore) put(ctx context.Context, v storedVar) (bool, error) {
-	code, err := s.do(ctx, http.MethodPut, fmt.Sprintf("/v1/var/%s?cas=%d", v.Path, v.ModifyIndex), v, nil)
-	return code == http.StatusOK, err
-}
-
-func (s varStore) delete(ctx context.Context, path string) error {
-	_, err := s.do(ctx, http.MethodDelete, "/v1/var/"+path, nil, nil)
-	return err
-}
-
-// do makes one call. Not found and a lost check-and-set are answers, returned
-// as their status; anything else that is not success is an error.
-func (s varStore) do(ctx context.Context, method, path string, body, out any) (int, error) {
-	var payload io.Reader
-	if body != nil {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return 0, err
-		}
-		payload = bytes.NewReader(raw)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, s.addr+path, payload)
-	if err != nil {
-		return 0, err
-	}
-	resp, err := s.http.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		if out != nil {
-			return resp.StatusCode, json.NewDecoder(resp.Body).Decode(out)
-		}
-	case http.StatusNotFound, http.StatusConflict:
-	default:
-		return resp.StatusCode, fmt.Errorf("nomad answered %s to %s %s", resp.Status, method, path)
-	}
-	return resp.StatusCode, nil
 }

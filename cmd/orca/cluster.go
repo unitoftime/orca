@@ -7,14 +7,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
-	"os"
+	"net"
+	"net/http"
 	"os/exec"
 	"path"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	nomad "github.com/hashicorp/nomad/api"
@@ -23,159 +26,96 @@ import (
 	"github.com/unitoftime/orca/pkg/statuspage"
 )
 
-// Cluster talks to Nomad by running its CLI on the machine over SSH.
+// Cluster is Nomad's API on one of the cluster's servers, reached over SSH.
 //
-// There is no HTTP client here on purpose: Nomad binds loopback on a
-// single-machine cluster, so it has no network listener to connect to. SSH is
-// the transport, which is also why every operation below is written to need one
-// round trip rather than one per job. An SSH round trip is a tenth of a second
-// and a CI apply should not spend ten of them discovering that nothing changed.
+// Nomad binds loopback on a single-machine cluster, so it has no listener to
+// connect to from here. Each request instead rides a connection opened to it
+// from the machine (see Node.Dial), on the SSH connection everything else
+// shares: a request is a round trip, not a new session, and a read of every
+// job is a few of them at once rather than one per job.
 type Cluster struct {
 	node Node
+
+	// http makes requests from the machine's point of view.
+	http *http.Client
+
+	once   sync.Once
+	api    *nomad.Client
+	apiErr error
 }
 
-func NewCluster(n Node) *Cluster { return &Cluster{node: n} }
+func NewCluster(n Node) *Cluster { return &Cluster{node: n, http: n.HTTPClient()} }
 
 // NomadAddr is where Nomad's HTTP API answers on the machine. It is always
-// loopback: orca runs commands on the box over SSH rather than connecting to a
-// listener, so this does not change when a second machine gives bind_addr a
+// loopback: orca reaches it from the machine itself rather than connecting to
+// a listener, so this does not change when a second machine gives bind_addr a
 // real IP.
 const NomadAddr = "http://127.0.0.1:4646"
 
-// listJobsScript asks Nomad for every job, keeps the ones orca owns, and
-// projects them down to the few fields the plan needs. The status page makes
-// the same projection from Nomad's own types, in deploy.JobStateFromNomad; a
-// rule changed here must change there too. The filtering happens on the
-// machine so the reply stays small.
-//
-// It fails rather than answering short. Without pipefail an unreachable Nomad
-// would produce an empty list and a zero exit, which reads as "nothing is
-// deployed": the answer every caller acts on, so status would report an empty
-// cluster and apply would plan to create everything. Periodic children are
-// left out of the fetch: they are not services, and their IDs carry a slash.
-//
-// curl rather than `nomad operator api`, which infers a write method when its
-// stdin is not a terminal (over SSH it never is) and gets back "Invalid
-// method".
-const listJobsScript = `set -eo pipefail
-IDS=$(curl -sf --max-time 10 ` + NomadAddr + `/v1/jobs | jq -r '.[] | select((.ParentID // "") == "") | .ID')
-for id in $IDS; do
-  curl -sf --max-time 10 "` + NomadAddr + `/v1/job/$id"
-done | jq -s '` + jobsJQ + `'`
+// TokenPath is where each machine keeps the token Nomad's API is asked with:
+// a file only root can read, written by bootstrap.
+const TokenPath = "/etc/orca/nomad.token"
 
-// jobsJQ projects a stream of full jobs (read with jq -s).
-const jobsJQ = `[ .[]
-  | select(.Meta != null and .Meta["orca.managed"] == "true")
-  | {ID, Stop, Meta, Version, Count: (.TaskGroups[0].Count // 1),
-     System: (.Type == "system"),
-     Periodic: (.Periodic != null and (.Periodic.Enabled // false))} ]`
+// requestTimeout bounds one request to Nomad. None of them wait on anything:
+// what takes time (a deploy becoming healthy) is watched by asking again.
+const requestTimeout = 30 * time.Second
 
-type jobStateWire struct {
-	ID       string            `json:"ID"`
-	Stop     bool              `json:"Stop"`
-	Meta     map[string]string `json:"Meta"`
-	Version  uint64            `json:"Version"`
-	Count    int               `json:"Count"`
-	System   bool              `json:"System"`
-	Periodic bool              `json:"Periodic"`
+// client is Nomad's API with the cluster's token, connected on first use.
+func (c *Cluster) client(ctx context.Context) (*nomad.Client, error) {
+	c.once.Do(func() {
+		// Read with a command of its own, which also opens the shared SSH
+		// connection the requests then ride.
+		token, err := c.node.RunOutput(ctx, "cat "+TokenPath)
+		if unreachable(err) {
+			c.apiErr = err
+			return
+		}
+		if err != nil {
+			c.apiErr = fmt.Errorf("read the cluster's token (`orca bootstrap` writes it): %w", err)
+			return
+		}
+		api := *c.http
+		api.Timeout = requestTimeout
+		c.api, c.apiErr = nomad.NewClient(&nomad.Config{
+			Address:    NomadAddr,
+			SecretID:   strings.TrimSpace(token),
+			HttpClient: &api,
+		})
+	})
+	return c.api, c.apiErr
 }
 
 // Jobs returns every orca-managed job the cluster knows about, keyed by job ID.
 func (c *Cluster) Jobs(ctx context.Context) (map[string]deploy.JobState, error) {
-	out, err := c.node.RunOutput(ctx, listJobsScript)
+	api, err := c.client(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list jobs: %w", err)
+		return nil, err
 	}
-
-	return parseJobs(out)
-}
-
-// parseJobs reads listJobsScript's output.
-func parseJobs(out string) (map[string]deploy.JobState, error) {
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return map[string]deploy.JobState{}, nil
-	}
-
-	var wire []jobStateWire
-	if err := json.Unmarshal([]byte(out), &wire); err != nil {
-		return nil, fmt.Errorf("parse job list: %w", err)
-	}
-
-	states := make(map[string]deploy.JobState, len(wire))
-	for _, w := range wire {
-		// A periodic job's children inherit its metadata, so every past
-		// backup run would otherwise appear as a service of its own.
-		if deploy.IsPeriodicChild(w.ID) {
-			continue
-		}
-		states[w.ID] = deploy.JobState{
-			ID:       w.ID,
-			App:      w.Meta[deploy.MetaApp],
-			Service:  w.Meta[deploy.MetaService],
-			Image:    w.Meta[deploy.MetaImage],
-			ImageRef: w.Meta[deploy.MetaImageRef],
-			Version:  w.Version,
-			Stopped:  w.Stop,
-			Count:    w.Count,
-			System:   w.System,
-			Periodic: w.Periodic,
-			AuthHash: w.Meta[deploy.MetaAuth],
-		}
-	}
-	return states, nil
+	return deploy.ReadJobs(ctx, api)
 }
 
 // Alive reports whether this machine can answer for the cluster: reachable
 // over SSH, with a Nomad agent that knows who the leader is.
 func (c *Cluster) Alive(ctx context.Context) bool {
-	out, err := c.node.RunOutput(ctx, "curl -sf --max-time 5 "+NomadAddr+"/v1/status/leader")
-	return err == nil && strings.Contains(out, ":")
+	api, err := c.client(ctx)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var leader string
+	_, err = api.Raw().Query("/v1/status/leader", &leader, (&nomad.QueryOptions{}).WithContext(ctx))
+	return err == nil && strings.Contains(leader, ":")
 }
 
-// planJobsScript asks Nomad to plan each job on its stdin, one per line as
-// "<id> <request>", and prints each answer on a line of its own in the same
-// order. One round trip for every job, however many there are.
-const planJobsScript = `set -eo pipefail
-while read -r id body; do
-  if ! out=$(printf '%s' "$body" | curl -sS --fail-with-body --max-time 30 -X POST --data-binary @- "` + NomadAddr + `/v1/job/$id/plan"); then
-    echo "plan $id: $out" >&2
-    exit 1
-  fi
-  printf '%s\n' "$out"
-done`
-
 // PlanJobs asks Nomad what submitting each job would do, without submitting
-// anything. A job Nomad rejects outright fails here, before anything has
-// changed, rather than halfway through an apply.
+// anything.
 func (c *Cluster) PlanJobs(ctx context.Context, jobs []*nomad.Job) (map[string]deploy.JobPlan, error) {
-	var in bytes.Buffer
-	for _, j := range jobs {
-		body, err := json.Marshal(nomad.JobPlanRequest{Job: j, Diff: true})
-		if err != nil {
-			return nil, fmt.Errorf("marshal job %s: %w", *j.ID, err)
-		}
-		fmt.Fprintf(&in, "%s %s\n", *j.ID, body)
-	}
-
-	out, err := c.node.RunStdin(ctx, planJobsScript, in.Bytes())
+	api, err := c.client(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("plan: %w", err)
+		return nil, err
 	}
-
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != len(jobs) {
-		return nil, fmt.Errorf("plan: asked about %d jobs and got %d answers", len(jobs), len(lines))
-	}
-	plans := make(map[string]deploy.JobPlan, len(jobs))
-	for i, j := range jobs {
-		var r nomad.JobPlanResponse
-		if err := json.Unmarshal([]byte(lines[i]), &r); err != nil {
-			return nil, fmt.Errorf("plan %s: %w", *j.ID, err)
-		}
-		plans[*j.ID] = deploy.JobPlanFromNomad(&r)
-	}
-	return plans, nil
+	return deploy.PlanJobs(ctx, api, jobs)
 }
 
 // Submit registers a job, provided it is still at modifyIndex, the version its
@@ -183,18 +123,15 @@ func (c *Cluster) PlanJobs(ctx context.Context, jobs []*nomad.Job) (map[string]d
 // having changed it since, another apply included, refuses the submit rather
 // than overwriting a deploy nobody here has seen.
 func (c *Cluster) Submit(ctx context.Context, job *nomad.Job, modifyIndex uint64) error {
-	body, err := json.Marshal(nomad.JobRegisterRequest{Job: job, EnforceIndex: true, JobModifyIndex: modifyIndex})
+	api, err := c.client(ctx)
 	if err != nil {
-		return fmt.Errorf("marshal job %s: %w", *job.ID, err)
+		return err
 	}
-
-	script := fmt.Sprintf(`curl -sS --fail-with-body --max-time 30 -X PUT --data-binary @- %s/v1/job/%s`, NomadAddr, *job.ID)
-	out, err := c.node.RunStdin(ctx, script, body)
-	if err != nil {
-		if strings.Contains(out, "Enforcing job modify index") {
+	if _, _, err := api.Jobs().EnforceRegister(job, modifyIndex, (&nomad.WriteOptions{}).WithContext(ctx)); err != nil {
+		if strings.Contains(err.Error(), "Enforcing job modify index") {
 			return fmt.Errorf("submit %s: it changed after it was planned; run apply again", *job.ID)
 		}
-		return fmt.Errorf("submit %s: %w: %s", *job.ID, err, strings.TrimSpace(out))
+		return fmt.Errorf("submit %s: %w", *job.ID, err)
 	}
 	return nil
 }
@@ -202,11 +139,11 @@ func (c *Cluster) Submit(ctx context.Context, job *nomad.Job, modifyIndex uint64
 // Stop stops a job. purge additionally removes it from Nomad's state; it never
 // touches data on disk, which only `orca purge` does.
 func (c *Cluster) Stop(ctx context.Context, jobID string, purge bool) error {
-	cmd := "nomad job stop -detach"
-	if purge {
-		cmd += " -purge"
+	api, err := c.client(ctx)
+	if err != nil {
+		return err
 	}
-	if err := c.node.RunQuiet(ctx, cmd+" "+jobID); err != nil {
+	if _, _, err := api.Jobs().Deregister(jobID, purge, (&nomad.WriteOptions{}).WithContext(ctx)); err != nil {
 		return fmt.Errorf("stop %s: %w", jobID, err)
 	}
 	return nil
@@ -337,10 +274,10 @@ func ensureDirsScript(dirs []VolumeDir) string {
 
 // RunStdin runs a remote command with data on its stdin.
 //
-// Both streams are captured rather than passed through: the Nomad CLI narrates
-// every action ("==> View this job in the Web UI", evaluation ids) and that
-// noise buries orca's own one-line-per-change output. On failure everything it
-// said is included in the error, which is the moment it is worth reading.
+// Both streams are captured rather than passed through, so what a command
+// narrates does not bury orca's own one-line-per-change output. On failure
+// everything it said is included in the error, which is the moment it is
+// worth reading.
 func (n Node) RunStdin(ctx context.Context, cmd string, stdin []byte) (string, error) {
 	var out, errOut bytes.Buffer
 	c := exec.CommandContext(ctx, "ssh", sshArgsStdin(n.Host, cmd)...)
@@ -365,206 +302,76 @@ func (n Node) RunQuiet(ctx context.Context, cmd string) error {
 	return nil
 }
 
-// runtimeScript fetches allocations and deployments in two calls, regardless of
-// how many jobs exist. deploy.AllocStateFromNomad and DeploymentStateFromNomad
-// are the same projections, for the status page. The projections happen on the
-// machine because an allocation's raw event list is kilobytes per task and
-// only its last line is wanted.
-const runtimeScript = `set -eo pipefail
-printf '{"allocs":'
-curl -sf --max-time 10 ` + NomadAddr + `/v1/allocations | jq -c '` + allocsJQ + `'
-printf ',"deployments":'
-curl -sf --max-time 10 ` + NomadAddr + `/v1/deployments | jq -c '` + deploymentsJQ + `'
-printf '}'`
-
-// allocsJQ projects Nomad's allocation list.
-const allocsJQ = `[ .[] | {
-  ID, JobID, JobVersion, ClientStatus, DesiredStatus, NodeName, CreateTime,
-  Tasks: ((.TaskStates // {}) | to_entries | map({
-    Name: .key,
-    State: .value.State,
-    Failed: .value.Failed,
-    Restarts: .value.Restarts,
-    StartedAt: .value.StartedAt,
-    LastRestart: .value.LastRestart,
-    Last: ((.value.Events // []) | last | .DisplayMessage // ""),
-    Fail: ((.value.Events // []) | map(select(.Type == "Terminated" or .Type == "Driver Failure" or .Type == "Killing")) | last | .DisplayMessage // "")
-  }))
-} ]`
-
-// deploymentsJQ projects Nomad's deployment list.
-const deploymentsJQ = `[ .[] | . as $d | (.TaskGroups // {} | to_entries | first | .value) as $g | {
-  JobID, JobVersion, Status, StatusDescription, ModifyIndex,
-  Desired: ($g.DesiredTotal // 0),
-  Healthy: ($g.HealthyAllocs // 0),
-  Unhealthy: ($g.UnhealthyAllocs // 0),
-  Placed: ($g.PlacedAllocs // 0)
-} ]`
-
-type runtimeWire struct {
-	Allocs []struct {
-		ID            string `json:"ID"`
-		JobID         string `json:"JobID"`
-		JobVersion    uint64 `json:"JobVersion"`
-		CreateTime    int64  `json:"CreateTime"`
-		ClientStatus  string `json:"ClientStatus"`
-		DesiredStatus string `json:"DesiredStatus"`
-		NodeName      string `json:"NodeName"`
-		Tasks         []struct {
-			Name        string    `json:"Name"`
-			State       string    `json:"State"`
-			Failed      bool      `json:"Failed"`
-			Restarts    int       `json:"Restarts"`
-			StartedAt   time.Time `json:"StartedAt"`
-			LastRestart time.Time `json:"LastRestart"`
-			Last        string    `json:"Last"`
-			Fail        string    `json:"Fail"`
-		} `json:"Tasks"`
-	} `json:"allocs"`
-	Deployments []struct {
-		JobID             string `json:"JobID"`
-		JobVersion        uint64 `json:"JobVersion"`
-		Status            string `json:"Status"`
-		StatusDescription string `json:"StatusDescription"`
-		ModifyIndex       uint64 `json:"ModifyIndex"`
-		Desired           int    `json:"Desired"`
-		Healthy           int    `json:"Healthy"`
-		Unhealthy         int    `json:"Unhealthy"`
-		Placed            int    `json:"Placed"`
-	} `json:"deployments"`
-}
-
 // Runtime returns the live allocation and deployment state.
 func (c *Cluster) Runtime(ctx context.Context) ([]deploy.AllocState, []deploy.DeploymentState, error) {
-	out, err := c.node.RunOutput(ctx, runtimeScript)
+	api, err := c.client(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read cluster state: %w", err)
+		return nil, nil, err
 	}
-	return parseRuntime(out)
+	return deploy.ReadRuntime(ctx, api, false)
 }
 
-// parseRuntime reads runtimeScript's output.
-func parseRuntime(out string) ([]deploy.AllocState, []deploy.DeploymentState, error) {
-	var wire runtimeWire
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &wire); err != nil {
-		return nil, nil, fmt.Errorf("parse cluster state: %w", err)
-	}
-
-	allocs := make([]deploy.AllocState, 0, len(wire.Allocs))
-	for _, a := range wire.Allocs {
-		as := deploy.AllocState{
-			ID: a.ID, JobID: a.JobID, JobVersion: a.JobVersion, CreateTime: a.CreateTime, ClientStatus: a.ClientStatus,
-			DesiredStatus: a.DesiredStatus, NodeName: a.NodeName,
-		}
-		for _, t := range a.Tasks {
-			as.Tasks = append(as.Tasks, deploy.TaskState{
-				Name: t.Name, State: t.State, Failed: t.Failed,
-				Restarts: t.Restarts, StartedAt: t.StartedAt, LastRestart: t.LastRestart, Last: t.Last, Fail: t.Fail,
-			})
-		}
-		allocs = append(allocs, as)
-	}
-
-	deps := make([]deploy.DeploymentState, 0, len(wire.Deployments))
-	for _, d := range wire.Deployments {
-		deps = append(deps, deploy.DeploymentState{
-			JobID: d.JobID, JobVersion: d.JobVersion, Status: d.Status, Description: d.StatusDescription,
-			ModifyIndex: d.ModifyIndex, Desired: d.Desired,
-			Healthy: d.Healthy, Unhealthy: d.Unhealthy, Placed: d.Placed,
-		})
-	}
-	return allocs, deps, nil
-}
-
-// PlacementFailure explains why a job could not be scheduled anywhere. The
-// status page's version is deploy.PlacementFailureFromNomad.
-//
-// This costs a call per job, so it runs only when something has actually failed
-// to place. The reason lives in the evaluation rather than anywhere a user
-// would think to look: the task has no logs, because it never started.
+// PlacementFailure explains why a job could not be scheduled anywhere.
 func (c *Cluster) PlacementFailure(ctx context.Context, jobID string) string {
-	script := fmt.Sprintf(`curl -sf --max-time 10 %s/v1/job/%s/evaluations | jq -r '%s' 2>/dev/null`,
-		NomadAddr, jobID, placementJQ)
-
-	out, err := c.node.RunOutput(ctx, script)
+	api, err := c.client(ctx)
 	if err != nil {
 		return ""
 	}
-	out = strings.TrimSpace(out)
-	if out == "" || out == "null" {
-		return ""
-	}
-	return out
+	return deploy.ReadPlacement(ctx, api, jobID)
 }
 
-// placementJQ explains a job's most recent failure to place, from its
-// evaluations.
-const placementJQ = `
-  [ .[] | select(.FailedTGAllocs != null) ] | sort_by(.ModifyIndex) | last
-  | (.FailedTGAllocs // {}) | to_entries | first | .value
-  | [ (.ConstraintFiltered // {} | to_entries | map("\(.key) (\(.value) nodes)"))
-    , (.DimensionExhausted // {} | keys | map("no capacity: \(.)"))
-    , (.ClassFiltered // {} | keys | map("class filtered: \(.)"))
-    ] | flatten | join("; ")`
+// store is the cluster's variable store.
+func (c *Cluster) store(ctx context.Context) (varStore, error) {
+	api, err := c.client(ctx)
+	return varStore{api: api}, err
+}
+
+// variablePaths lists the variables under a prefix, by path.
+//
+// It fails closed. An unreachable Nomad must not read as "nothing is set",
+// because the caller that decides whether to generate a database password
+// acts on exactly that answer.
+func (c *Cluster) variablePaths(ctx context.Context, prefix string) ([]string, error) {
+	store, err := c.store(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return store.list(ctx, prefix)
+}
 
 // SecretPaths lists the variable paths orca owns, as a set.
-//
-// Paths only: the Nomad list endpoint returns metadata without item values, so
-// finding out which secrets are set never pulls a single plaintext value off
-// the machine. That is the reason a secret is one variable rather than one key
-// inside a per-group variable.
 func (c *Cluster) SecretPaths(ctx context.Context) (map[string]bool, error) {
-	// Fails closed. An unreachable Nomad must not read as "no secrets are
-	// set", because the caller that decides whether to generate a database
-	// password acts on exactly that answer.
-	script := fmt.Sprintf(`set -o pipefail
-curl -sf --max-time 10 "%s/v1/vars?prefix=%s/" | jq -r '.[].Path'`,
-		NomadAddr, deploy.SecretPrefix)
-
-	out, err := c.node.RunOutput(ctx, script)
+	paths, err := c.variablePaths(ctx, deploy.SecretPrefix+"/")
 	if err != nil {
 		return nil, fmt.Errorf("list secrets: %w", err)
 	}
-
-	set := map[string]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			set[line] = true
-		}
+	set := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		set[p] = true
 	}
 	return set, nil
 }
 
 // PutSecret writes one secret into Nomad's variable store.
-//
-// The whole request body travels on stdin, so the value never appears in an
-// argument list: a command line is visible in the process table for as long
-// as the command runs, on both ends.
 func (c *Cluster) PutSecret(ctx context.Context, group, name, value string) error {
-	if err := c.putVariable(ctx, deploy.SecretPath(group, name), deploy.SecretItemKey, value); err != nil {
+	if err := c.putVariable(ctx, deploy.SecretPath(group, name), map[string]string{deploy.SecretItemKey: value}); err != nil {
 		return fmt.Errorf("set secret %s/%s: %w", group, name, err)
 	}
 	return nil
 }
 
-// putVariable writes a one-item variable, replacing any there.
-func (c *Cluster) putVariable(ctx context.Context, path, key, value string) error {
-	body, err := variableBody(path, map[string]string{key: value})
+// putVariable writes a variable, replacing any there.
+func (c *Cluster) putVariable(ctx context.Context, path string, items map[string]string) error {
+	store, err := c.store(ctx)
 	if err != nil {
 		return err
 	}
-	script := fmt.Sprintf(`curl -sf --max-time 10 -X PUT --data-binary @- "%s/v1/var/%s" > /dev/null`, NomadAddr, path)
-	_, err = c.node.RunStdin(ctx, script, body)
-	return err
+	return store.put(ctx, path, items)
 }
 
 // CreateSecret writes a secret only if it does not exist yet, and reports
-// whether it did.
-//
-// Nomad's check-and-set with index 0 means "create, never overwrite", so the
-// guarantee a generated password depends on (made once, never replaced) is
-// enforced by the store itself rather than by a list read a moment earlier
-// that may be stale or may have failed.
+// whether it did, which is what a generated password depends on: made once,
+// never replaced.
 func (c *Cluster) CreateSecret(ctx context.Context, group, name, value string) (bool, error) {
 	created, err := c.createVariable(ctx, deploy.SecretPath(group, name), deploy.SecretItemKey, value)
 	if err != nil {
@@ -574,29 +381,13 @@ func (c *Cluster) CreateSecret(ctx context.Context, group, name, value string) (
 }
 
 // createVariable writes a one-item variable only if it does not exist yet, and
-// reports whether it did. The body travels on stdin, as in PutSecret.
+// reports whether it did.
 func (c *Cluster) createVariable(ctx context.Context, path, key, value string) (bool, error) {
-	body, err := variableBody(path, map[string]string{key: value})
+	store, err := c.store(ctx)
 	if err != nil {
 		return false, err
 	}
-	script := fmt.Sprintf(`CODE=$(curl -s --max-time 10 -o /dev/null -w '%%{http_code}' -X PUT --data-binary @- "%s/v1/var/%s?cas=0")
-case "$CODE" in
-  200) echo created ;;
-  409) echo exists ;;
-  *) echo "nomad answered HTTP $CODE" >&2; exit 1 ;;
-esac`, NomadAddr, path)
-
-	out, err := c.node.RunStdin(ctx, script, body)
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(out) == "created", nil
-}
-
-// variableBody is the request that writes one variable.
-func variableBody(path string, items map[string]string) ([]byte, error) {
-	return json.Marshal(map[string]any{"Path": path, "Items": items})
+	return store.putChecked(ctx, nomad.Variable{Path: path, Items: map[string]string{key: value}})
 }
 
 // variablePrefixes are everything orca keeps in the store that is a secret of
@@ -604,91 +395,48 @@ func variableBody(path string, items map[string]string) ([]byte, error) {
 // dashboard password. The apply lock is the one thing left out.
 var variablePrefixes = []string{deploy.SecretPrefix + "/", deploy.RegistryPrefix + "/", deploy.AdminPasswordPath, deploy.CertPrefix + "/"}
 
-// Variables reads every secret the cluster holds, values included.
-//
-// One round trip however many there are: the listing and every read happen on
-// the machine, and what comes back is one line per variable. This is the only
-// call that pulls plaintext off the machine wholesale, and exporting or
-// editing the cluster's secrets is the only reason to make it.
+// Variables reads every secret the cluster holds, values included. This is
+// the only call that pulls plaintext off the machine wholesale, and exporting
+// or editing the cluster's secrets is the only reason to make it.
 func (c *Cluster) Variables(ctx context.Context) (variables, error) {
-	vars, err := c.readVariables(ctx, variablePrefixes, "{Path, Items}")
+	vars, err := c.readVariables(ctx, variablePrefixes)
 	if err != nil {
 		return nil, fmt.Errorf("read the cluster's secrets: %w", err)
 	}
 	return vars, nil
 }
 
-// Certificates reads every certificate record, without its private key:
-// what there is to know about a certificate (who asked, when it expires, why
-// it failed) is all in the rest, so the key has no reason to leave the
-// machine.
+// Certificates reads every certificate record, without its private key: what
+// there is to know about a certificate (who asked, when it expires, why it
+// failed) is all in the rest.
 func (c *Cluster) Certificates(ctx context.Context) (variables, error) {
-	vars, err := c.readVariables(ctx, []string{deploy.CertPrefix + "/"},
-		fmt.Sprintf("{Path, Items: (.Items | del(.%s))}", deploy.CertKeyKey))
+	vars, err := c.readVariables(ctx, []string{deploy.CertPrefix + "/"})
 	if err != nil {
 		return nil, fmt.Errorf("read the cluster's certificates: %w", err)
 	}
+	for _, items := range vars {
+		delete(items, deploy.CertKeyKey)
+	}
 	return vars, nil
 }
 
-// readVariables reads every variable under the prefixes in one round trip.
-// project is the jq that shapes each one into a {Path, Items} line.
-func (c *Cluster) readVariables(ctx context.Context, prefixes []string, project string) (variables, error) {
-	// Fails closed, like SecretPaths: a listing or a read that fails must not
-	// pass for a store with less in it, since an export would then be a
-	// backup quietly missing secrets.
-	script := fmt.Sprintf(`set -o pipefail
-for prefix in %[2]s; do
-  curl -sf --max-time 10 "%[1]s/v1/vars?prefix=$prefix" | jq -r '.[].Path' || exit 1
-done | while IFS= read -r path; do
-  curl -sf --max-time 10 "%[1]s/v1/var/$path" | jq -c '%[3]s' || exit 1
-done`, NomadAddr, strings.Join(prefixes, " "), project)
-
-	out, err := c.node.RunOutput(ctx, script)
+func (c *Cluster) readVariables(ctx context.Context, prefixes []string) (variables, error) {
+	api, err := c.client(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	vars := variables{}
-	dec := json.NewDecoder(strings.NewReader(out))
-	for dec.More() {
-		var v struct {
-			Path  string
-			Items map[string]string
-		}
-		if err := dec.Decode(&v); err != nil {
-			return nil, err
-		}
-		vars[v.Path] = v.Items
-	}
-	return vars, nil
+	return deploy.ReadVariables(ctx, api, prefixes)
 }
 
-// PutVariables writes a set of variables, replacing any there, in one round
-// trip.
+// PutVariables writes a set of variables, replacing any there.
 //
-// Every body travels on stdin, one to a line, so no value is in an argument
-// list on either machine. Paths are the caller's to have checked: each goes
-// into a URL on the machine.
+// It stops at the first failure and names it: what was written before it
+// stays written, and running the same import again writes the rest.
 func (c *Cluster) PutVariables(ctx context.Context, vars variables) error {
-	var bodies bytes.Buffer
 	for _, path := range slices.Sorted(maps.Keys(vars)) {
-		body, err := variableBody(path, vars[path])
-		if err != nil {
-			return err
+		if err := c.putVariable(ctx, path, vars[path]); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
 		}
-		bodies.Write(body)
-		bodies.WriteByte('\n')
-	}
-
-	// Stops at the first failure and names it: what was written before it
-	// stays written, and running the same import again writes the rest.
-	script := fmt.Sprintf(`while IFS= read -r body; do
-  path=$(jq -r .Path <<<"$body") || exit 1
-  curl -sf --max-time 10 -X PUT --data-binary @- "%s/v1/var/$path" <<<"$body" > /dev/null || { echo "could not write $path" >&2; exit 1; }
-done`, NomadAddr)
-	if _, err := c.node.RunStdin(ctx, script, bodies.Bytes()); err != nil {
-		return fmt.Errorf("write secrets: %w", err)
 	}
 	return nil
 }
@@ -696,30 +444,15 @@ done`, NomadAddr)
 // readVariable returns one item of a variable, and whether the variable
 // exists. Missing is an answer, not an error; a Nomad that cannot be asked is.
 func (c *Cluster) readVariable(ctx context.Context, path, key string) (string, bool, error) {
-	// The body comes back on stdout with the status after it, on a line of
-	// its own: a 404 is an answer here, so curl cannot be left to fail on it.
-	script := fmt.Sprintf(`curl -s --max-time 10 -w '\n%%{http_code}' "%s/v1/var/%s"`, NomadAddr, path)
-	out, err := c.node.RunOutput(ctx, script)
+	store, err := c.store(ctx)
 	if err != nil {
 		return "", false, err
 	}
-	i := strings.LastIndex(out, "\n")
-	if i < 0 {
-		return "", false, fmt.Errorf("read %s: no answer from nomad", path)
-	}
-	body, code := out[:i], strings.TrimSpace(out[i+1:])
-	switch code {
-	case "200":
-	case "404":
-		return "", false, nil
-	default:
-		return "", false, fmt.Errorf("read %s: nomad answered HTTP %s", path, code)
-	}
-	var v struct{ Items map[string]string }
-	if err := json.Unmarshal([]byte(body), &v); err != nil {
+	v, ok, err := store.get(ctx, path)
+	if err != nil {
 		return "", false, fmt.Errorf("read %s: %w", path, err)
 	}
-	return v.Items[key], true, nil
+	return v.Items[key], ok, nil
 }
 
 // AdminPassword is the dashboards' generated password, and whether one has
@@ -734,7 +467,7 @@ func (c *Cluster) AdminPassword(ctx context.Context) (string, bool, error) {
 
 // PutAdminPassword replaces the dashboards' password.
 func (c *Cluster) PutAdminPassword(ctx context.Context, value string) error {
-	if err := c.putVariable(ctx, deploy.AdminPasswordPath, deploy.AdminPasswordKey, value); err != nil {
+	if err := c.putVariable(ctx, deploy.AdminPasswordPath, map[string]string{deploy.AdminPasswordKey: value}); err != nil {
 		return fmt.Errorf("store the dashboard password: %w", err)
 	}
 	return nil
@@ -750,39 +483,35 @@ func (c *Cluster) CreateAdminPassword(ctx context.Context, value string) (bool, 
 	return created, nil
 }
 
-// deleteVariable removes one variable. One that is already gone is not an
-// error: Nomad answers a delete of nothing with success.
+// deleteVariable removes one variable.
 func (c *Cluster) deleteVariable(ctx context.Context, path string) error {
-	return c.node.RunQuiet(ctx, fmt.Sprintf(`curl -sf --max-time 10 -X DELETE "%s/v1/var/%s" > /dev/null`, NomadAddr, path))
+	store, err := c.store(ctx)
+	if err != nil {
+		return err
+	}
+	return store.delete(ctx, path)
 }
 
 // DeleteSecret removes one secret.
 func (c *Cluster) DeleteSecret(ctx context.Context, group, name string) error {
-	path := deploy.SecretPath(group, name)
-	script := fmt.Sprintf(`curl -sf --max-time 10 -X DELETE "%s/v1/var/%s" > /dev/null`, NomadAddr, path)
-	if err := c.node.RunQuiet(ctx, script); err != nil {
-		return fmt.Errorf("remove secret %s/%s (is it set?): %w", group, name, err)
+	if err := c.deleteVariable(ctx, deploy.SecretPath(group, name)); err != nil {
+		return fmt.Errorf("remove secret %s/%s: %w", group, name, err)
 	}
 	return nil
 }
 
 // RegistryHosts lists the registries the cluster holds credentials for.
 //
-// Paths only, like SecretPaths: the host is in the path, so finding out which
-// registries are logged in to never pulls a token off the machine.
+// The host is in the path, so finding out which registries are logged in to
+// never pulls a token off the machine.
 func (c *Cluster) RegistryHosts(ctx context.Context) (map[string]bool, error) {
-	script := fmt.Sprintf(`set -o pipefail
-curl -sf --max-time 10 "%s/v1/vars?prefix=%s/" | jq -r '.[].Path'`,
-		NomadAddr, deploy.RegistryPrefix)
-
-	out, err := c.node.RunOutput(ctx, script)
+	paths, err := c.variablePaths(ctx, deploy.RegistryPrefix+"/")
 	if err != nil {
 		return nil, fmt.Errorf("list registry credentials: %w", err)
 	}
-
 	hosts := map[string]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if host, ok := deploy.RegistryHost(strings.TrimSpace(line)); ok {
+	for _, p := range paths {
+		if host, ok := deploy.RegistryHost(p); ok {
 			hosts[host] = true
 		}
 	}
@@ -801,18 +530,8 @@ func registryItems(username, password string) map[string]string {
 }
 
 // PutRegistry stores the credentials for one registry, replacing any there.
-//
-// The whole request body travels on stdin, so neither the token nor the
-// username is ever in an argument list on either machine.
 func (c *Cluster) PutRegistry(ctx context.Context, host, username, password string) error {
-	path := deploy.RegistryPath(host)
-	body, err := variableBody(path, registryItems(username, password))
-	if err != nil {
-		return err
-	}
-
-	script := fmt.Sprintf(`curl -sf --max-time 10 -X PUT --data-binary @- "%s/v1/var/%s" > /dev/null`, NomadAddr, path)
-	if _, err := c.node.RunStdin(ctx, script, body); err != nil {
+	if err := c.putVariable(ctx, deploy.RegistryPath(host), registryItems(username, password)); err != nil {
 		return fmt.Errorf("store credentials for %s: %w", host, err)
 	}
 	return nil
@@ -820,8 +539,7 @@ func (c *Cluster) PutRegistry(ctx context.Context, host, username, password stri
 
 // DeleteRegistry removes one registry's credentials.
 func (c *Cluster) DeleteRegistry(ctx context.Context, host string) error {
-	script := fmt.Sprintf(`curl -sf --max-time 10 -X DELETE "%s/v1/var/%s" > /dev/null`, NomadAddr, deploy.RegistryPath(host))
-	if err := c.node.RunQuiet(ctx, script); err != nil {
+	if err := c.deleteVariable(ctx, deploy.RegistryPath(host)); err != nil {
 		return fmt.Errorf("remove credentials for %s: %w", host, err)
 	}
 	return nil
@@ -840,166 +558,147 @@ func (c *Cluster) HasCredentialHelper(ctx context.Context) (bool, error) {
 	return strings.TrimSpace(out) == "yes", nil
 }
 
-// FirewallPath is where the machine keeps the ruleset orca generates.
-const FirewallPath = "/etc/orca/firewall.nft"
-
-// ApplyFirewall installs the ruleset, and reports whether anything changed.
+// serviceAddr resolves one of orca's own services from the catalog, as
+// host:port, reporting false for one that is not registered.
 //
-// The new ruleset is loaded *before* it replaces the file on disk, so a
-// ruleset nftables rejects never becomes the one applied at boot. The public
-// interface is resolved on the machine for the same reason it is not in
-// cluster.yaml: orca needs to know which interface to filter, not what it is
-// called.
-func (c *Cluster) ApplyFirewall(ctx context.Context, ruleset string) (bool, error) {
-	script := fmt.Sprintf(`set -e
-mkdir -p /etc/orca
-cat > %[1]s.new
-
-PUB=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1)
-if [ -z "$PUB" ]; then
-  echo "could not resolve the default-route interface" >&2
-  rm -f %[1]s.new
-  exit 1
-fi
-sed -i "s|__PUBLIC_IFACE__|${PUB}|g" %[1]s.new
-
-# Unchanged content and a table that is actually loaded means there is nothing
-# to do. Checking the table too makes this self-healing: if the rules were
-# flushed by hand or lost, they come back on the next apply.
-if cmp -s %[1]s.new %[1]s && nft list table inet orca >/dev/null 2>&1; then
-  rm -f %[1]s.new
-  echo unchanged
-  exit 0
-fi
-
-nft -f %[1]s.new
-mv %[1]s.new %[1]s
-echo changed`, FirewallPath)
-
-	out, err := c.node.RunStdin(ctx, script, []byte(ruleset))
-	if err != nil {
-		return false, fmt.Errorf("apply firewall: %w", err)
-	}
-	// Compared exactly, not with Contains: "unchanged" contains "changed".
-	return strings.TrimSpace(out) == "changed", nil
-}
-
-// logStoreAddr resolves the log store's address from the service catalog.
-//
-// Not a constant: the store binds the container bridge on one machine and the
+// Not a constant: a store binds the container bridge on one machine and the
 // private network on several, and moves with the machine it is pinned to. The
 // catalog is the only thing that knows where it actually is.
-var logStoreAddr = `ADDR=$(curl -sf --max-time 10 ` + NomadAddr + `/v1/service/` + deploy.CatalogName(deploy.OrcaApp, "victorialogs") +
-	` | jq -r '.[0] | "\(.Address):\(.Port)"' 2>/dev/null)
-if [ -z "$ADDR" ] || [ "$ADDR" = "null:null" ]; then
-  echo "the log store is not registered; is the logs capability enabled and healthy?" >&2
-  exit 1
-fi`
-
-// statusSummaryScript finds the status page in the catalog and asks it for
-// the summary. Over SSH, like the log store, so `orca top` depends on neither
-// ingress nor a password, and works when the front door is what is broken.
-//
-// Not being registered exits with its own code and says nothing: the message
-// is written in Go, where a backtick is not a command substitution.
-var statusSummaryScript = fmt.Sprintf(`ADDR=$(curl -sf --max-time 10 %s/v1/service/%s | jq -r '.[0] | "\(.Address):\(.Port)"' 2>/dev/null)
-if [ -z "$ADDR" ] || [ "$ADDR" = "null:null" ]; then
-  exit %d
-fi
-curl -sf --max-time 20 "http://$ADDR/api/summary"`,
-	NomadAddr, deploy.CatalogName(deploy.OrcaApp, "status"), statusNotRegistered)
-
-// statusNotRegistered is statusSummaryScript's exit code for a status page
-// that is not in the catalog.
-const statusNotRegistered = 3
-
-// StatusSummary reads the status page's summary.
-func (c *Cluster) StatusSummary(ctx context.Context) (statuspage.Summary, error) {
-	out, err := c.node.RunOutput(ctx, statusSummaryScript)
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() == statusNotRegistered {
-		return statuspage.Summary{}, errors.New("the status page is not running: `orca apply orca` starts it, and `orca status orca` says why it is not")
-	}
+func (c *Cluster) serviceAddr(ctx context.Context, name string) (string, bool, error) {
+	api, err := c.client(ctx)
 	if err != nil {
-		return statuspage.Summary{}, fmt.Errorf("read the status page: %w", err)
+		return "", false, err
 	}
+	regs, _, err := api.Services().Get(deploy.CatalogName(deploy.OrcaApp, name), (&nomad.QueryOptions{}).WithContext(ctx))
+	if err != nil {
+		return "", false, err
+	}
+	if len(regs) == 0 {
+		return "", false, nil
+	}
+	return net.JoinHostPort(regs[0].Address, strconv.Itoa(regs[0].Port)), true, nil
+}
+
+// get makes one request to an address on the machine and returns the answer
+// once it is known to be a success.
+func (c *Cluster) get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return resp, nil
+}
+
+// StatusSummary reads the status page's summary. From the machine, like the
+// log store, so `orca top` depends on neither ingress nor a password, and
+// works when the front door is what is broken.
+func (c *Cluster) StatusSummary(ctx context.Context) (statuspage.Summary, error) {
 	var s statuspage.Summary
-	if err := json.Unmarshal([]byte(out), &s); err != nil {
-		return statuspage.Summary{}, fmt.Errorf("read the status page: %w", err)
+	addr, ok, err := c.serviceAddr(ctx, "status")
+	if err != nil {
+		return s, fmt.Errorf("read the status page: %w", err)
+	}
+	if !ok {
+		return s, errors.New("the status page is not running: `orca apply orca` starts it, and `orca status orca` says why it is not")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	resp, err := c.get(ctx, "http://"+addr+"/api/summary")
+	if err != nil {
+		return s, fmt.Errorf("read the status page: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+		return s, fmt.Errorf("read the status page: %w", err)
 	}
 	return s, nil
 }
 
+// logStore is the log store's address.
+func (c *Cluster) logStore(ctx context.Context) (string, error) {
+	addr, ok, err := c.serviceAddr(ctx, "victorialogs")
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", errors.New("the log store is not registered; is the logs capability enabled and healthy?")
+	}
+	return addr, nil
+}
+
+// logLines hands each line of a log store's answer to fn.
+func logLines(r io.Reader, fn func([]byte)) error {
+	scanner := bufio.NewScanner(r)
+	// A log line can be long; the default 64K token limit would truncate a
+	// stack trace mid-way and look like corruption.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		if line := bytes.TrimSpace(scanner.Bytes()); len(line) > 0 {
+			fn(line)
+		}
+	}
+	return scanner.Err()
+}
+
 // QueryLogs runs one LogsQL query and hands each line to fn.
 func (c *Cluster) QueryLogs(ctx context.Context, query string, limit int, fn func([]byte)) error {
-	script := fmt.Sprintf("%s\ncurl -sf --max-time 30 %q", logStoreAddr,
-		"http://$ADDR"+logsQueryURL("/select/logsql/query", query, limit))
-
-	out, err := c.node.RunOutput(ctx, script)
+	addr, err := c.logStore(ctx)
 	if err != nil {
 		return fmt.Errorf("query logs: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	resp, err := c.get(ctx, "http://"+addr+logsQueryURL("/select/logsql/query", query, limit))
+	if err != nil {
+		return fmt.Errorf("query logs: %w", err)
+	}
+	defer resp.Body.Close()
 
 	// Newest first from the store; printed oldest first, because a log read
 	// top to bottom is a story and backwards it is a puzzle.
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if line := strings.TrimSpace(lines[i]); line != "" {
-			fn([]byte(line))
-		}
+	var lines [][]byte
+	if err := logLines(resp.Body, func(line []byte) { lines = append(lines, bytes.Clone(line)) }); err != nil {
+		return fmt.Errorf("query logs: %w", err)
+	}
+	for _, line := range slices.Backward(lines) {
+		fn(line)
 	}
 	return nil
 }
 
 // TailLogs streams matching lines until the context is cancelled.
 func (c *Cluster) TailLogs(ctx context.Context, query string, fn func([]byte)) error {
-	script := fmt.Sprintf("%s\nexec curl -sN --no-buffer %q", logStoreAddr,
-		"http://$ADDR"+logsQueryURL("/select/logsql/tail", query, 0))
-
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(c.node.Host, script)...)
-	stdout, err := cmd.StdoutPipe()
+	addr, err := c.logStore(ctx)
 	if err != nil {
-		return err
-	}
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("tail logs: %w", err)
 	}
-
-	scanner := bufio.NewScanner(stdout)
-	// A log line can be long; the default 64K token limit would truncate a
-	// stack trace mid-way and look like corruption.
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	streamed := false
-	for scanner.Scan() {
-		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			streamed = true
-			fn([]byte(line))
-		}
+	resp, err := c.get(ctx, "http://"+addr+logsQueryURL("/select/logsql/tail", query, 0))
+	if err != nil {
+		return fmt.Errorf("tail logs: %w", err)
 	}
+	defer resp.Body.Close()
 
-	readErr := scanner.Err()
-	err = cmd.Wait()
-
-	// A tail ends when you stop it, which is not a failure. Interrupting the
-	// command can kill ssh before the signal cancels the context, so the exit
-	// status is not a reliable signal on its own.
+	err = logLines(resp.Body, fn)
+	// A tail ends when you stop it, which is not a failure.
 	if ctx.Err() != nil {
 		return nil
 	}
 	// A read that failed part way through is a different thing from a tail
 	// that ended: the stream stopped for a reason nobody asked for, and
 	// without this it is reported as a quiet service.
-	if readErr != nil {
-		return fmt.Errorf("tail logs: %w", readErr)
+	if err != nil {
+		return fmt.Errorf("tail logs: %w", err)
 	}
-	// Otherwise a tail that produced output and then ended is one that worked.
-	if streamed {
-		return nil
-	}
-	return err
+	return nil
 }
 
 // Volume identifies one app volume on disk.
@@ -1102,21 +801,32 @@ func deleteVolumesScript(vols []Volume) (string, error) {
 	return b.String(), nil
 }
 
+// hostNomad starts every script that asks Nomad something from on the
+// machine, where the work is next to the data and its secrets need not
+// leave: a restore, mostly. It reads the cluster's token for Nomad's own CLI,
+// and defines nomad_get, which reads one API path.
+//
+// The token goes to curl on its stdin, not in its arguments: an argument list
+// is visible in the process table for as long as the command runs.
+const hostNomad = `NOMAD_TOKEN=$(cat ` + TokenPath + `)
+export NOMAD_TOKEN
+nomad_get() { printf 'X-Nomad-Token: %s\n' "$NOMAD_TOKEN" | curl -sf --max-time 10 -H @- "` + NomadAddr + `$1"; }
+`
+
 // rcloneEnvScript writes the S3 credentials to a private file on the machine
 // and prints its path.
 //
-// A file rather than command arguments: an argument list is visible in the
-// process table for as long as the command runs. The file is created with a
-// restrictive mode and removed by the caller.
+// A file rather than command arguments, for the reason the token is not one.
+// The file is created with a restrictive mode and removed by the caller.
 func rcloneEnvScript(spec deploy.BackupSpec) string {
-	return fmt.Sprintf(`ENVFILE=$(mktemp)
+	return hostNomad + fmt.Sprintf(`ENVFILE=$(mktemp)
 chmod 600 "$ENVFILE"
-S3_ENDPOINT=%[5]s
-S3_REGION=%[6]s
-KEY=$(curl -sf "%[1]s/v1/var/%[2]s" | jq -r '.Items.value')
-SEC=$(curl -sf "%[1]s/v1/var/%[3]s" | jq -r '.Items.value')
+S3_ENDPOINT=%[4]s
+S3_REGION=%[5]s
+KEY=$(nomad_get /v1/var/%[1]s | jq -r '.Items.value')
+SEC=$(nomad_get /v1/var/%[2]s | jq -r '.Items.value')
 if [ -z "$KEY" ] || [ "$KEY" = "null" ] || [ -z "$SEC" ] || [ "$SEC" = "null" ]; then
-  echo "backup credentials are not set; run: orca secret set %[4]s" >&2
+  echo "backup credentials are not set; run: orca secret set %[3]s" >&2
   rm -f "$ENVFILE"; exit 1
 fi
 {
@@ -1128,7 +838,6 @@ fi
   echo "RCLONE_CONFIG_STORE_ACCESS_KEY_ID=$KEY"
   echo "RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY=$SEC"
 } > "$ENVFILE"`,
-		NomadAddr,
 		deploy.SecretPath(spec.SecretGroup, spec.KeyIDSecret),
 		deploy.SecretPath(spec.SecretGroup, spec.SecretKeySecret),
 		// The group the credentials actually live in, so the message sends
@@ -1244,23 +953,23 @@ docker run --rm --network host --env-file "$ENVFILE" -v "$WORK:/work" %[2]s \
 # the database registers its own address; once a port is published instead,
 # the catalog carries a dynamic one and the assumption silently connects to
 # nothing.
-SVC=$(curl -sf "%[7]s/v1/service/%[9]s")
+SVC=$(nomad_get /v1/service/%[8]s)
 DBHOST=$(printf '%%s' "$SVC" | jq -r '.[0].Address // empty')
 DBPORT=$(printf '%%s' "$SVC" | jq -r '.[0].Port // empty')
 if [ -z "$DBHOST" ] || [ -z "$DBPORT" ]; then
-  echo "database %[9]s is not registered; is it running?" >&2
+  echo "database %[8]s is not registered; is it running?" >&2
   exit 1
 fi
 
 # The connection goes in a file, not the argument list, which is visible in the
 # host's process table for as long as the restore runs.
 {
-  printf 'PGPASSWORD=%%s\n' "$(curl -sf "%[7]s/v1/var/%[8]s" | jq -r '.Items.value')"
+  printf 'PGPASSWORD=%%s\n' "$(nomad_get /v1/var/%[7]s | jq -r '.Items.value')"
   printf 'PGHOST=%%s\nPGPORT=%%s\nPGUSER=postgres\n' "$DBHOST" "$DBPORT"
 } > "$PGENV"
 
 cat > "$WORK/restore.sh" <<'RESTORE'
-%[10]s
+%[9]s
 RESTORE
 
 echo "restoring into $DBHOST:$DBPORT"
@@ -1268,7 +977,6 @@ docker run --rm --network host -v "$WORK:/work" --env-file "$PGENV" \
   -e NAME="$NAME" -e STAMP="$(date -u +%%Y%%m%%dT%%H%%M%%SZ)" %[5]s sh /work/restore.sh`,
 		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(spec.Prefix),
 		shQuote(pgImage), shQuote(name),
-		NomadAddr,
 		deploy.SecretPath(group, manifest.GeneratedSecret(service, manifest.PasswordSuffix)),
 		deploy.CatalogName(group, service),
 		pgRestoreScript)
@@ -1459,7 +1167,7 @@ echo "stopping $JOB"
 STOPPED=1
 nomad job stop -detach "$JOB" >/dev/null
 for i in $(seq 1 60); do
-  LIVE=$(curl -sf "%[10]s/v1/job/$JOB/allocations" | jq '[.[] | select(.ClientStatus == "running" or .ClientStatus == "pending")] | length')
+  LIVE=$(nomad_get "/v1/job/$JOB/allocations" | jq '[.[] | select(.ClientStatus == "running" or .ClientStatus == "pending")] | length')
   [ "$LIVE" = 0 ] && break
   sleep 2
 done
@@ -1506,6 +1214,5 @@ echo "restored $NAME ($KEYS keys); the data it replaced is at $KEEP"`,
 		shQuote(image), shQuote(name),
 		shQuote(deploy.JobID(group, service)),
 		shQuote(deploy.VolumePath(DataDir, group, service)),
-		shQuote(PreRestorePrefix(group, service)),
-		NomadAddr)
+		shQuote(PreRestorePrefix(group, service)))
 }

@@ -103,8 +103,10 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Ctrl-C cancels the in-flight ssh command rather than orphaning it.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Ctrl-C cancels the in-flight ssh command rather than orphaning it. A
+	// closed terminal is handled the same way, not left to end the process
+	// where it stands: `orca secret edit` has a plaintext file to remove.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
 	if err := run(ctx, args, *rootDir); err != nil {

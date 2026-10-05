@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -85,38 +86,29 @@ func (c *Cluster) LockApply(ctx context.Context) (context.Context, func(), error
 // lockOp runs one lock operation on the apply lock's variable and returns the
 // lock's ID.
 func (c *Cluster) lockOp(ctx context.Context, op string, v nomad.Variable) (string, error) {
-	body, err := json.Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	// The status comes last, on a line of its own: a 409 is an answer here,
-	// carrying the variable as its current holder left it.
-	script := fmt.Sprintf(`curl -s --max-time 10 -w '\n%%{http_code}' -X PUT --data-binary @- "%s/v1/var/%s?%s"`,
-		NomadAddr, v.Path, op)
-	out, err := c.node.RunStdin(ctx, script, body)
+	api, err := c.client(ctx)
 	if err != nil {
 		return "", fmt.Errorf("apply lock: %w", err)
 	}
-	i := strings.LastIndex(out, "\n")
-	if i < 0 {
-		return "", errors.New("apply lock: no answer from nomad")
-	}
-	reply, code := out[:i], strings.TrimSpace(out[i+1:])
-
 	var got nomad.Variable
-	_ = json.Unmarshal([]byte(reply), &got)
-	switch code {
-	case "200":
-		if got.Lock == nil {
-			return "", nil
-		}
-		return got.Lock.ID, nil
-	case "409":
-		if h := got.Items["holder"]; h != "" {
-			return "", fmt.Errorf("another apply is running (%s, since %s); try again when it finishes", h, got.Items["since"])
+	_, err = api.Raw().Write("/v1/var/"+v.Path+"?"+op, &v, &got, (&nomad.WriteOptions{}).WithContext(ctx))
+
+	// A conflict is an answer, carrying the variable as its current holder
+	// left it.
+	var unexpected nomad.UnexpectedResponseError
+	if errors.As(err, &unexpected) && unexpected.StatusCode() == http.StatusConflict {
+		var held nomad.Variable
+		_ = json.Unmarshal([]byte(unexpected.Body()), &held)
+		if h := held.Items["holder"]; h != "" {
+			return "", fmt.Errorf("another apply is running (%s, since %s); try again when it finishes", h, held.Items["since"])
 		}
 		return "", errors.New("another apply is running; try again when it finishes")
-	default:
-		return "", fmt.Errorf("apply lock: nomad answered HTTP %s: %s", code, strings.TrimSpace(reply))
 	}
+	if err != nil {
+		return "", fmt.Errorf("apply lock: %w", err)
+	}
+	if got.Lock == nil {
+		return "", nil
+	}
+	return got.Lock.ID, nil
 }

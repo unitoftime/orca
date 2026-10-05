@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/unitoftime/orca/pkg/manifest"
@@ -76,7 +78,7 @@ type NodeConfig struct {
 	// PrivateIP is this machine's address on the private network, and the only
 	// address the cluster ever talks to itself on. It is named for what it
 	// must be rather than what it does, because putting a public address here
-	// would put an unauthenticated scheduler API on the internet.
+	// would put the scheduler on the internet.
 	//
 	// Leave it empty on a single-machine cluster: with no peers there is
 	// nothing to reach, and everything binds loopback instead.
@@ -167,8 +169,8 @@ func (c Config) validate() error {
 	servers := 0
 
 	for _, n := range c.Nodes {
-		if n.Host == "" {
-			return fmt.Errorf("node %q: host is required", n.Name)
+		if err := n.validate(); err != nil {
+			return err
 		}
 		if seenHost[n.Host] {
 			return fmt.Errorf("duplicate node host %q", n.Host)
@@ -221,6 +223,36 @@ func (c Config) validate() error {
 		}
 	}
 
+	return nil
+}
+
+// What a node's host and name may be spelled with. Both go into commands:
+// the host is handed to ssh as an argument, where one starting with a dash
+// would be read as an option, and the name goes into scripts run as root on
+// the machine. cluster.yaml is found by looking upward from wherever orca is
+// run, so it may be one somebody else wrote.
+var (
+	nodeHost = regexp.MustCompile(`^([A-Za-z0-9_][A-Za-z0-9_.-]*@)?[A-Za-z0-9_\[][A-Za-z0-9_.:\[\]-]*$`)
+	nodeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+)
+
+func (n NodeConfig) validate() error {
+	if n.Host == "" {
+		return fmt.Errorf("node %q: host is required", n.Name)
+	}
+	if !nodeHost.MatchString(n.Host) {
+		return fmt.Errorf("node %q: host %q is not user@address", n.Name, n.Host)
+	}
+	if !nodeName.MatchString(n.Name) {
+		return fmt.Errorf("node %q: a name is letters, digits, dots, dashes and underscores, starting with a letter or digit", n.Name)
+	}
+	if n.PrivateIP != "" {
+		// IPv4, because that is what the firewall's rules for the cluster's
+		// own machines are written in.
+		if ip, err := netip.ParseAddr(n.PrivateIP); err != nil || !ip.Is4() {
+			return fmt.Errorf("node %q: private_ip %q is not an IPv4 address", n.Name, n.PrivateIP)
+		}
+	}
 	return nil
 }
 

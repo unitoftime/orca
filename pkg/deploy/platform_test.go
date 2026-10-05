@@ -357,8 +357,8 @@ func TestDashboardBackendsResolveFromTheCatalog(t *testing.T) {
 	}
 }
 
-// Nomad's UI is its API, and without ACLs that API runs anything, privileged,
-// on every machine. It must never be routed from the internet.
+// Nomad's UI is its API, which with the cluster's token runs anything,
+// privileged, on every machine. It must never be routed from the internet.
 func TestNomadIsNeverPublished(t *testing.T) {
 	cfg := traefikDynamicConfig(platformOpts())
 	for _, never := range []string{"nomad.example.com", ":4646"} {

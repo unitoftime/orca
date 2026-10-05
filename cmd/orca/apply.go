@@ -250,6 +250,14 @@ func cmdApply(ctx context.Context, cfg Config, args []string, planOnly bool) err
 		return err
 	}
 
+	// Before the jobs they are for, so a build of orca whose own jobs need
+	// something new is allowed it by the apply that deploys them.
+	if platformInScope {
+		if err := cluster.WritePolicies(ctx); err != nil {
+			return err
+		}
+	}
+
 	// A template's secret is orca's to create: the author never writes it and
 	// never sees the value.
 	if err := createGeneratedSecrets(ctx, cluster, toGenerate); err != nil {
@@ -666,66 +674,6 @@ func checkVolumeData(apps []*manifest.Manifest, facts map[string]VolumeFacts, to
 		}
 	}
 	return errors.Join(errs...)
-}
-
-// applyFirewall locks every machine's public interface down to the ports the
-// manifests ask for, and every machine's scheduler down to the cluster.
-//
-// Every machine, not only the one orca is talking to: a cluster where one
-// machine is firewalled and the rest are open is not a firewalled cluster, and
-// the difference is invisible from the machine that happens to be protected.
-// A machine that cannot be reached is warned about and passed over rather than
-// failing the apply: that is exactly when you need to deploy around it.
-//
-// The rules are derived from every group, not only the ones in scope, so a
-// narrowed apply does not close a port belonging to an app it was told to
-// leave alone. Every machine gets the same ruleset: an unpinned service can be
-// placed anywhere, so the union is the only set that is correct wherever it
-// lands. A port open on a machine running nothing behind it is reachable by
-// nothing.
-//
-// With `firewall: false` the public interface is yours, but the scheduler's
-// rules are still installed: Nomad runs without ACLs because they are there.
-func applyFirewall(ctx context.Context, cfg Config, all []*manifest.Manifest) error {
-	spec := deploy.FirewallSpec{PublicIface: "__PUBLIC_IFACE__", BridgeIface: "nomad"}
-	for _, nc := range cfg.Nodes {
-		if nc.PrivateIP != "" {
-			spec.Peers = append(spec.Peers, nc.PrivateIP)
-		}
-	}
-	var ports deploy.FirewallPorts
-	if cfg.Firewall.Enabled {
-		var hostPorts []manifest.HostPort
-		for _, m := range all {
-			hostPorts = append(hostPorts, m.HostPorts()...)
-		}
-		ports = deploy.PublicPorts(hostPorts, cfg.Ingress.Enabled)
-		spec.Public = &ports
-	}
-	ruleset := deploy.Firewall(spec)
-
-	anyChanged := false
-	for _, nc := range cfg.Nodes {
-		changed, err := NewCluster(Node{Host: nc.Host}).ApplyFirewall(ctx, ruleset)
-		if unreachable(err) {
-			fmt.Printf("warning: node %s is unreachable; its firewall was not updated\n", nc.Name)
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("node %s: %w", nc.Name, err)
-		}
-		anyChanged = anyChanged || changed
-	}
-
-	if anyChanged && spec.Public != nil {
-		open := append([]int{22}, ports.TCP...)
-		fmt.Printf("firewall updated: tcp %v", open)
-		if len(ports.UDP) > 0 {
-			fmt.Printf(", udp %v", ports.UDP)
-		}
-		fmt.Println()
-	}
-	return nil
 }
 
 // platformOptions turns the cluster config into the platform's resolved

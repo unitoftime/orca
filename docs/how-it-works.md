@@ -127,7 +127,9 @@ Each of these can be switched off in `cluster.yaml`; see the
 Vector keeps logs on disk (up to a limit) and sends them later. If Traefik
 is down, only HTTP routing stops; raw ports, databases and log collection
 carry on. `orca logs` and `orca top` reach the server over SSH, so they still
-work when ingress is what is broken. The status page shows what it can and
+work when ingress is what is broken. So does every other command: orca talks
+to Nomad and the stores through connections the server's SSH opens to them,
+which is why its SSH server must allow TCP forwarding. The status page shows what it can and
 names what it cannot read.
 
 **Disks are capped from day one**, because a full disk is the most common way
@@ -161,21 +163,35 @@ A group is a namespace, not a security boundary. Any service can reach any
 other; orca assumes you wrote all of them.
 
 **The firewall is generated from your files** on every apply, so it cannot
-drift. From outside, it lets in SSH (always, so it can never lock you out),
-80 and 443 while ingress runs, the `tcp` and `udp` ports your files declare,
-and the ICMP and DHCP traffic a machine needs. Everything else is dropped
-silently. Nomad's ports answer only the machine itself and the cluster's
-other machines, never a container and never anything else on the private
-network, since anything that can submit jobs can run anything on every
-machine. With `firewall: false` the public interface is yours, and that
-second part stays.
+drift. From outside, it lets in SSH (always, on whichever port the machine's
+SSH server answers, so it can never lock you out), 80 and 443 while ingress
+runs, the `tcp` and `udp` ports your files declare, and the ICMP and DHCP
+traffic a machine needs. Everything else is dropped silently. Outside means
+the internet, and it also means everything on the private network that is
+not one of the cluster's machines: a tailnet's other devices, or a
+provider's other tenants.
+
+**Nomad answers nothing without a token.** Whatever can ask Nomad to run a
+job can run anything on every machine, so its API is closed three ways. It
+listens only on the machine itself and the private network. The firewall
+keeps its ports to the cluster's own machines, from before it first starts
+and with `firewall: false` too. And it runs with its access control on:
+orca asks with a token `bootstrap` makes and keeps on each machine in a file
+only root can read, which orca reads over SSH each time and never stores on
+your own machine. A container holds no token. Nomad renders a service's
+secrets into it without handing it one, and of orca's own jobs only ingress,
+the certificate job and the status page are given one, each limited to what
+it does.
 
 **Above one machine**, the machines need a private network (your provider's,
 or Tailscale or WireGuard; orca does not build one). Each machine lists its
 `private_ip`, and bootstrap refuses one that is on the public interface.
 Internal and hostname ports are then published on the private network at
 their own port number, so two services using the same port cannot share a
-machine. Ingress, the log and metric stores and the status page run on the
+machine. The token guards Nomad's API but not the ports its machines use to
+talk to each other, which is why the firewall keeps those to the cluster:
+with `firewall: false` on a shared private network, that is the one rule
+orca still writes for you. Ingress, the log and metric stores and the status page run on the
 first server unless you place them elsewhere. A service with a volume stays
 on the machine that holds its data.
 

@@ -122,12 +122,3 @@ func TestRenderTopAlignsWithColour(t *testing.T) {
 		t.Fatalf("no service rows found:\n%s", plain)
 	}
 }
-
-// The script runs in a remote shell, where a backtick in a message is a
-// command substitution: a hint to run `orca apply orca` would run it on the
-// machine.
-func TestStatusSummaryScriptHasNoBackticks(t *testing.T) {
-	if strings.Contains(statusSummaryScript, "`") {
-		t.Errorf("backtick in a remote script:\n%s", statusSummaryScript)
-	}
-}
