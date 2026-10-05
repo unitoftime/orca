@@ -1161,19 +1161,27 @@ func (c *Cluster) ListBackups(ctx context.Context, spec deploy.BackupSpec) ([]st
 	// case and nothing else. Treating 3 as empty too would answer "no backups
 	// yet for shop/db" to someone whose bucket name is wrong: the
 	// reassuring-but-false answer this command exists to avoid giving.
+	//
+	// Only what rclone prints as the listing is the listing. Everything said
+	// on the way to it is kept apart and shown only when it failed: Docker
+	// pulling the image the first time, and rclone's own notices, would
+	// otherwise each be read as the name of a backup.
 	script := fmt.Sprintf(`set -eu
 %[1]s
 BUCKET=%[3]s
 PREFIX=%[4]s
+ERR=$(mktemp)
 set +e
-OUT=$(docker run --rm --network host --env-file "$ENVFILE" %[2]s lsf "store:$BUCKET/$PREFIX/" 2>&1)
+OUT=$(docker run --rm --network host --env-file "$ENVFILE" %[2]s lsf "store:$BUCKET/$PREFIX/" 2>"$ERR")
 CODE=$?
 set -e
 rm -f "$ENVFILE"
 if [ $CODE -ne 0 ]; then
-  echo "$OUT" >&2
+  cat "$ERR" >&2
+  rm -f "$ERR"
   exit $CODE
 fi
+rm -f "$ERR"
 printf '%%s\n' "$OUT"`,
 		rcloneEnvScript(spec), shQuote(spec.Image), shQuote(spec.Bucket), shQuote(spec.Prefix))
 
