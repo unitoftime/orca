@@ -184,35 +184,72 @@ providers:
 	return b.String()
 }
 
-// dashboardsEnabled reports whether the platform's own web UIs are published.
-// A domain to serve them on, a password to put in front of them and HTTPS to
-// carry it are all required: over plain HTTP the password crosses the internet
-// readable by anyone on the way. Without any of them they stay reachable only
-// over SSH, which is how `orca top` and `orca logs` reach them anyway.
-func dashboardsEnabled(opts PlatformOptions) bool {
-	return opts.Domain != "" && opts.Ingress != nil && opts.Ingress.TLS && opts.Ingress.AuthHash != ""
+// The cluster's login is one password in front of a hostname: the dashboards',
+// and any port a service file writes as `auth:<hostname>`. It is three things
+// on a route, which loginRule and loginMiddlewares are the whole of: the
+// password itself, a limit on how fast it can be guessed, and a refusal of
+// requests another site's page told the browser to make.
+
+// loginEnabled reports whether ingress can put the login in front of
+// anything. A password and HTTPS to carry it are both required: over plain
+// HTTP the password crosses the internet readable by anyone on the way.
+func loginEnabled(opts PlatformOptions) bool {
+	return opts.Ingress != nil && opts.Ingress.TLS && opts.Ingress.AuthHash != ""
 }
 
-// How many requests a second one address may make of the dashboards, and how
-// many at once. Enough for a page that loads a few dozen files and then
-// polls, and a ceiling on how fast a password can be guessed from one place.
+// dashboardsEnabled reports whether the platform's own web UIs are published.
+// A domain to serve them on and the login to put in front of them are both
+// required. Without either they stay reachable only over SSH, which is how
+// `orca top` and `orca logs` reach them anyway.
+func dashboardsEnabled(opts PlatformOptions) bool {
+	return opts.Domain != "" && loginEnabled(opts)
+}
+
+// How many requests a second one address may make of what is behind the
+// login, and how many at once. Enough for a page that loads a few dozen files
+// and then polls, and a ceiling on how fast a password can be guessed from
+// one place.
 const (
-	dashboardRequestsPerSecond = 10
-	dashboardRequestBurst      = 100
+	loginRequestsPerSecond = 10
+	loginRequestBurst      = 100
 )
 
-// notFromAnotherSite is the part of a dashboard's route that refuses a
+// The login's two middlewares, which ingress's own configuration defines and
+// every route behind the login names.
+const (
+	loginLimitMiddleware = "orca-login-limit"
+	loginAuthMiddleware  = "orca-login-auth"
+)
+
+// loginMiddlewares is what a route behind the login lists as its middlewares.
+//
+// The limit comes first, so a wrong password costs a guess against it as
+// well: one shared password stands between the internet and every log line,
+// and checking one is slow on purpose.
+//
+// Named in full, with where they are defined, so a service's route in the
+// catalog finds them as ingress's own routes do. A route naming a middleware
+// that is not defined is one Traefik does not serve at all, so a login that
+// cannot be provided closes the route rather than opening it.
+const loginMiddlewares = loginLimitMiddleware + "@file," + loginAuthMiddleware + "@file"
+
+// notFromAnotherSite is the part of a route behind the login that refuses a
 // request another site's page told the browser to make.
 //
-// A browser that is logged in to a dashboard sends its password with every
-// request there, including one a page elsewhere asks for: a form that posts
-// to the metric store, say. The browser also says where each request came
-// from, in Sec-Fetch-Site, so those are simply not routed. What is let
-// through from elsewhere is following a link to a page, which is how the
-// status page's own links to the other two arrive, and which only reads.
-// Anything that sends no such header is not a browser being steered.
+// A browser that is logged in sends its password with every request to that
+// name, including one a page elsewhere asks for: a form that posts to the
+// metric store, say. The browser also says where each request came from, in
+// Sec-Fetch-Site, so those are simply not routed. What is let through from
+// elsewhere is following a link to a page, which is how the status page's own
+// links to the other two arrive, and which only reads. Anything that sends no
+// such header is not a browser being steered.
 const notFromAnotherSite = "!(HeaderRegexp(`Sec-Fetch-Site`, `^(cross-site|same-site)$`)" +
 	" && !(Method(`GET`) && Header(`Sec-Fetch-Mode`, `navigate`) && Header(`Sec-Fetch-Dest`, `document`)))"
+
+// loginRule is the rule of a route behind the login, for one hostname.
+func loginRule(host string) string {
+	return fmt.Sprintf("Host(`%s`) && %s", host, notFromAnotherSite)
+}
 
 // dashboard is one of the platform's built-in web UIs.
 type dashboard struct {
@@ -229,8 +266,8 @@ type dashboard struct {
 }
 
 // traefikDynamicConfig is the routing ingress cannot learn from the catalog:
-// the platform's web UIs on subdomains, behind basic auth, and the ownership
-// checks the certificate job answers.
+// the login's middlewares, the platform's web UIs on subdomains behind it, and
+// the ownership checks the certificate job answers.
 //
 // vmui, the query UI built into both Victoria binaries, is what makes logs
 // and metrics explorable in a browser without running Grafana. The status
@@ -263,14 +300,13 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 	}
 
 	b.WriteString("http:\n")
-	if dashboardsEnabled(opts) {
-		// The limit comes first, so a wrong password costs a guess against
-		// it as well: one shared password stands between the internet and
-		// every log line, and checking one is slow on purpose.
-		b.WriteString("  middlewares:\n    dashboard-auth:\n      basicAuth:\n        users:\n")
+	if loginEnabled(opts) {
+		// Defined whether or not a dashboard is published: a service's own
+		// port can be behind the login on a cluster with no dashboards.
+		fmt.Fprintf(&b, "  middlewares:\n    %s:\n      basicAuth:\n        users:\n", loginAuthMiddleware)
 		fmt.Fprintf(&b, "          - %q\n", "admin:"+opts.Ingress.AuthHash)
-		fmt.Fprintf(&b, "    dashboard-limit:\n      rateLimit:\n        average: %d\n        burst: %d\n",
-			dashboardRequestsPerSecond, dashboardRequestBurst)
+		fmt.Fprintf(&b, "    %s:\n      rateLimit:\n        average: %d\n        burst: %d\n",
+			loginLimitMiddleware, loginRequestsPerSecond, loginRequestBurst)
 	}
 
 	b.WriteString("  routers:\n")
@@ -279,10 +315,10 @@ func traefikDynamicConfig(opts PlatformOptions) string {
 			continue
 		}
 		fmt.Fprintf(&b, `    %s:
-      rule: "Host(`+"`"+`%s.%s`+"`"+`) && %s"
+      rule: %q
       service: %s
-      middlewares: [dashboard-limit, dashboard-auth]
-`, d.name, d.name, opts.Domain, notFromAnotherSite, d.name)
+      middlewares: [%s]
+`, d.name, loginRule(d.name+"."+opts.Domain), d.name, loginMiddlewares)
 		if opts.Ingress.TLS {
 			b.WriteString("      tls: {}\n")
 		}

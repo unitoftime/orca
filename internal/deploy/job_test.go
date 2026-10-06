@@ -227,6 +227,45 @@ ports:
 	}
 }
 
+// A port behind the cluster's login is never routed without it: its route
+// carries the password and the guess limit, by the names ingress defines
+// them under, and refuses requests made from another site. And it is not
+// deployed at all where there is no HTTPS to carry the password.
+func TestAuthPortIsRoutedOnlyBehindTheLogin(t *testing.T) {
+	const svc = `
+name: server
+image: i:1
+ports:
+  9899: auth:admin.example.com
+`
+	job := buildOneIn(t, "game", svc, "server", defaultOpts())
+
+	tags := strings.Join(job.TaskGroups[0].Services[0].Tags, "\n")
+	for _, want := range []string{
+		".rule=" + loginRule("admin.example.com"),
+		".middlewares=" + loginMiddlewares,
+		".tls=true",
+	} {
+		if !strings.Contains(tags, want) {
+			t.Errorf("tags should contain %q, got:\n%s", want, tags)
+		}
+	}
+
+	cfg := traefikDynamicConfig(platformOpts())
+	for _, name := range strings.Split(loginMiddlewares, ",") {
+		if def := "    " + strings.TrimSuffix(name, "@file") + ":\n"; !strings.Contains(cfg, def) {
+			t.Errorf("ingress does not define %s, which the route names:\n%s", name, cfg)
+		}
+	}
+
+	opts := defaultOpts()
+	opts.TLS = false
+	_, err := BuildGroup(parse(t, svc), map[string]string{"server": "i@sha256:1"}, opts, func(*manifest.Service) (string, error) { return "", nil })
+	if err == nil || !strings.Contains(err.Error(), "needs HTTPS") {
+		t.Errorf("want a refusal naming HTTPS, got %v", err)
+	}
+}
+
 // Without certificates there is no https entrypoint, so a route must attach
 // to http, and every entrypoint a route names must be one ingress defines.
 // Traefik drops a route naming one it does not, such as "websecure".

@@ -437,7 +437,7 @@ func TestDashboardRoutes(t *testing.T) {
 	for _, want := range []string{
 		"logs.example.com", "metrics.example.com",
 		"basicAuth", "admin:$2a$10$hash", "tls: {}",
-		"rateLimit", "middlewares: [dashboard-limit, dashboard-auth]",
+		"rateLimit", "middlewares: [" + loginMiddlewares + "]",
 		"&& !(HeaderRegexp(`Sec-Fetch-Site`, `^(cross-site|same-site)$`)",
 	} {
 		if !strings.Contains(cfg, want) {

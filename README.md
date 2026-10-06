@@ -122,6 +122,7 @@ The key is the port inside the container. The value says who can reach it:
 | `internal` | other services only |
 | `metrics` | other services only; also collected as metrics from `/metrics` |
 | a hostname, like `shop.example.com` | the internet, over HTTPS |
+| `auth:` and a hostname | the same, after logging in with the dashboards' password |
 | `tcp` or `udp` | the internet, directly on that port |
 
 ```yaml
@@ -129,6 +130,7 @@ ports:
   5432: internal
   2112: metrics
   8080: shop.example.com
+  9090: auth:ops.example.com   # asks for the dashboards' login first
   7777: tcp                # the same port number on the server
   7778: udp:9000           # or a different one
   7779: [tcp, udp]         # both protocols
@@ -139,6 +141,10 @@ ports:
 - A service can have one hostname port and one `metrics` port. Point the
   hostname's DNS at your server. No two services can share a hostname, and
   `status.`, `logs.` and `metrics.` under your monitoring domain are orca's.
+- `auth:` is for a page with no login of its own, like an admin panel. It is
+  the login the dashboards use: user `admin`, password from `orca password`,
+  the same limit on guesses, and requests made from another site are
+  refused. It needs HTTPS, and apply refuses it without.
 - Two services cannot use the same public port, and TCP ports 22, 80 and 443
   are taken by SSH and HTTPS. `orca apply` stops and tells you before
   deploying.

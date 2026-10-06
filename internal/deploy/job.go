@@ -555,18 +555,27 @@ func metricsService(m *manifest.Manifest, s *manifest.Service, opts Options) *no
 // match exactly, because Traefik drops a route whose entrypoint is missing.
 // The certificate is not named: ingress serves the one that matches the host,
 // from those the certificate job has issued.
+//
+// A port behind the cluster's login gets the route a dashboard has; see
+// loginRule and loginMiddlewares.
 func traefikTags(m *manifest.Manifest, s *manifest.Service, opts Options) []string {
 	for _, cport := range s.PortNumbers() {
 		ex := s.Ports[cport]
 		if ex.Kind != manifest.PortDomain {
 			continue
 		}
-		host := ex.Domain
 
 		router := CatalogName(m.Group, s.Name)
+		rule := fmt.Sprintf("Host(`%s`)", ex.Domain)
+		if ex.Auth {
+			rule = loginRule(ex.Domain)
+		}
 		tags := []string{
 			"traefik.enable=true",
-			fmt.Sprintf("traefik.http.routers.%s.rule=Host(`%s`)", router, host),
+			fmt.Sprintf("traefik.http.routers.%s.rule=%s", router, rule),
+		}
+		if ex.Auth {
+			tags = append(tags, fmt.Sprintf("traefik.http.routers.%s.middlewares=%s", router, loginMiddlewares))
 		}
 		if opts.TLS {
 			tags = append(tags,

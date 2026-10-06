@@ -184,6 +184,14 @@ func BuildGroup(m *manifest.Manifest, images map[string]string, opts Options, no
 				m.Path, s.Name))
 			continue
 		}
+		// The login is a password, and over plain HTTP it would cross the
+		// internet readable by anyone on the way.
+		if s.UsesAuth() && !o.TLS {
+			errs = append(errs, fmt.Errorf(
+				"%s: service %q: puts a port behind the cluster's login, which needs HTTPS; cluster.yaml has it off",
+				m.Path, s.Name))
+			continue
+		}
 
 		job, err := Build(m, s, image, o)
 		if err != nil {

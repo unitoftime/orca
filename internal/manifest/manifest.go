@@ -237,6 +237,17 @@ func (s *Service) UsesIngress() bool {
 	return false
 }
 
+// UsesAuth reports whether any of the service's ports is behind the cluster's
+// login.
+func (s *Service) UsesAuth() bool {
+	for _, p := range s.Ports {
+		if p.Auth {
+			return true
+		}
+	}
+	return false
+}
+
 // PublicPorts lists the container ports reachable from outside the cluster.
 func (s *Service) PublicPorts() []int {
 	var out []int

@@ -33,6 +33,10 @@ const (
 	PortRaw PortKind = "raw"
 )
 
+// authPrefix is what a hostname is written after to put the cluster's login
+// in front of it.
+const authPrefix = "auth"
+
 // Bind is one protocol a raw port answers on, and the host port it binds.
 type Bind struct {
 	Proto string // "tcp" or "udp"
@@ -60,6 +64,7 @@ func (b Bind) HostPort(container int) int {
 //	5432: internal              siblings only
 //	2112: metrics               siblings only, and scraped for metrics
 //	8080: errors.example.com    ingress, at a hostname you chose
+//	8080: auth:ops.example.com  the same, behind the cluster's login
 //	7777: tcp                   raw host port 7777
 //	7777: udp:7778              raw, host port differs from the container's
 //
@@ -72,6 +77,13 @@ type Port struct {
 	Kind PortKind
 
 	Domain string // PortDomain only
+
+	// Auth puts the cluster's login in front of the hostname: ingress routes
+	// nothing to it until the dashboards' password has been given. PortDomain
+	// only. A setting of the route rather than a kind of its own, because
+	// everything else about the port (its certificate, its claim on the name,
+	// being the one port ingress reaches) is a hostname port's.
+	Auth bool
 
 	Binds []Bind // PortRaw only
 }
@@ -99,7 +111,7 @@ func (p *Port) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
 		var raw string
 		if err := node.Decode(&raw); err != nil {
-			return fmt.Errorf("port must be internal, metrics, a hostname, or a protocol like tcp or udp:7778")
+			return fmt.Errorf("port must be internal, metrics, a hostname, auth:<hostname>, or a protocol like tcp or udp:7778")
 		}
 		parsed, err := ParsePort(raw)
 		if err != nil {
@@ -155,8 +167,8 @@ func sortBinds(b []Bind) {
 
 // ParsePort reads one authored scalar.
 //
-// Keywords win over hostnames, so "internal", "metrics" and the protocol
-// forms are reserved and cannot be custom domains.
+// Keywords win over hostnames, so "internal", "metrics", "auth" and the
+// protocol forms are reserved and cannot be custom domains.
 func ParsePort(s string) (Port, error) {
 	raw := strings.TrimSpace(s)
 	if raw == "" {
@@ -175,11 +187,17 @@ func ParsePort(s string) (Port, error) {
 		return Port{Kind: PortMetrics}, nil
 	}
 
-	// A protocol form is "<proto>" or "<proto>:<hostport>". Split first so a
-	// malformed protocol reports as a protocol error rather than being
+	// A prefixed form is "<proto>", "<proto>:<hostport>" or "auth:<hostname>".
+	// Split first so a malformed prefix reports as one rather than being
 	// silently accepted as a hostname.
 	protoPart, portPart, hasPort := strings.Cut(raw, ":")
 	switch strings.ToLower(protoPart) {
+	case authPrefix:
+		host := strings.ToLower(strings.TrimSpace(portPart))
+		if host == "" {
+			return Port{}, fmt.Errorf(`port %q: name the hostname the login is in front of, e.g. "auth:ops.example.com"`, raw)
+		}
+		return Port{Kind: PortDomain, Domain: host, Auth: true}, nil
 	case "tcp", "udp":
 		b := Bind{Proto: strings.ToLower(protoPart)}
 		if hasPort {
@@ -195,10 +213,10 @@ func ParsePort(s string) (Port, error) {
 		return Port{Kind: PortRaw, Binds: []Bind{b}}, nil
 	}
 
-	// A colon that did not introduce a valid protocol is a typo, not a
+	// A colon that did not introduce a valid prefix is a typo, not a
 	// hostname: no hostname has one.
 	if hasPort {
-		return Port{}, fmt.Errorf(`port %q: unknown protocol %q; use "tcp" or "udp"`, raw, protoPart)
+		return Port{}, fmt.Errorf(`port %q: unknown prefix %q; use "tcp", "udp" or "auth"`, raw, protoPart)
 	}
 
 	return Port{Kind: PortDomain, Domain: strings.ToLower(raw)}, nil
@@ -213,6 +231,9 @@ func (p Port) String() string {
 	case PortMetrics:
 		return string(PortMetrics)
 	case PortDomain:
+		if p.Auth {
+			return authPrefix + ":" + p.Domain
+		}
 		return p.Domain
 	case PortRaw:
 		parts := make([]string, 0, len(p.Binds))

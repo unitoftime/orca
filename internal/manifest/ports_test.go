@@ -18,6 +18,7 @@ func TestParsePort(t *testing.T) {
 		{"metrics", Port{Kind: PortMetrics}},
 		{"errors.example.com", Port{Kind: PortDomain, Domain: "errors.example.com"}},
 		{"Errors.Example.COM", Port{Kind: PortDomain, Domain: "errors.example.com"}},
+		{"auth:ops.example.com", Port{Kind: PortDomain, Domain: "ops.example.com", Auth: true}},
 		{"INTERNAL", Port{Kind: PortInternal}},
 		{"tcp", raw(Bind{Proto: "tcp"})},
 		{"udp", raw(Bind{Proto: "udp"})},
@@ -47,6 +48,7 @@ func TestParsePortErrors(t *testing.T) {
 		"http",         // the generated hostname is gone; name one
 		"http:8080",    // nor does it take a port
 		"internal:80",  // internal takes no port either
+		"auth:",        // a login in front of nothing
 	} {
 		if got, err := ParsePort(in); err == nil {
 			t.Errorf("ParsePort(%q) = %+v, want an error", in, got)
