@@ -71,7 +71,8 @@ turn that off yourself if you do not want it.
 
 `bootstrap` updates the OS, turns on automatic security updates, and installs
 Docker and Nomad. It is safe to run again; that is also how you upgrade orca on
-the server.
+the server. It also raises the largest socket buffer a program may ask for to
+8MB, which a service taking many connections on a `udp` port needs.
 
 An update that needs a reboot, a new kernel mostly, waits for one: orca never
 restarts a server on its own. `orca top` and the status page say "reboot

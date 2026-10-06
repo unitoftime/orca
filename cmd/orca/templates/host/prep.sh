@@ -62,11 +62,19 @@ echo "=== 4. Kernel parameters ==="
 # vm.overcommit_memory=1 lets a process fork a copy of itself without the
 # kernel first checking that a full second copy would fit: Redis snapshots and
 # rewrites its log that way, and under memory pressure the check fails those
-# saves although the copy shares almost every page. The rest is ordinary
-# network hardening; nothing here is load-bearing for orca itself.
+# saves although the copy shares almost every page.
+# rmem_max and wmem_max are the largest socket buffer a program may ask for,
+# 8MB in place of the kernel's 208K. A service on a udp port that carries
+# many connections (QUIC, a game) asks for megabytes and drops packets under
+# load with less. It cannot be set per container: the limit is the machine's.
+# Only a ceiling, so a socket that asks for nothing gets what it always did.
+# The rest is ordinary network hardening; nothing here is load-bearing for
+# orca itself.
 cat > /etc/sysctl.d/99-orca.conf <<'EOF'
 net.ipv4.ip_forward=1
 vm.overcommit_memory=1
+net.core.rmem_max=8388608
+net.core.wmem_max=8388608
 net.ipv4.tcp_syncookies=1
 net.ipv4.conf.all.accept_redirects=0
 net.ipv4.conf.default.accept_redirects=0
