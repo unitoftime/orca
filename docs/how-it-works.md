@@ -275,6 +275,11 @@ latest 14 are kept. The target's credentials are secrets you set, and apply
 refuses to deploy a backup that has none, rather than letting it fail quietly
 every night. A failed backup shows as `failed` in `orca status`.
 
+Nomad forgets a finished run within hours, so the status page's job writes
+down the last run of each backup, and status is answered from that once Nomad
+has nothing. With the status page off, a backup is reported only for as long
+as Nomad remembers it.
+
 A Postgres backup holds every database, and the roles that own them and are
 granted on them, so it restores onto a server that has never seen them. The
 `postgres` superuser is left out: its password is the cluster's own secret.

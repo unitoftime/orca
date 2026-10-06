@@ -89,9 +89,10 @@ func ReadJobs(ctx context.Context, c *nomad.Client) (map[string]JobState, error)
 	return states, nil
 }
 
-// ReadRuntime returns the live allocation and deployment state, in two
-// requests however many jobs exist. resources adds what each allocation has
-// claimed, which is more to send and wanted only where it is shown.
+// ReadRuntime returns the allocation and deployment state: what Nomad has
+// now, and the last run of each scheduled job that it has since forgotten
+// (see ReadRuns). resources adds what each allocation has claimed, which is
+// more to send and wanted only where it is shown.
 func ReadRuntime(ctx context.Context, c *nomad.Client, resources bool) ([]AllocState, []DeploymentState, error) {
 	q := (&nomad.QueryOptions{}).WithContext(ctx)
 	allocQ := q
@@ -100,34 +101,45 @@ func ReadRuntime(ctx context.Context, c *nomad.Client, resources bool) ([]AllocS
 	}
 
 	var (
-		allocs []*nomad.AllocationListStub
+		allocs []AllocState
+		runs   []AllocState
 		deps   []*nomad.Deployment
 	)
-	err := each(2, func(i int) (err error) {
-		if i == 0 {
-			if allocs, _, err = c.Allocations().List(allocQ); err != nil {
-				return fmt.Errorf("list allocations: %w", err)
+	err := each(3, func(i int) (err error) {
+		switch i {
+		case 0:
+			allocs, err = readAllocs(ctx, c, allocQ)
+		case 1:
+			runs, err = ReadRuns(ctx, c)
+		default:
+			if deps, _, err = c.Deployments().List(q); err != nil {
+				err = fmt.Errorf("list deployments: %w", err)
 			}
-			return nil
 		}
-		if deps, _, err = c.Deployments().List(q); err != nil {
-			return fmt.Errorf("list deployments: %w", err)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	allocStates := make([]AllocState, 0, len(allocs))
-	for _, a := range allocs {
-		allocStates = append(allocStates, AllocStateFromNomad(a))
-	}
 	depStates := make([]DeploymentState, 0, len(deps))
 	for _, d := range deps {
 		depStates = append(depStates, DeploymentStateFromNomad(d))
 	}
-	return allocStates, depStates, nil
+	return withRuns(allocs, runs), depStates, nil
+}
+
+// readAllocs returns the allocations Nomad has.
+func readAllocs(ctx context.Context, c *nomad.Client, q *nomad.QueryOptions) ([]AllocState, error) {
+	allocs, _, err := c.Allocations().List(q)
+	if err != nil {
+		return nil, fmt.Errorf("list allocations: %w", err)
+	}
+	out := make([]AllocState, 0, len(allocs))
+	for _, a := range allocs {
+		out = append(out, AllocStateFromNomad(a))
+	}
+	return out, nil
 }
 
 // ReadPlacement explains why a job could not be scheduled anywhere, or says

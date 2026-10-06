@@ -400,7 +400,9 @@ orca db restore shop/db <backup-name>   # or a specific one
 ```
 
 A failed backup shows as `failed` in `orca status`, with its output in
-`orca logs shop/db`.
+`orca logs shop/db`. It goes on showing how the last run went until the next
+one, which needs the status page on (it is by default): the status page is
+what keeps that on record.
 
 A Postgres backup holds every database and every role, with its password
 and grants, apart from the `postgres` superuser, whose password is the

@@ -416,3 +416,34 @@ func TestRolloutWaitsForTheSubmittedVersion(t *testing.T) {
 		t.Errorf("a finished rollout: %s, want running", got.Health)
 	}
 }
+
+// A scheduled job's last run is still what status reports once Nomad has
+// collected it, a newer run Nomad does have is reported in its place, and
+// only a finished run newer than the one remembered is written down.
+func TestScheduledJobIsReportedByItsRememberedRun(t *testing.T) {
+	jobs := map[string]JobState{"shop-db-backup": {ID: "shop-db-backup", Group: "shop", Service: "db-backup", Periodic: true}}
+	run := func(id string, at int64, status string) AllocState {
+		return AllocState{ID: id, JobID: "shop-db-backup/periodic-" + id, CreateTime: at, ClientStatus: status, DesiredStatus: "run"}
+	}
+	lastNight := run("a", 100, "failed")
+
+	// Nomad has nothing left of it.
+	got := only(t, Summarize(jobs, withRuns(nil, []AllocState{lastNight}), nil))
+	if got.Health != HealthFailed {
+		t.Errorf("with only the remembered run: health = %q, want %q", got.Health, HealthFailed)
+	}
+
+	// Nomad has a newer one, and still the remembered one too.
+	live := []AllocState{lastNight, run("b", 200, "complete")}
+	got = only(t, Summarize(jobs, withRuns(live, []AllocState{lastNight}), nil))
+	if got.Health != HealthOK {
+		t.Errorf("with a newer live run: health = %q, want %q", got.Health, HealthOK)
+	}
+
+	if w := runsToRemember(live, []AllocState{lastNight}); len(w) != 1 || w[0].ID != "b" {
+		t.Errorf("want only the newer run written down, got %+v", w)
+	}
+	if w := runsToRemember(append(live, run("c", 300, "running")), []AllocState{live[1]}); len(w) != 0 {
+		t.Errorf("a run still going, and one already remembered, are not written down; got %+v", w)
+	}
+}

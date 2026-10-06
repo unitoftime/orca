@@ -59,11 +59,14 @@ func ACLPolicies() []*nomad.ACLPolicy {
 				aclVars{"orca-acme/*", "read", "write", "destroy", "list"}),
 		},
 		{
-			// The status page only ever reads: jobs, allocations, machines.
+			// The status page reads: jobs, allocations, machines. The one
+			// thing it writes is the last run of each scheduled job, which
+			// it keeps after Nomad has forgotten it.
 			Name:        "orca-status",
-			Description: "Read what is running and where",
+			Description: "Read what is running and where, and remember scheduled jobs' runs",
 			JobACL:      &nomad.JobACL{Namespace: Namespace, JobID: JobID(manifest.ReservedGroup, "status")},
-			Rules:       aclRules("read") + "\nnode {\n  policy = \"read\"\n}\n",
+			Rules: aclRules("read",
+				aclVars{RunPrefix + "/*", "read", "write", "list"}) + "\nnode {\n  policy = \"read\"\n}\n",
 		},
 	}
 }

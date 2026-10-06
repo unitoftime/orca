@@ -408,6 +408,7 @@ func execute(ctx context.Context, cluster *Cluster, plan deploy.Plan) (map[strin
 			errs = append(errs, err)
 			continue
 		}
+		forgetRun(ctx, cluster, c.JobID)
 		fmt.Println("ok")
 	}
 

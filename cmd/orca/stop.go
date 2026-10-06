@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -45,6 +46,16 @@ func cmdStop(ctx context.Context, cfg Config, group string) error {
 		fmt.Printf("Delete %s/%s to remove it for good.\n", cfg.Root, group)
 	}
 	return nil
+}
+
+// forgetRun deletes the last run remembered for a job that has been removed,
+// so a scheduled job declared again later does not start with another's
+// history. `orca stop` keeps it: that job comes back as it was. Not fatal: a
+// record left behind is a line of text nothing reads.
+func forgetRun(ctx context.Context, cluster *Cluster, jobID string) {
+	if err := cluster.deleteVariable(ctx, deploy.RunPath(jobID)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not forget the last run of %s: %v\n", jobID, err)
+	}
 }
 
 // cmdPurge deletes a group's data.
@@ -136,6 +147,7 @@ func cmdPurge(ctx context.Context, cfg Config, in invocation) error {
 		if err := cluster.Stop(ctx, id); err != nil {
 			return err
 		}
+		forgetRun(ctx, cluster, id)
 	}
 	for _, s := range secrets {
 		g, n, err := parseSecretRef(s)

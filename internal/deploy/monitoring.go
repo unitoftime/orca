@@ -227,7 +227,8 @@ func nodeMountExclude(dataDir string) string {
 //
 // Host networking, because it reads Nomad's API, which answers on loopback
 // and which the firewall deliberately keeps every container on the bridge
-// away from. It only ever reads, and its identity is allowed nothing else. A
+// away from. It reads, and its identity is allowed one thing more: to write
+// down the last run of each scheduled job (see RememberRuns). A
 // dynamic port on the internal network, found through the catalog by ingress
 // and by `orca top`, so it takes no number a service might want.
 func statusJob(opts PlatformOptions) *nomad.Job {
