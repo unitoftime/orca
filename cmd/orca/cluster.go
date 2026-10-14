@@ -163,6 +163,80 @@ func (c *Cluster) PlacementFailure(ctx context.Context, jobID string) string {
 	return deploy.ReadPlacement(ctx, api, jobID)
 }
 
+// ForceRun starts a run of a periodic job now and returns the ID of the job
+// that run is. The schedule is untouched: the next launch is still the next
+// time the cron spec names.
+//
+// Nomad's own force skips the overlap check a scheduled launch makes, so it is
+// made here. A second run on top of one still going would race it for the
+// same upload and the same pruning.
+func (c *Cluster) ForceRun(ctx context.Context, jobID string) (string, error) {
+	api, err := c.client(ctx)
+	if err != nil {
+		return "", err
+	}
+	q := (&nomad.QueryOptions{}).WithContext(ctx)
+
+	var unexpected nomad.UnexpectedResponseError
+	if _, _, err := api.Jobs().Info(jobID, q); errors.As(err, &unexpected) && unexpected.StatusCode() == http.StatusNotFound {
+		return "", fmt.Errorf("%s is not deployed; run `orca apply` first", jobID)
+	} else if err != nil {
+		return "", fmt.Errorf("read job %s: %w", jobID, err)
+	}
+
+	runs, _, err := api.Jobs().List((&nomad.QueryOptions{Prefix: jobID + "/periodic-"}).WithContext(ctx))
+	if err != nil {
+		return "", fmt.Errorf("list runs of %s: %w", jobID, err)
+	}
+	for _, r := range runs {
+		if r.Status != "dead" {
+			return "", fmt.Errorf("%s is already running (%s); wait for it to finish", jobID, r.ID)
+		}
+	}
+
+	evalID, _, err := api.Jobs().PeriodicForce(jobID, (&nomad.WriteOptions{}).WithContext(ctx))
+	if err != nil {
+		return "", fmt.Errorf("start %s: %w", jobID, err)
+	}
+	eval, _, err := api.Evaluations().Info(evalID, q)
+	if err != nil {
+		return "", fmt.Errorf("read the run of %s: %w", jobID, err)
+	}
+	return eval.JobID, nil
+}
+
+// RunEnded reports whether a run started by ForceRun has finished, and if so
+// whether it succeeded.
+//
+// Judged by the run's job rather than its first allocation: a failed
+// allocation Nomad reschedules is not the end of the run. Once the job is
+// dead, it succeeded if anything in it completed.
+func (c *Cluster) RunEnded(ctx context.Context, runID string) (ended, ok bool, err error) {
+	api, err := c.client(ctx)
+	if err != nil {
+		return false, false, err
+	}
+	q := (&nomad.QueryOptions{}).WithContext(ctx)
+
+	job, _, err := api.Jobs().Info(runID, q)
+	if err != nil {
+		return false, false, fmt.Errorf("read run %s: %w", runID, err)
+	}
+	if job.Status == nil || *job.Status != "dead" {
+		return false, false, nil
+	}
+	sum, _, err := api.Jobs().Summary(runID, q)
+	if err != nil {
+		return false, false, fmt.Errorf("read run %s: %w", runID, err)
+	}
+	for _, tg := range sum.Summary {
+		if tg.Complete > 0 {
+			return true, true, nil
+		}
+	}
+	return true, false, nil
+}
+
 // serviceAddr resolves one of orca's own services from the catalog, as
 // host:port, reporting false for one that is not registered.
 //

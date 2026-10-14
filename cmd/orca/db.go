@@ -7,12 +7,13 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/unitoftime/orca/internal/deploy"
 	"github.com/unitoftime/orca/internal/manifest"
 )
 
-// `orca db list` and `orca db restore`.
+// `orca db backup`, `orca db list` and `orca db restore`.
 //
 // A backup nobody has restored is a hope, not a backup, so restoring is a
 // first-class command rather than a runbook, and it runs the same way every
@@ -55,6 +56,42 @@ func findDatabase(cfg Config, ref string) (*manifest.Manifest, *manifest.Service
 			"no database declares a backup; add backup: {to: <group>/<service>} to one")
 	}
 	return nil, nil, deploy.BackupSpec{}, fmt.Errorf("no backed-up database %q; known: %s", ref, strings.Join(known, ", "))
+}
+
+// dbBackup runs a database's backup now, outside its schedule, and waits to
+// say how it went. Waiting is the point: a backup taken before something risky
+// is only worth having once it is known to have finished.
+func dbBackup(ctx context.Context, cfg Config, cluster *Cluster, ref string) error {
+	m, s, _, err := findDatabase(cfg, ref)
+	if err != nil {
+		return err
+	}
+
+	runID, err := cluster.ForceRun(ctx, deploy.BackupJobID(m.Group, s.Name))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Backing up %s (%s). Interrupting stops the wait, not the backup.\n", ref, runID)
+
+	for {
+		ended, ok, err := cluster.RunEnded(ctx, runID)
+		if err != nil {
+			return err
+		}
+		if ended && ok {
+			fmt.Printf("Backed up %s; see `orca db list %s`.\n", ref, ref)
+			return nil
+		}
+		if ended {
+			return fmt.Errorf("backup of %s failed; see `orca logs %s`", ref, ref)
+		}
+
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case <-time.After(healthPoll):
+		}
+	}
 }
 
 func dbList(ctx context.Context, cfg Config, cluster *Cluster, ref string) error {

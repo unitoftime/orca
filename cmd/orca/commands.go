@@ -280,6 +280,14 @@ read-only one: on GitHub, one with only read:packages.`,
 		},
 	},
 	{
+		name: "db backup", args: "<group>/<service>", min: 1, max: 1,
+		summary: "back up a database now, outside its schedule",
+		help:    `Waits for the backup to finish. The next scheduled backup still runs when its schedule says.`,
+		run: func(ctx context.Context, cfg Config, in invocation) error {
+			return withCluster(ctx, cfg, func(c *Cluster) error { return dbBackup(ctx, cfg, c, in.Arg(0)) })
+		},
+	},
+	{
 		name: "db list", args: "<group>/<service>", min: 1, max: 1,
 		summary: "a database's backups, oldest first",
 		run: func(ctx context.Context, cfg Config, in invocation) error {

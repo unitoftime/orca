@@ -394,6 +394,7 @@ backup:
 ```
 
 ```
+orca db backup shop/db                  # back up now, outside the schedule
 orca db list shop/db                    # the backups held, oldest first
 orca db restore shop/db                 # restore the newest
 orca db restore shop/db <backup-name>   # or a specific one
@@ -659,6 +660,7 @@ orca registry login <host> [-u <user>]
                                     log the cluster in to a private registry
 orca registry list                  the registries the cluster has a login for
 orca registry logout <host>         remove a registry's login
+orca db backup <group>/<service>    back up a database now, outside its schedule
 orca db list <group>/<service>      a database's backups, oldest first
 orca db restore <group>/<service> [backup] [--yes]
                                     restore a backup, the newest by default
