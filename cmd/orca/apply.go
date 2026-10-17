@@ -542,7 +542,7 @@ func platformOptions(cfg Config, authHash string, statusBin *statusBinary) deplo
 		opts.Logs = &deploy.LogsSpec{Retention: cfg.Monitoring.Logs.Retention, DiskBytes: cfg.Monitoring.LogDiskBytes()}
 	}
 	if cfg.Monitoring.Metrics.Enabled {
-		opts.Metrics = &deploy.MetricsSpec{Retention: cfg.Monitoring.Metrics.Retention, MinFreeBytes: cfg.Monitoring.MetricsMinFreeBytes()}
+		opts.Metrics = &deploy.MetricsSpec{Retention: cfg.Monitoring.Metrics.Retention, MinFreeBytes: cfg.Monitoring.MetricsMinFreeBytes(), MemoryMB: cfg.Monitoring.MetricsMemoryMB()}
 	}
 	if cfg.Monitoring.Status.Enabled {
 		opts.Status = &deploy.StatusSpec{Image: images.Alpine}

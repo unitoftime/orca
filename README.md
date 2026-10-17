@@ -561,6 +561,7 @@ monitoring:                   # or `monitoring: false`
   metrics:                    # or `metrics: false`
     retention: 30d
     min_free: 2G              # stop storing metrics below this much free disk
+    memory: 512M              # memory limit; more room for long-range queries
   status: false               # no status page
 
 dns: false                    # services can't find each other by name

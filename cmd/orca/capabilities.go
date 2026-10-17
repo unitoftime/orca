@@ -130,6 +130,11 @@ type MetricsConfig struct {
 	// MinFree is the free space at which it stops accepting new data rather
 	// than consuming the last of the disk.
 	MinFree string `yaml:"min_free"`
+
+	// Memory is the store's memory limit. It sizes its caches from this, so
+	// it uses a similar share of whatever it is given; what the headroom is
+	// for is the queries, whose working memory comes on top.
+	Memory string `yaml:"memory"`
 }
 
 // Capability defaults. Deliberately modest: this is a personal cluster, and
@@ -140,6 +145,7 @@ const (
 	defaultLogDisk         = "10G"
 	defaultMetricRetention = "30d"
 	defaultMetricMinFree   = "2G"
+	defaultMetricMemory    = "512M"
 )
 
 // defaultCapabilities is what a cluster.yaml that mentions none of them gets.
@@ -150,7 +156,7 @@ func defaultCapabilities() (FirewallConfig, DNSConfig, IngressConfig, Monitoring
 		MonitoringConfig{
 			Enabled: true,
 			Logs:    LogsConfig{Enabled: true, Retention: defaultLogRetention, Disk: defaultLogDisk},
-			Metrics: MetricsConfig{Enabled: true, Retention: defaultMetricRetention, MinFree: defaultMetricMinFree},
+			Metrics: MetricsConfig{Enabled: true, Retention: defaultMetricRetention, MinFree: defaultMetricMinFree, Memory: defaultMetricMemory},
 			Status:  StatusConfig{Enabled: true},
 		}
 }
@@ -300,7 +306,7 @@ func (c *StatusConfig) UnmarshalYAML(node *yaml.Node) error {
 func (c *MetricsConfig) UnmarshalYAML(node *yaml.Node) error {
 	type plain MetricsConfig
 	var out plain
-	on, err := decodeToggle(node, "monitoring.metrics", []string{"retention", "min_free"}, &out)
+	on, err := decodeToggle(node, "monitoring.metrics", []string{"retention", "min_free", "memory"}, &out)
 	if err != nil {
 		return err
 	}
@@ -324,6 +330,9 @@ func (m *MonitoringConfig) applyDefaults() {
 	if m.Metrics.MinFree == "" {
 		m.Metrics.MinFree = d.Metrics.MinFree
 	}
+	if m.Metrics.Memory == "" {
+		m.Metrics.Memory = d.Metrics.Memory
+	}
 }
 
 // validate resolves the size settings, so a bad value is reported when the
@@ -337,6 +346,9 @@ func (m MonitoringConfig) validate() error {
 	if m.Metrics.Enabled {
 		if _, err := manifest.ParseSize(m.Metrics.MinFree); err != nil {
 			return fmt.Errorf("monitoring.metrics.min_free: %w", err)
+		}
+		if _, err := manifest.ParseSize(m.Metrics.Memory); err != nil {
+			return fmt.Errorf("monitoring.metrics.memory: %w", err)
 		}
 	}
 	return nil
@@ -352,4 +364,10 @@ func (m MonitoringConfig) LogDiskBytes() int64 {
 func (m MonitoringConfig) MetricsMinFreeBytes() int64 {
 	n, _ := manifest.ParseSize(m.Metrics.MinFree)
 	return int64(n)
+}
+
+// MetricsMemoryMB is the metric store's memory limit in MB, as Nomad takes it.
+func (m MonitoringConfig) MetricsMemoryMB() int {
+	n, _ := manifest.ParseSize(m.Metrics.Memory)
+	return n.Megabytes()
 }

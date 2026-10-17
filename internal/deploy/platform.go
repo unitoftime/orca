@@ -147,6 +147,8 @@ type MetricsSpec struct {
 
 	// MinFreeBytes is a plain byte count, for the same reason as DiskBytes.
 	MinFreeBytes int64
+
+	MemoryMB int
 }
 
 // BuildPlatform renders the platform jobs that are switched on.

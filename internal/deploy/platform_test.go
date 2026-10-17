@@ -26,7 +26,7 @@ func platformOpts() PlatformOptions {
 		StoreNetwork: "internal",
 		Ingress:      &IngressSpec{TLS: true, ACMEEmail: "me@example.com", AuthHash: "$2a$10$hash"},
 		Logs:         &LogsSpec{Retention: "14d", DiskBytes: 10 << 30},
-		Metrics:      &MetricsSpec{Retention: "30d", MinFreeBytes: 2 << 30},
+		Metrics:      &MetricsSpec{Retention: "30d", MinFreeBytes: 2 << 30, MemoryMB: 512},
 		Status:       &StatusSpec{Image: "alpine:3", Binary: "/var/orca/bin/orca-0123456789abcdef"},
 	}
 }

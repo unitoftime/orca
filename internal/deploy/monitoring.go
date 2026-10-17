@@ -11,7 +11,7 @@ import (
 )
 
 func metricsJob(opts PlatformOptions) *nomad.Job {
-	job, group, task := platformJob(opts, "victoriametrics", opts.Images.VictoriaMetrics, 200, 512)
+	job, group, task := platformJob(opts, "victoriametrics", opts.Images.VictoriaMetrics, 200, opts.Metrics.MemoryMB)
 	pinTo(group, opts.MonitoringNode)
 
 	group.Networks = []*nomad.NetworkResource{storePort(opts, "http", MetricsPort)}
